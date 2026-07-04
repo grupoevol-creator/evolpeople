@@ -1,0 +1,615 @@
+/* ===== EVOL PEOPLE — style.css (v5) ===== */
+
+:root {
+    --azul: #163A70;
+    --azul-escuro: #0E2749;
+    --azul-claro: #EAF0F8;
+    --fundo: #F5F6FA;
+    --texto: #1F2937;
+    --texto-suave: #6B7280;
+    --branco: #FFFFFF;
+    --borda: #E5E7EB;
+    --verde: #16A34A;
+    --verde-claro: #DCFCE7;
+    --amarelo: #B45309;
+    --amarelo-claro: #FEF3C7;
+    --vermelho: #DC2626;
+    --vermelho-claro: #FEE2E2;
+    --raio: 10px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background: var(--fundo);
+    color: var(--texto);
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+    width: 250px;
+    background: var(--azul-escuro);
+    color: var(--branco);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.logo-mark {
+    background: var(--branco);
+    color: var(--azul-escuro);
+    font-weight: 800;
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+}
+
+.logo small {
+    display: block;
+    opacity: 0.7;
+    font-size: 12px;
+}
+
+nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.nav-item {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    text-align: left;
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-item.active {
+    background: var(--azul);
+    color: var(--branco);
+    font-weight: 600;
+}
+
+.sidebar-footer {
+    font-size: 12px;
+    opacity: 0.6;
+    line-height: 1.5;
+}
+
+/* ===== CONTEÚDO ===== */
+main {
+    margin-left: 250px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    background: var(--branco);
+    border-bottom: 1px solid var(--borda);
+    padding: 18px 32px;
+}
+
+.topbar h1 {
+    font-size: 20px;
+    color: var(--azul-escuro);
+}
+
+.conteudo {
+    padding: 32px;
+}
+
+/* ===== COMPONENTES ===== */
+.btn {
+    padding: 10px 18px;
+    background: var(--azul);
+    color: var(--branco);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.btn:hover {
+    background: var(--azul-escuro);
+}
+
+.btn-secundario {
+    background: var(--branco);
+    color: var(--azul);
+    border: 1px solid var(--azul);
+    margin-left: 8px;
+}
+
+.btn-secundario:hover {
+    background: var(--azul-claro);
+}
+
+.card {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: var(--raio);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+
+.subtitulo {
+    color: var(--texto-suave);
+    font-size: 13px;
+    margin: 4px 0 20px;
+}
+
+/* ===== LOGIN ===== */
+.login-card {
+    max-width: 420px;
+    margin: 60px auto;
+    text-align: center;
+}
+
+.login-card .campo {
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.erro-login {
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+/* ===== TOOLBAR (busca e filtros) ===== */
+.toolbar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.toolbar .btn {
+    margin-bottom: 0;
+}
+
+.toolbar select,
+.filtro-busca {
+    padding: 10px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--branco);
+    color: var(--texto);
+}
+
+.filtro-busca {
+    flex: 1;
+    min-width: 200px;
+}
+
+.toolbar select:focus,
+.filtro-busca:focus {
+    outline: 2px solid var(--azul);
+    border-color: var(--azul);
+}
+
+.contagem {
+    color: var(--texto-suave);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+/* ===== DASHBOARD: CARDS DE INDICADORES ===== */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.card-indicador {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-left: 5px solid var(--azul);
+    margin-bottom: 0;
+}
+
+.indicador-numero {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--azul-escuro);
+    line-height: 1;
+}
+
+.indicador-rotulo {
+    font-size: 13px;
+    color: var(--texto-suave);
+}
+
+.ind-verde { border-left-color: var(--verde); }
+.ind-verde .indicador-numero { color: var(--verde); }
+
+.ind-amarelo { border-left-color: #F59E0B; }
+.ind-amarelo .indicador-numero { color: #B45309; }
+
+.ind-vermelho { border-left-color: var(--vermelho); }
+.ind-vermelho .indicador-numero { color: var(--vermelho); }
+
+/* ===== DASHBOARD: GRÁFICOS ===== */
+.graficos-grid {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+}
+
+.graficos-grid .card h3 {
+    font-size: 15px;
+    color: var(--azul-escuro);
+    margin-bottom: 16px;
+}
+
+/* ===== FORMULÁRIO EM GRADE ===== */
+.grid-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px 20px;
+    margin-bottom: 20px;
+}
+
+.campo-cheio {
+    grid-column: 1 / -1;
+}
+
+.campo label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--texto-suave);
+    margin-bottom: 6px;
+}
+
+.formulario input,
+.formulario select,
+.formulario textarea,
+.login-card input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--branco);
+    color: var(--texto);
+}
+
+.formulario input:focus,
+.formulario select:focus,
+.formulario textarea:focus,
+.login-card input:focus {
+    outline: 2px solid var(--azul);
+    border-color: var(--azul);
+}
+
+.formulario textarea {
+    resize: vertical;
+}
+
+/* ===== TABELA DE COLABORADORES ===== */
+.tabela-wrap {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.tabela th {
+    text-align: left;
+    padding: 14px 16px;
+    background: var(--azul-claro);
+    color: var(--azul-escuro);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.tabela td {
+    padding: 13px 16px;
+    border-top: 1px solid var(--borda);
+}
+
+.tabela tbody tr:hover {
+    background: var(--fundo);
+}
+
+/* ===== BOTÕES DE AÇÃO (editar/excluir) ===== */
+.acoes {
+    white-space: nowrap;
+}
+
+.btn-acao {
+    background: none;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    padding: 6px 9px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: 6px;
+    transition: background 0.15s;
+}
+
+.btn-acao:hover {
+    background: var(--azul-claro);
+    border-color: var(--azul);
+}
+
+/* ===== BADGES DE STATUS ===== */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-verde {
+    background: var(--verde-claro);
+    color: var(--verde);
+}
+
+.badge-amarelo {
+    background: var(--amarelo-claro);
+    color: var(--amarelo);
+}
+
+.badge-vermelho {
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+}
+
+/* ===== CAMPO SALÁRIO TOTAL ===== */
+.formulario input.campo-total {
+    background: var(--azul-claro);
+    color: var(--azul-escuro);
+    font-weight: 700;
+    border-color: var(--azul);
+}
+
+/* ===== CAMPO VARIÁVEL (Rio Mar) ===== */
+.campo-variavel label {
+    color: var(--vermelho) !important;
+}
+
+.campo-variavel input {
+    border-color: var(--vermelho);
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+    font-weight: 600;
+}
+
+/* ===== RESPONSIVO ===== */
+@media (max-width: 1100px) {
+    .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    .graficos-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1000px) {
+    .grid-form { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 70px;
+        padding: 24px 8px;
+    }
+    .logo div, .sidebar-footer { display: none; }
+    main { margin-left: 70px; }
+    .grid-form { grid-template-columns: 1fr; }
+    .cards-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== v6: badge azul (vagas em aberto) ===== */
+.badge-azul {
+    background: var(--azul-claro);
+    color: var(--azul);
+}
+
+/* ===== v6: usuário logado e botão sair na sidebar ===== */
+.menu-usuario {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-nome {
+    display: block;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+    padding: 0 14px 8px;
+}
+
+.nav-sair {
+    color: #FCA5A5;
+}
+
+/* ===== v7: seções do formulário ===== */
+.secao-form {
+    margin: 24px 0 4px;
+    color: var(--azul-escuro);
+    font-size: 16px;
+    border-top: 1px solid var(--borda);
+    padding-top: 20px;
+}
+
+.rotulo-grupo {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--texto-suave);
+    margin: 8px 0;
+}
+
+/* ===== v7: cards de checkbox (critérios do teste) ===== */
+.check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.check-card, .radio-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    background: var(--branco);
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.check-card:hover, .radio-card:hover {
+    border-color: var(--azul);
+}
+
+.check-card:has(input:checked), .radio-card:has(input:checked) {
+    border-color: var(--azul);
+    background: var(--azul-claro);
+}
+
+.check-card input, .radio-card input {
+    width: auto !important;
+    margin-top: 3px;
+}
+
+.check-card span, .radio-card span {
+    font-size: 13px;
+}
+
+.check-card small, .radio-card small {
+    display: block;
+    color: var(--texto-suave);
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* ===== v7: grade de radios (recomendação / resultado / etapa) ===== */
+.radio-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+/* ===== v7: listas do dossiê ===== */
+.lista-dossie {
+    list-style: none;
+    padding: 0;
+}
+
+.lista-dossie li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--borda);
+    font-size: 14px;
+}
+
+.lista-dossie li:last-child {
+    border-bottom: none;
+}
+
+.lista-dossie small {
+    color: var(--texto-suave);
+}
+
+@media (max-width: 1000px) {
+    .check-grid, .radio-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== v8: nota de salário abaixo dos selects de cargo ===== */
+.nota-salario {
+    display: block;
+    margin-top: 6px;
+    color: var(--azul);
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* ===== v9: Universidade Evol ===== */
+.barra-progresso {
+    height: 12px;
+    background: var(--borda);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.barra-preenchida {
+    height: 100%;
+    background: linear-gradient(90deg, var(--azul), #2E6BC7);
+    border-radius: 999px;
+    transition: width 0.4s;
+}
+
+.modulo-card { border-left: 5px solid var(--azul); }
+
+.modulo-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.modulo-carga { color: var(--texto-suave); font-size: 13px; font-weight: 600; }
+
+.modulo-ferramentas {
+    font-size: 13px;
+    color: var(--texto-suave);
+    background: var(--fundo);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.modulo-botoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.modulo-botoes .btn { margin-bottom: 0; }
+
+/* ===== v10: aviso LGPD no login ===== */
+.aviso-lgpd {
+    margin-top: 18px;
+    font-size: 11px;
+    color: var(--texto-suave);
+    line-height: 1.5;
+    text-align: center;
+}

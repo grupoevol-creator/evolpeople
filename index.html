@@ -3,41 +3,833 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Evol People — Gestão de Pessoas</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>Evol People v7</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    
+    <style>
+        /* /* ===== EVOL PEOPLE — style.css (v5) ===== */
+
+:root {
+    --azul: #163A70;
+    --azul-escuro: #0E2749;
+    --azul-claro: #EAF0F8;
+    --fundo: #F5F6FA;
+    --texto: #1F2937;
+    --texto-suave: #6B7280;
+    --branco: #FFFFFF;
+    --borda: #E5E7EB;
+    --verde: #16A34A;
+    --verde-claro: #DCFCE7;
+    --amarelo: #B45309;
+    --amarelo-claro: #FEF3C7;
+    --vermelho: #DC2626;
+    --vermelho-claro: #FEE2E2;
+    --raio: 10px;
+}
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body {
+    display: flex;
+    min-height: 100vh;
+    background: var(--fundo);
+    color: var(--texto);
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+    width: 250px;
+    background: var(--azul-escuro);
+    color: var(--branco);
+    display: flex;
+    flex-direction: column;
+    padding: 24px 16px;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 32px;
+}
+
+.logo-mark {
+    background: var(--branco);
+    color: var(--azul-escuro);
+    font-weight: 800;
+    border-radius: 8px;
+    width: 40px;
+    height: 40px;
+    display: grid;
+    place-items: center;
+}
+
+.logo small {
+    display: block;
+    opacity: 0.7;
+    font-size: 12px;
+}
+
+nav {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    flex: 1;
+}
+
+.nav-item {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.85);
+    text-align: left;
+    padding: 11px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.nav-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-item.active {
+    background: var(--azul);
+    color: var(--branco);
+    font-weight: 600;
+}
+
+.sidebar-footer {
+    font-size: 12px;
+    opacity: 0.6;
+    line-height: 1.5;
+}
+
+/* ===== CONTEÚDO ===== */
+main {
+    margin-left: 250px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    background: var(--branco);
+    border-bottom: 1px solid var(--borda);
+    padding: 18px 32px;
+}
+
+.topbar h1 {
+    font-size: 20px;
+    color: var(--azul-escuro);
+}
+
+.conteudo {
+    padding: 32px;
+}
+
+/* ===== COMPONENTES ===== */
+.btn {
+    padding: 10px 18px;
+    background: var(--azul);
+    color: var(--branco);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-bottom: 16px;
+}
+
+.btn:hover {
+    background: var(--azul-escuro);
+}
+
+.btn-secundario {
+    background: var(--branco);
+    color: var(--azul);
+    border: 1px solid var(--azul);
+    margin-left: 8px;
+}
+
+.btn-secundario:hover {
+    background: var(--azul-claro);
+}
+
+.card {
+    background: var(--branco);
+    border: 1px solid var(--borda);
+    border-radius: var(--raio);
+    padding: 24px;
+    margin-bottom: 16px;
+}
+
+.subtitulo {
+    color: var(--texto-suave);
+    font-size: 13px;
+    margin: 4px 0 20px;
+}
+
+/* ===== LOGIN ===== */
+.login-card {
+    max-width: 420px;
+    margin: 60px auto;
+    text-align: center;
+}
+
+.login-card .campo {
+    text-align: left;
+    margin-bottom: 16px;
+}
+
+.erro-login {
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+/* ===== TOOLBAR (busca e filtros) ===== */
+.toolbar {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-bottom: 16px;
+}
+
+.toolbar .btn {
+    margin-bottom: 0;
+}
+
+.toolbar select,
+.filtro-busca {
+    padding: 10px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--branco);
+    color: var(--texto);
+}
+
+.filtro-busca {
+    flex: 1;
+    min-width: 200px;
+}
+
+.toolbar select:focus,
+.filtro-busca:focus {
+    outline: 2px solid var(--azul);
+    border-color: var(--azul);
+}
+
+.contagem {
+    color: var(--texto-suave);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+/* ===== DASHBOARD: CARDS DE INDICADORES ===== */
+.cards-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.card-indicador {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-left: 5px solid var(--azul);
+    margin-bottom: 0;
+}
+
+.indicador-numero {
+    font-size: 34px;
+    font-weight: 800;
+    color: var(--azul-escuro);
+    line-height: 1;
+}
+
+.indicador-rotulo {
+    font-size: 13px;
+    color: var(--texto-suave);
+}
+
+.ind-verde { border-left-color: var(--verde); }
+.ind-verde .indicador-numero { color: var(--verde); }
+
+.ind-amarelo { border-left-color: #F59E0B; }
+.ind-amarelo .indicador-numero { color: #B45309; }
+
+.ind-vermelho { border-left-color: var(--vermelho); }
+.ind-vermelho .indicador-numero { color: var(--vermelho); }
+
+/* ===== DASHBOARD: GRÁFICOS ===== */
+.graficos-grid {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 16px;
+}
+
+.graficos-grid .card h3 {
+    font-size: 15px;
+    color: var(--azul-escuro);
+    margin-bottom: 16px;
+}
+
+/* ===== FORMULÁRIO EM GRADE ===== */
+.grid-form {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px 20px;
+    margin-bottom: 20px;
+}
+
+.campo-cheio {
+    grid-column: 1 / -1;
+}
+
+.campo label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--texto-suave);
+    margin-bottom: 6px;
+}
+
+.formulario input,
+.formulario select,
+.formulario textarea,
+.login-card input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--branco);
+    color: var(--texto);
+}
+
+.formulario input:focus,
+.formulario select:focus,
+.formulario textarea:focus,
+.login-card input:focus {
+    outline: 2px solid var(--azul);
+    border-color: var(--azul);
+}
+
+.formulario textarea {
+    resize: vertical;
+}
+
+/* ===== TABELA DE COLABORADORES ===== */
+.tabela-wrap {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.tabela {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+}
+
+.tabela th {
+    text-align: left;
+    padding: 14px 16px;
+    background: var(--azul-claro);
+    color: var(--azul-escuro);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.tabela td {
+    padding: 13px 16px;
+    border-top: 1px solid var(--borda);
+}
+
+.tabela tbody tr:hover {
+    background: var(--fundo);
+}
+
+/* ===== BOTÕES DE AÇÃO (editar/excluir) ===== */
+.acoes {
+    white-space: nowrap;
+}
+
+.btn-acao {
+    background: none;
+    border: 1px solid var(--borda);
+    border-radius: 6px;
+    padding: 6px 9px;
+    cursor: pointer;
+    font-size: 14px;
+    margin-right: 6px;
+    transition: background 0.15s;
+}
+
+.btn-acao:hover {
+    background: var(--azul-claro);
+    border-color: var(--azul);
+}
+
+/* ===== BADGES DE STATUS ===== */
+.badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.badge-verde {
+    background: var(--verde-claro);
+    color: var(--verde);
+}
+
+.badge-amarelo {
+    background: var(--amarelo-claro);
+    color: var(--amarelo);
+}
+
+.badge-vermelho {
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+}
+
+/* ===== CAMPO SALÁRIO TOTAL ===== */
+.formulario input.campo-total {
+    background: var(--azul-claro);
+    color: var(--azul-escuro);
+    font-weight: 700;
+    border-color: var(--azul);
+}
+
+/* ===== CAMPO VARIÁVEL (Rio Mar) ===== */
+.campo-variavel label {
+    color: var(--vermelho) !important;
+}
+
+.campo-variavel input {
+    border-color: var(--vermelho);
+    background: var(--vermelho-claro);
+    color: var(--vermelho);
+    font-weight: 600;
+}
+
+/* ===== RESPONSIVO ===== */
+@media (max-width: 1100px) {
+    .cards-grid { grid-template-columns: repeat(2, 1fr); }
+    .graficos-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 1000px) {
+    .grid-form { grid-template-columns: 1fr 1fr; }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        width: 70px;
+        padding: 24px 8px;
+    }
+    .logo div, .sidebar-footer { display: none; }
+    main { margin-left: 70px; }
+    .grid-form { grid-template-columns: 1fr; }
+    .cards-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== v6: badge azul (vagas em aberto) ===== */
+.badge-azul {
+    background: var(--azul-claro);
+    color: var(--azul);
+}
+
+/* ===== v6: usuário logado e botão sair na sidebar ===== */
+.menu-usuario {
+    margin-top: auto;
+    padding-top: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.menu-nome {
+    display: block;
+    font-size: 13px;
+    color: rgba(255, 255, 255, 0.75);
+    padding: 0 14px 8px;
+}
+
+.nav-sair {
+    color: #FCA5A5;
+}
+
+/* ===== v7: seções do formulário ===== */
+.secao-form {
+    margin: 24px 0 4px;
+    color: var(--azul-escuro);
+    font-size: 16px;
+    border-top: 1px solid var(--borda);
+    padding-top: 20px;
+}
+
+.rotulo-grupo {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--texto-suave);
+    margin: 8px 0;
+}
+
+/* ===== v7: cards de checkbox (critérios do teste) ===== */
+.check-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+.check-card, .radio-card {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    border: 1px solid var(--borda);
+    border-radius: 8px;
+    padding: 12px 14px;
+    cursor: pointer;
+    background: var(--branco);
+    transition: border-color 0.15s, background 0.15s;
+}
+
+.check-card:hover, .radio-card:hover {
+    border-color: var(--azul);
+}
+
+.check-card:has(input:checked), .radio-card:has(input:checked) {
+    border-color: var(--azul);
+    background: var(--azul-claro);
+}
+
+.check-card input, .radio-card input {
+    width: auto !important;
+    margin-top: 3px;
+}
+
+.check-card span, .radio-card span {
+    font-size: 13px;
+}
+
+.check-card small, .radio-card small {
+    display: block;
+    color: var(--texto-suave);
+    font-weight: 400;
+    margin-top: 2px;
+}
+
+/* ===== v7: grade de radios (recomendação / resultado / etapa) ===== */
+.radio-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
+/* ===== v7: listas do dossiê ===== */
+.lista-dossie {
+    list-style: none;
+    padding: 0;
+}
+
+.lista-dossie li {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--borda);
+    font-size: 14px;
+}
+
+.lista-dossie li:last-child {
+    border-bottom: none;
+}
+
+.lista-dossie small {
+    color: var(--texto-suave);
+}
+
+@media (max-width: 1000px) {
+    .check-grid, .radio-grid { grid-template-columns: 1fr; }
+}
+
+/* ===== v8: nota de salário abaixo dos selects de cargo ===== */
+.nota-salario {
+    display: block;
+    margin-top: 6px;
+    color: var(--azul);
+    font-weight: 600;
+    font-size: 12px;
+}
+
+/* ===== v9: Universidade Evol ===== */
+.barra-progresso {
+    height: 12px;
+    background: var(--borda);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 12px;
+}
+
+.barra-preenchida {
+    height: 100%;
+    background: linear-gradient(90deg, var(--azul), #2E6BC7);
+    border-radius: 999px;
+    transition: width 0.4s;
+}
+
+.modulo-card { border-left: 5px solid var(--azul); }
+
+.modulo-topo {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.modulo-carga { color: var(--texto-suave); font-size: 13px; font-weight: 600; }
+
+.modulo-ferramentas {
+    font-size: 13px;
+    color: var(--texto-suave);
+    background: var(--fundo);
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 12px;
+}
+
+.modulo-botoes { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.modulo-botoes .btn { margin-bottom: 0; }
+
+/* ===== v10: aviso LGPD no login ===== */
+.aviso-lgpd {
+    margin-top: 18px;
+    font-size: 11px;
+    color: var(--texto-suave);
+    line-height: 1.5;
+    text-align: center;
+}
+ */
+        
+        /* Deixei essas duas classes abaixo para garantir o layout dos novos campos */
+        .resposta-modelo-feedback { width: 100%; border: 1px solid #ccc; border-radius: 6px; padding: 10px; box-sizing: border-box; resize: vertical; }
+        .subtitulo { color: #666; margin-top: -10px; margin-bottom: 25px; font-size: 13px; }
+    </style>
 </head>
 <body>
 
-    <!-- ===== SIDEBAR ===== -->
-    <aside class="sidebar">
-        <div class="logo">
-            <span class="logo-mark">EP</span>
-            <div>
-                <strong>Evol People</strong>
-                <small>Gestão de Pessoas</small>
-            </div>
+    <div class="container-sistema">
+        <div id="menuLateral" class="sidebar"></div>
+        <div class="conteudo-principal">
+            <div id="app"></div>
         </div>
+    </div>
 
-        <!-- O menu é montado pelo js/app.js conforme o perfil do usuário logado -->
-        <nav id="menu"></nav>
+    <script>
+        // =========================================================================
+        // MOTOR JAVASCRIPT - LOGICA DE SÓCIOS, LÍDERES E CASAS
+        // =========================================================================
+        
+        const URL_SCRIPT_GOOGLE = 'https://script.google.com/macros/s/AKfycbw87GkMPg8Zf07i0j7Pecfv_ofxTQYVxuO0THmqBvIxyD2H27GnHMJfAmSJB00XneV_/exec';
 
-        <footer class="sidebar-footer">
-            Desenvolvendo pessoas.<br>Fortalecendo cultura.
-        </footer>
-    </aside>
+        // Defina quem está logado trocando o nome aqui para testar
+        let USUARIO = window.USUARIO || { nome: "ANÁLIA", perfil: "SOCIO" }; 
 
-    <!-- ===== CONTEÚDO ===== -->
-    <main>
-        <header class="topbar">
-            <h1 id="tituloPagina">Evol People</h1>
-        </header>
+        let COLABORADORES = window.COLABORADORES || [];
+        const COL = { id: 0, nome: 1, unidade: 2, funcao: 3, lider: 4 }; 
 
-        <div id="app" class="conteudo"></div>
-    </main>
+        const MAPA_SOCIOS_CASAS = {
+            "ALINE CARDOSO": ["PARRILEIRO SUL"],
+            "ANÁLIA": ["SEU CONRADO EUSÉBIO"],
+            "MARIANO": ["SEU CONRADO EUSÉBIO"],
+            "SAULO GOMES": ["PARRILEIRO RIO MAR"],
+            "JOÃO RICARDO": ["PARRILEIRO SUL", "PARRILEIRO ALDEOTA"]
+        };
 
-    <!-- Biblioteca de gráficos -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-    <!-- Código do sistema -->
-    <script src="js/app.js"></script>
+        const FUNCOES_PADRAO = {
+            "Atendente": { fixo: 1412, compl: 0 },
+            "Subgerente": { fixo: 1800, compl: 200 },
+            "Gerente": { fixo: 2500, compl: 500 }
+        };
+
+        const FUNCOES_RIOMAR = {
+            "Atendente": { fixo: 1500, compl: 100 },
+            "Subgerente": { fixo: 2000, compl: 300 },
+            "Gerente": { fixo: 2800, compl: 600 }
+        };
+
+        const TIPOS_FEEDBACK = ["FEEDBACK RÁPIDO", "1:1 (DESENVOLVIMENTO)", "360° (COMPETÊNCIAS & VALORES)", "ESTRUTURADO (METAS & PERFORMANCE)"];
+        const PERGUNTAS_FEEDBACK = {
+            "1:1 (DESENVOLVIMENTO)": ["Principais vitórias?", "Algum obstáculo?", "Como posso apoiar?"],
+            "360° (COMPETÊNCIAS & VALORES)": ["Demonstra Senso de Dono?", "Trabalho em equipe?", "O que precisa evoluir?"],
+            "ESTRUTURADO (METAS & PERFORMANCE)": ["Metas atingidas?", "Competências técnicas?", "Plano de ação?"]
+        };
+
+        function podeVerDashboard() { return ["RH", "SOCIO", "DIRETORIA"].includes(USUARIO.perfil); }
+        function podeVerCargosERecrutamento() { return ["RH", "SOCIO", "DIRETORIA", "DP"].includes(USUARIO.perfil); }
+        function podeAcessarFardamentosEEPI() { return ["RH", "SOCIO", "DIRETORIA", "DP", "LIDER"].includes(USUARIO.perfil); }
+        function podeAcessarAcademiaLideres() { return ["RH", "SOCIO", "DIRETORIA", "LIDER"].includes(USUARIO.perfil); }
+
+        function filtrarEquipePorUnidade() {
+            if (!COLABORADORES || COLABORADORES.length === 0) return [];
+            if (["RH", "DIRETORIA", "DP"].includes(USUARIO.perfil)) return COLABORADORES;
+            if (USUARIO.perfil === "SOCIO") {
+                const casasPermitidas = MAPA_SOCIOS_CASAS[USUARIO.nome.toUpperCase()];
+                if (!casasPermitidas) return []; 
+                return COLABORADORES.filter(c => casasPermitidas.includes(c[COL.unidade].toUpperCase()));
+            }
+            if (USUARIO.perfil === "LIDER") {
+                return COLABORADORES.filter(c => c[COL.lider].toUpperCase() === USUARIO.nome.toUpperCase());
+            }
+            return [];
+        }
+
+        function carregarDadosIniciais() {
+            if (URL_SCRIPT_GOOGLE.includes('COLE_AQUI')) {
+                window.COLABORADORES = [
+                    ["001", "Pedro Silva", "SEU CONRADO EUSÉBIO", "Atendente", "LIDER CONRADO"],
+                    ["002", "Julia Costa", "SEU CONRADO EUSÉBIO", "Gerente", "MARIANO"],
+                    ["003", "Marcos Souza", "PARRILEIRO SUL", "Atendente", "LIDER SUL"],
+                    ["004", "Amanda Lima", "PARRILEIRO ALDEOTA", "Subgerente", "LIDER ALDEOTA"],
+                    ["005", "Lucas Rocha", "PARRILEIRO RIO MAR", "Atendente", "SAULO GOMES"]
+                ];
+                initApp();
+                return;
+            }
+            fetch(`${URL_SCRIPT_GOOGLE}?action=carregar`)
+                .then(res => res.json())
+                .then(dados => {
+                    window.COLABORADORES = dados.colaboradores || [];
+                    initApp();
+                })
+                .catch(err => { console.error("Erro ao conectar", err); initApp(); });
+        }
+
+        function salvarDadosNoSheets(aba, objetoDados) {
+            if (URL_SCRIPT_GOOGLE.includes('COLE_AQUI')) { alert("✅ Gravado Localmente!"); return Promise.resolve(); }
+            return fetch(URL_SCRIPT_GOOGLE, {
+                method: "POST",
+                mode: "no-cors",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ aba: aba, dados: objetoDados })
+            });
+        }
+
+        function renderizarMenuLateral() {
+            const menuContainer = document.getElementById("menuLateral");
+            if (!menuContainer) return;
+            menuContainer.innerHTML = `
+                <div class="logo-area">
+                    <div class="avatar-ep">EP</div>
+                    <div><h3>Evol People</h3><small>Gestão Unificada</small></div>
+                </div>
+                <ul>
+                    ${podeVerDashboard() ? `<li onclick="telaDashboard()"><i class="fa fa-dashboard"></i> Dashboard</li>` : ''}
+                    <li onclick="telaRecrutamento()"><i class="fa fa-user-plus"></i> Recrutamento</li>
+                    <li onclick="telaAvaliacaoExperiencia()"><i class="fa fa-file-text"></i> Avaliação Experiência</li>
+                    <li onclick="telaTestePratico()"><i class="fa fa-pencil"></i> Teste Prático</li>
+                    <li onclick="telaFeedback()"><i class="fa fa-comments"></i> Feedback</li>
+                    ${podeAcessarAcademiaLideres() ? `<li onclick="telaAcademiaLideres()"><i class="fa fa-graduation-cap"></i> Academia de Líderes</li>` : ''}
+                    <li onclick="telaDossie()"><i class="fa fa-folder-open"></i> Dossiê</li>
+                    ${podeAcessarFardamentosEEPI() ? `<li onclick="telaEstoque()"><i class="fa fa-shield"></i> Estoque EPI/Fardas</li>` : ''}
+                    ${podeVerCargosERecrutamento() ? `<li onclick="telaCargosSalarios()"><i class="fa fa-money"></i> Cargos e Salários</li>` : ''}
+                </ul>
+                <div class="user-footer"><p>👤 ${USUARIO.nome}</p><small style="color:#b0c4de; font-size:11px;">Perfil: ${USUARIO.perfil}</small></div>
+            `;
+        }
+
+        function telaDashboard() { document.getElementById("app").innerHTML = `<div class="card"><h2>📈 Dashboard Estratégico</h2><p>Métricas consolidadas.</p></div>`; }
+        function telaRecrutamento() { document.getElementById("app").innerHTML = `<div class="card"><h2>🎯 Painel de Recrutamento</h2><p>Módulo de vagas.</p></div>`; }
+        function telaAvaliacaoExperiencia() { document.getElementById("app").innerHTML = `<div class="card"><h2>📝 Avaliação de Experiência</h2><p>Controle de formulários.</p></div>`; }
+        function telaTestePratico() { document.getElementById("app").innerHTML = `<div class="card"><h2>✏️ Testes Práticos</h2><p>Avaliações operacionais.</p></div>`; }
+        function telaAcademiaLideres() { document.getElementById("app").innerHTML = `<div class="card"><h2>🎓 Academia de Líderes</h2><p>Trilhas corporativas.</p></div>`; }
+        function telaDossie() { document.getElementById("app").innerHTML = `<div class="card"><h2>📂 Dossiê Digital</h2><p>Histórico funcional.</p></div>`; }
+        function telaEstoque() { document.getElementById("app").innerHTML = `<div class="card"><h2>🛡️ Estoque de EPIs e Fardamentos</h2><p>Gestão de fardas.</p></div>`; }
+
+        function telaCargosSalarios() {
+            let seletorCasasHTML = "";
+            if (["RH", "DIRETORIA", "DP"].includes(USUARIO.perfil)) {
+                seletorCasasHTML = `<option value="PADRAO">Casas Padrão</option><option value="RIOMAR">RioMar</option>`;
+            } else if (USUARIO.perfil === "SOCIO") {
+                const casas = MAPA_SOCIOS_CASAS[USUARIO.nome.toUpperCase()] || [];
+                const temRioMar = casas.some(c => c.toUpperCase().includes("RIO MAR"));
+                const temOutras = casas.some(c => !c.toUpperCase().includes("RIO MAR"));
+                if (temOutras) seletorCasasHTML += `<option value="PADRAO">Suas Casas (${casas.filter(c => !c.includes("RIO MAR")).join(", ")})</option>`;
+                if (temRioMar) seletorCasasHTML += `<option value="RIOMAR">Sua Unidade Rio Mar</option>`;
+            }
+            document.getElementById("app").innerHTML = `
+                <div class="card">
+                    <h2>💰 Cargos e Salários Autorizados</h2>
+                    <div class="campo"><label>Sua Casa</label><select id="unidadePredio" onchange="atualizarCamposSalario()">${seletorCasasHTML}</select></div>
+                    <div class="campo"><label>Função</label><select id="funcao" onchange="atualizarCamposSalario()"><option value="">Escolha...</option><option value="Atendente">Atendente</option><option value="Subgerente">Subgerente</option><option value="Gerente">Gerente</option></select></div>
+                    <div class="campo"><label>Salário Fixo Base</label><input type="text" id="salarioFixo" readonly></div>
+                    <div class="campo"><label>Complemento</label><input type="text" id="complemento" readonly></div>
+                </div>`;
+            atualizarCamposSalario();
+        }
+
+        function atualizarCamposSalario() {
+            const funcaoSel = document.getElementById("funcao")?.value;
+            const predio = document.getElementById("unidadePredio")?.value;
+            const tabela = (predio === "RIOMAR") ? FUNCOES_RIOMAR : FUNCOES_PADRAO;
+            if (funcaoSel && tabela[funcaoSel]) {
+                document.getElementById("salarioFixo").value = "R$ " + tabela[funcaoSel].fixo.toFixed(2);
+                document.getElementById("complemento").value = "R$ " + tabela[funcaoSel].compl.toFixed(2);
+            } else {
+                if(document.getElementById("salarioFixo")) document.getElementById("salarioFixo").value = "";
+                if(document.getElementById("complemento")) document.getElementById("complemento").value = "";
+            }
+        }
+
+        function telaFeedback() {
+            const equipeFiltrada = filtrarEquipePorUnidade();
+            document.getElementById("app").innerHTML = `
+                <div class="card">
+                    <h2>💬 Registro de Feedback Estruturado</h2>
+                    <div class="campo"><label>Colaborador *</label><select id="feedColaborador"><option value="">Selecione...</option>${equipeFiltrada.map(c => `<option value="${c[0]}">${c[1]} — [${c[2]}]</option>`).join("")}</select></div>
+                    <div class="campo"><label>Modelo *</label><select id="feedTipo" onchange="atualizarPerguntasFeedback(this.value)"><option value="">Selecione...</option>${TIPOS_FEEDBACK.map(t => `<option value="${t}">${t}</option>`).join("")}</select></div>
+                    <div id="containerPerguntasFixas"></div>
+                    <div class="campo"><label>Anotações</label><textarea id="feedObs" rows="4"></textarea></div>
+                    <button class="btn" onclick="salvarFeedbackForm()">Gravar no Sheets</button>
+                </div>`;
+        }
+
+        function atualizarPerguntasFeedback(modelo) {
+            const container = document.getElementById("containerPerguntasFixas");
+            if (!container) return;
+            const perguntas = PERGUNTAS_FEEDBACK[modelo];
+            if (!perguntas) { container.innerHTML = ""; return; }
+            let html = `<div style="margin:15px 0; padding:15px; background:#f0f7ff; border-radius:8px; border-left:4px solid #0056b3;">`;
+            perguntas.forEach((p, idx) => { html += `<div class="campo"><label>${p}</label><textarea id="respostaFeedback_${idx}" class="resposta-modelo-feedback" rows="3"></textarea></div>`; });
+            container.innerHTML = html + `</div>`;
+        }
+
+        function salvarFeedbackForm() {
+            const colabId = document.getElementById("feedColaborador")?.value;
+            const tipo = document.getElementById("feedTipo")?.value;
+            const obs = document.getElementById("feedObs")?.value;
+            if (!colabId || !tipo) { alert("⚠️ Preencha os campos obrigatórios."); return; }
+            let respostas = [];
+            document.querySelectorAll(".resposta-modelo-feedback").forEach((input, i) => { if (input.value.trim() !== "") respostas.push(`P${i+1}: ${input.value.trim()}`); });
+            const pacote = { colaboradorId: colabId, tipoFeedback: tipo, conteudoFeedback: `[RESPOSTAS] ${respostas.join(" | ")} [OBS] ${obs}`, avaliador: USUARIO.nome, dataRegistro: new Date().toLocaleDateString("pt-BR") };
+            salvarDadosNoSheets("FEEDBACKS", pacote).then(() => { alert("✅ Sincronizado!"); telaFeedback(); });
+        }
+
+        function initApp() { renderizarMenuLateral(); telaFeedback(); }
+        window.addEventListener("DOMContentLoaded", carregarDadosIniciais);
+    </script>
 </body>
 </html>

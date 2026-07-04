@@ -55,13 +55,15 @@ async function fazerLogin(e) {
   const res = await api('login', { cpf, senha });
   if (!res.sucesso) { alert(res.erro || 'Login invalido'); return false; }
   USUARIO = res;
-  USUARIO.senha = senha; // guarda para chamadas seguintes
+  USUARIO.cpf = cpf;        // <-- ESSA LINHA É A CORREÇÃO
+  USUARIO.senha = senha;
   if (USUARIO.unidades && USUARIO.unidades.length > 0) UNIDADE_SELECIONADA = USUARIO.unidades[0];
   montarMenu();
   const itens = MENUS[USUARIO.perfil] || [];
   if (itens.includes('dashboard')) navegarPara('dashboard');
   else if (itens.length > 0) navegarPara(itens[0]);
   return false;
+}
 }
 
 function montarMenu() {

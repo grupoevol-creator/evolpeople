@@ -64,6 +64,7 @@ async function fazerLogin(e) {
   const res = await api('login', { cpf, senha });
   if (!res.sucesso) { alert(res.erro || 'Login invalido'); return false; }
   USUARIO = res;
+  USUARIO.senha = senha;
   if (USUARIO.unidades && USUARIO.unidades.length > 0) UNIDADE_SELECIONADA = USUARIO.unidades[0];
   montarMenu();
   const itens = MENUS[USUARIO.perfil] || [];
@@ -110,7 +111,7 @@ function navegarPara(pagina) {
 // ===== DASHBOARD =====
 async function telaDashboard() {
   renderApp('<div class="card"><p>Carregando dashboard...</p></div>');
-  const params = {};
+  const params = { cpf: USUARIO.cpf, senha: USUARIO.senha };
   if (USUARIO.perfil === 'SOCIO' && UNIDADE_SELECIONADA) params.unidadeFiltro = UNIDADE_SELECIONADA;
   const res = await api('dashboardSocio', params);
   if (!res.sucesso) { renderApp(`<div class="card"><p>Erro: ${esc(res.erro||'')}</p></div>`); return; }
@@ -136,7 +137,7 @@ async function telaDashboard() {
 // ===== VAGAS =====
 async function telaVagas() {
   renderApp('<div class="card"><p>Carregando vagas...</p></div>');
-  const res = await api('listarVagas', { unidadeFiltro: UNIDADE_SELECIONADA });
+  const res = await api('listarVagas', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
   if (!res.sucesso) { renderApp(`<div class="card"><p>Erro: ${esc(res.erro||'')}</p></div>`); return; }
   const vagas = res.vagas || [];
   renderApp(`<div class="card">
@@ -176,7 +177,7 @@ async function salvarVaga(e) {
     unidade: document.getElementById('vagaUnidade').value.trim(),
     gestor: document.getElementById('vagaGestor').value.trim(),
     motivo: document.getElementById('vagaMotivo').value.trim(),
-    cpf: USUARIO.cpf, senha: '--auth--'
+    cpf: USUARIO.cpf, senha: USUARIO.senha
   };
   const res = await api('salvarVaga', dados);
   if (res.sucesso) { alert('Vaga aberta!'); telaVagas(); }
@@ -187,7 +188,7 @@ async function salvarVaga(e) {
 // ===== COLABORADORES =====
 async function telaColaboradores() {
   renderApp('<div class="card"><p>Carregando...</p></div>');
-  const res = await api('listarColaboradores', { unidadeFiltro: UNIDADE_SELECIONADA });
+  const res = await api('listarColaboradores', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
   if (!res.sucesso) { renderApp(`<div class="card"><p>Erro: ${esc(res.erro||'')}</p></div>`); return; }
   const cols = res.dados || [];
   renderApp(`<div class="card"><h2>Colaboradores</h2>
@@ -222,7 +223,7 @@ async function buscarSalarioTP() {
   const cargo = document.getElementById('tpCargo').value.trim();
   const unidade = document.getElementById('tpUnidade').value;
   if (!cargo || !unidade) return;
-  const res = await api('buscarSalarioCargo', { cargo, tabela: unidade, cpf: USUARIO.cpf, senha: '--auth--' });
+  const res = await api('buscarSalarioCargo', { cargo, tabela: unidade, cpf: USUARIO.cpf, senha: USUARIO.senha });
   if (res.sucesso && res.salario) {
     document.getElementById('tpFixo').value = formatarMoeda(res.salario.fixo);
     document.getElementById('tpCompl').value = formatarMoeda(res.salario.compl);
@@ -234,7 +235,7 @@ async function buscarSalarioTP() {
     if (confirm(`Salario nao encontrado para ${cargo} em ${unidade}. Cadastrar agora?`)) {
       const f = prompt('Salario fixo (R$):'); if (!f) return;
       const c = prompt('Complemento (R$):') || 0;
-      const r2 = await api('cadastrarSalarioCargo', { cargo, tabela: unidade, fixo: Number(f), compl: Number(c), cpf: USUARIO.cpf, senha: '--auth--' });
+      const r2 = await api('cadastrarSalarioCargo', { cargo, tabela: unidade, fixo: Number(f), compl: Number(c), cpf: USUARIO.cpf, senha: USUARIO.senha });
       if (r2.sucesso) { document.getElementById('tpFixo').value = formatarMoeda(f); document.getElementById('tpCompl').value = formatarMoeda(c); document.getElementById('tpTotal').value = formatarMoeda(Number(f)+Number(c)); alert('Salario cadastrado!'); }
       else alert(r2.erro || 'Erro ao cadastrar');
     }
@@ -248,7 +249,7 @@ async function salvarTestePratico(e) {
     vaga: document.getElementById('tpVaga').value.trim(),
     unidade: document.getElementById('tpUnidade').value,
     criterios: '', nota: '', recomendacao: document.getElementById('tpResultado').value,
-    cpf: USUARIO.cpf, senha: '--auth--'
+    cpf: USUARIO.cpf, senha: USUARIO.senha
   };
   const res = await api('salvarTeste', dados);
   if (res.sucesso) {
@@ -262,7 +263,7 @@ async function salvarTestePratico(e) {
 // ===== ESCALA =====
 async function telaEscala() {
   renderApp('<div class="card"><p>Carregando equipe...</p></div>');
-  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--' });
+  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
   if (!res.sucesso) { renderApp(`<div class="card"><p>Erro: ${esc(res.erro||'')}</p></div>`); return; }
   const equipe = res.equipe || [];
   const checks = equipe.map(c => `<label class="check-card"><input type="checkbox" class="chkEscala" value="${esc(c.nome)}"/>${esc(c.nome)}</label>`).join('');
@@ -306,7 +307,7 @@ async function gerarEscalas(e) {
   document.getElementById('escResultado').innerHTML = '<p>Gerando...</p>';
   let ok = 0, err = 0;
   for (const nome of selec) {
-    const r = await api('salvarEscala', { colaborador: nome, tipo, dias: padrao, unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--' });
+    const r = await api('salvarEscala', { colaborador: nome, tipo, dias: padrao, unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
     if (r.sucesso) ok++; else err++;
   }
   document.getElementById('escResultado').innerHTML = `<p>${ok} sucesso(s), ${err} erro(s).</p>`;
@@ -316,7 +317,7 @@ async function gerarEscalas(e) {
 // ===== FEEDBACK =====
 async function telaFeedback() {
   renderApp('<div class="card"><p>Carregando...</p></div>');
-  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--' });
+  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
   const equipe = (res.sucesso ? res.equipe : []) || [];
   const ops = equipe.map(c => `<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join('');
   renderApp(`<div class="card">
@@ -361,7 +362,7 @@ async function salvarFeedback(e) {
     colaborador: document.getElementById('fbColab').value,
     tipo: modelo,
     pontosFortes: pts[0] || '', pontosMelhoria: pts[1] || '', acordos: pts[2] || '',
-    unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--'
+    unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha
   };
   const res = await api('salvarFeedback', dados);
   if (res.sucesso) { alert('Feedback salvo!'); telaFeedback(); }
@@ -395,7 +396,7 @@ async function salvarTreinamento(e) {
     dataTreinamento: document.getElementById('trData').value,
     colaborador: document.getElementById('trPart').value,
     unidade: document.getElementById('trUnidade').value,
-    cpf: USUARIO.cpf, senha: '--auth--'
+    cpf: USUARIO.cpf, senha: USUARIO.senha
   };
   const res = await api('salvarTreinamento', dados);
   if (res.sucesso) { alert('Treinamento salvo!'); telaTreinamentos(); }
@@ -420,7 +421,7 @@ function telaUniversidadeEvol() {
 // ===== AVALIACAO EXPERIENCIA =====
 async function telaAvaliacaoExperiencia() {
   renderApp('<div class="card"><p>Carregando...</p></div>');
-  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--' });
+  const res = await api('listarEquipe', { unidadeFiltro: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha });
   const eq = (res.sucesso ? res.equipe : []) || [];
   const ops = eq.map(c => `<option value="${esc(c.nome)}">${esc(c.nome)}</option>`).join('');
   renderApp(`<div class="card">
@@ -444,7 +445,7 @@ async function salvarAvaliacaoExp(e) {
     etapa: document.getElementById('aePeriodo').value,
     resultado: document.getElementById('aeResultado').value,
     observacoes: document.getElementById('aeObs').value,
-    unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: '--auth--'
+    unidade: UNIDADE_SELECIONADA, cpf: USUARIO.cpf, senha: USUARIO.senha
   };
   const res = await api('salvarAvaliacao', dados);
   if (res.sucesso) { alert('Avaliacao salva!'); telaAvaliacaoExperiencia(); }
@@ -465,7 +466,7 @@ function telaCargosSalarios() {
 async function carregarTabelaCargos() {
   const div = document.getElementById('tabelaCargos'); if (!div) return;
   div.innerHTML = '<p>Carregando...</p>';
-  const res = await api('listarCargos', { cpf: USUARIO.cpf, senha: '--auth--' });
+  const res = await api('listarCargos', { cpf: USUARIO.cpf, senha: USUARIO.senha });
   if (!res.sucesso) { div.innerHTML = `<p>Erro: ${esc(res.erro||'')}</p>`; return; }
   const cargos = res.cargos || [];
   div.innerHTML = cargos.length ? `<table class="tabela"><thead><tr><th>Cargo</th><th>Tabela</th><th>Fixo</th><th>Complemento</th><th>Total</th></tr></thead><tbody>

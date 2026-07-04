@@ -3,7 +3,7 @@
 // dashboard socio, escala, feedback com validacao de liderado,
 // treinamento liberado para lider/socio
 
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw87GkMPg8Zf07i0j7Pecfv_ofxTQYVxuO0THmqBvIxyD2H27GnHMJfAmSJB00XneV_/exec';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycby-EYnZaursYaJV5YNCF9bxGEaIBsDp0eHofZfwLfSGE_M2r0oAnSmJgBQDKe5nzBZR/exec';
 
 let USUARIO = null;
 let UNIDADE_SELECIONADA = null;

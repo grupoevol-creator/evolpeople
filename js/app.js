@@ -3,7 +3,7 @@
 // dashboard socio, escala, feedback com validacao de liderado,
 // treinamento liberado para lider/socio
 
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycby-EYnZaursYaJV5YNCF9bxGEaIBsDp0eHofZfwLfSGE_M2r0oAnSmJgBQDKe5nzBZR/exec';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbw87GkMPg8Zf07i0j7Pecfv_ofxTQYVxuO0THmqBvIxyD2H27GnHMJfAmSJB00XneV_/exec';
 
 let USUARIO = null;
 let UNIDADE_SELECIONADA = null;
@@ -64,8 +64,7 @@ async function fazerLogin(e) {
   const res = await api('login', { cpf, senha });
   if (!res.sucesso) { alert(res.erro || 'Login invalido'); return false; }
   USUARIO = res;
-  if (USUARIO.unidades && USUARIO.unidades.length === 1) UNIDADE_SELECIONADA = USUARIO.unidades[0];
-  else if (USUARIO.unidades && USUARIO.unidades.length > 1) UNIDADE_SELECIONADA = USUARIO.unidades[0];
+  if (USUARIO.unidades && USUARIO.unidades.length > 0) UNIDADE_SELECIONADA = USUARIO.unidades[0];
   montarMenu();
   const itens = MENUS[USUARIO.perfil] || [];
   if (itens.includes('dashboard')) navegarPara('dashboard');
@@ -470,7 +469,7 @@ async function carregarTabelaCargos() {
   if (!res.sucesso) { div.innerHTML = `<p>Erro: ${esc(res.erro||'')}</p>`; return; }
   const cargos = res.cargos || [];
   div.innerHTML = cargos.length ? `<table class="tabela"><thead><tr><th>Cargo</th><th>Tabela</th><th>Fixo</th><th>Complemento</th><th>Total</th></tr></thead><tbody>
-    ${cargos.map(c => `<tr><td>${esc(c.nome)}</td><td>${esc(c.tabela)}</td><td>${formatarMoeda(c.fixo)}</td><td>${formatarMoeda(c.compl)}</td><td>${formatarMoeda(c.fixo+c.compl)}</td></tr>`).join('')}
+    ${cargos.map(c => `<tr><td>${esc(c.nome)}</td><td>${esc(c.tabela)}</td><td>${formatarMoeda(c.fixo)}</td><td>${formatarMoeda(c.compl)}</td><td>${formatarMoeda(Number(c.fixo || 0) + Number(c.compl || 0))}</td></tr>`).join('')}
   </tbody></table>` : '<p>Nenhum cargo cadastrado.</p>';
 }
 

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evol People — Gestão de Pessoas</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar">
+        <div class="logo">
+            <span class="logo-mark">EP</span>
+            <div>
+                <strong>Evol People</strong>
+                <small>Gestão de Pessoas</small>
+            </div>
+        </div>
+
+        <!-- O menu é montado pelo js/app.js conforme o perfil do usuário logado -->
+        <nav id="menu"></nav>
+
+        <footer class="sidebar-footer">
+            Desenvolvendo pessoas.<br>Fortalecendo cultura.
+        </footer>
+    </aside>
+
+    <!-- ===== CONTEÚDO ===== -->
+    <main>
+        <header class="topbar">
+            <h1 id="tituloPagina">Evol People</h1>
+        </header>
+
+        <div id="app" class="conteudo"></div>
+    </main>
+
+    <!-- Biblioteca de gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- Código do sistema -->
+    <script src="js/app.js"></script>
+</body>
+</html>

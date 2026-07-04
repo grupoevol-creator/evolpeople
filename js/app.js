@@ -23,7 +23,6 @@ const TITULOS = {
   dossie: 'Dossie', pdi: 'Meu PDI'
 };
 
-// CORRIGIDO: envia cpf/senha na raiz, nao dentro de "dados"
 async function api(acao, dados) {
   try {
     const body = JSON.stringify({ acao, ...(dados || {}) });
@@ -55,7 +54,7 @@ async function fazerLogin(e) {
   const res = await api('login', { cpf, senha });
   if (!res.sucesso) { alert(res.erro || 'Login invalido'); return false; }
   USUARIO = res;
-  USUARIO.cpf = cpf;        // <-- ESSA LINHA É A CORREÇÃO
+  USUARIO.cpf = cpf;
   USUARIO.senha = senha;
   if (USUARIO.unidades && USUARIO.unidades.length > 0) UNIDADE_SELECIONADA = USUARIO.unidades[0];
   montarMenu();
@@ -63,7 +62,6 @@ async function fazerLogin(e) {
   if (itens.includes('dashboard')) navegarPara('dashboard');
   else if (itens.length > 0) navegarPara(itens[0]);
   return false;
-}
 }
 
 function montarMenu() {

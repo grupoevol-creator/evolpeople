@@ -1,139 +1,64 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
-  <meta charset="UTF-8">
-  <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#13233f" />
   <title>EVOLPEOPLE</title>
-  <style>
-    :root{
-      --azul:#13233f;
-      --azul2:#1f3761;
-      --laranja:#e47b35;
-      --bg:#f4f6fb;
-      --card:#fff;
-      --txt:#1f2937;
-      --muted:#6b7280;
-      --border:#e5e7eb;
-      --ok:#16a34a;
-      --bad:#dc2626;
-      --warn:#f59e0b;
-      --shadow:0 10px 28px rgba(15,23,42,.08);
-      --radius:14px;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--txt)}
-    .app{min-height:100vh;display:grid;grid-template-columns:280px 1fr;grid-template-rows:78px 1fr;grid-template-areas:"top top" "side main"}
-    header{grid-area:top;background:linear-gradient(135deg,var(--azul),var(--azul2));color:#fff;display:flex;justify-content:space-between;align-items:center;padding:14px 24px;box-shadow:var(--shadow);z-index:2}
-    .brand{display:flex;align-items:center;gap:12px}
-    .mark{width:54px;height:54px;border-radius:14px;background:#fff;color:var(--azul);display:flex;align-items:center;justify-content:center;flex-direction:column;font-weight:900;line-height:1}
-    .mark b{color:var(--laranja)}
-    h1{font-size:22px;margin:0}
-    header p{margin:3px 0 0;color:rgba(255,255,255,.75);font-size:13px}
-    aside{grid-area:side;background:#0f1e36;padding:16px 12px;overflow:auto}
-    main{grid-area:main;padding:22px;overflow:auto}
-    .nav-title{color:rgba(255,255,255,.45);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin:14px 10px 8px}
-    .nav{width:100%;background:transparent;border:0;color:rgba(255,255,255,.82);padding:11px 12px;text-align:left;border-radius:11px;cursor:pointer;margin-bottom:4px;font-size:14px}
-    .nav:hover,.nav.active{background:var(--laranja);color:#fff;font-weight:800}
-    .card{background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:var(--radius);padding:20px;margin-bottom:16px}
-    .card h2,.card h3{margin:0 0 14px;color:var(--azul)}
-    .grid{display:grid;gap:14px}
-    .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
-    .kpi{background:#fff;border-left:5px solid var(--laranja);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
-    .kpi small{display:block;color:var(--muted);font-weight:800;margin-bottom:8px}
-    .kpi strong{font-size:29px;color:var(--azul)}
-    label{display:block;font-size:13px;font-weight:800;margin-bottom:6px;color:#374151}
-    input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:11px;font-size:14px;background:#fff;outline:none}
-    textarea{min-height:84px;resize:vertical}
-    input:focus,select:focus,textarea:focus{border-color:var(--laranja);box-shadow:0 0 0 4px rgba(228,123,53,.12)}
-    .money{background:#fff7ed!important;border-color:#fed7aa!important;color:#c96525!important;font-weight:900}
-    .btn{border:0;border-radius:11px;padding:11px 15px;font-weight:900;cursor:pointer}
-    .primary{background:var(--laranja);color:#fff}
-    .secondary{background:#e5e7eb;color:#111827}
-    .danger{background:var(--bad);color:#fff}
-    .ok{background:var(--ok);color:#fff}
-    .light{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.2)}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .table-wrap{overflow:auto}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th{background:var(--azul);color:#fff;text-align:left;padding:11px;white-space:nowrap}
-    td{border-bottom:1px solid var(--border);padding:10px;vertical-align:top}
-    tr:hover td{background:#f9fafb}
-    .badge{display:inline-flex;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:900;background:#dbeafe;color:#1e40af}
-    .msg{padding:12px 14px;border-radius:12px;margin-bottom:14px;font-weight:800}
-    .msg.ok{background:#dcfce7;color:#166534}
-    .msg.err{background:#fee2e2;color:#991b1b}
-    .login{max-width:430px;margin:48px auto}
-    .user{display:flex;align-items:center;gap:12px}
-    .muted{color:var(--muted);font-size:13px}
-    .checklist{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
-    .check{display:flex;gap:8px;align-items:center;margin:6px 0}
-    .check input{width:auto}
-    @media(max-width:950px){.app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;grid-template-areas:"top" "side" "main"}aside{display:flex;overflow-x:auto;gap:6px}.nav-title{display:none}.nav{white-space:nowrap}.g2,.g3,.g4{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}}
-  </style>
+  <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
-<div class="app">
-  <header>
-    <div class="brand">
-      <div class="mark">EVOL<b>PEOPLE</b></div>
-      <div><h1 id="title">EVOLPEOPLE</h1><p>Gestão de pessoas, escala, ponto, indicadores e operação</p></div>
-    </div>
-    <div class="user" id="userBox" style="display:none">
-      <span id="userName"></span>
-      <button class="btn light" onclick="logout()">Sair</button>
-    </div>
-  </header>
-  <aside id="menu"></aside>
-  <main id="main"></main>
-</div>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark">
+          EVOL
+          <span>PEOPLE</span>
+        </div>
 
-<script>
-let USER = null;
-let INIT = {unidades:[], cargos:[], colaboradores:[]};
-let TELA = 'dashboard';
+        <div>
+          <h1>EVOLPEOPLE</h1>
+          <p>Gestão de pessoas, escala, ponto, indicadores e operação</p>
+        </div>
+      </div>
 
-const MODULOS = [
-  ['Principal',[
-    ['dashboard','📊 Dashboard'],
-    ['colaboradores','👥 Colaboradores'],
-    ['cargos','💰 Cargos & Salários'],
-    ['vagas','💼 Vagas'],
-    ['admissoes','📋 Admissões'],
-    ['testes','✅ Teste Prático']
-  ]],
-  ['Operação',[
-    ['escalas','📅 Gestão de Escalas'],
-    ['ponto','🕒 Ponto / Espelho'],
-    ['fardamento','👕 Fardamento & EPI']
-  ]],
-  ['Desenvolvimento',[
-    ['feedbacks','💬 Feedbacks'],
-    ['experiencia','⭐ Período de Experiência'],
-    ['treinamentos','🎓 Treinamentos'],
-    ['mural','📣 Mural'],
-    ['ia','🤖 IA']
-  ]],
-  ['Indicadores',[
-    ['indicadores','📈 Turnover / Absenteísmo / SLA']
-  ]]
-];
+      <div class="top-actions user" id="userBox" style="display:none;">
+        <div>
+          <strong id="userName"></strong>
+          <small id="userPerfil"></small>
+        </div>
 
-document.addEventListener('DOMContentLoaded', telaLogin);
+        <button class="btn btn-light light" type="button" onclick="logout()">
+          Sair
+        </button>
+      </div>
+    </header>
 
-function call(acao,dados={}){
-  return new Promise((resolve,reject)=>{
-    google.script.run
-      .withSuccessHandler(resolve)
-      .withFailureHandler(err=>resolve({ok:false,erro:err.message||String(err)}))
-      .api(acao,{...dados,__user:USER});
-  });
-}
+    <aside class="sidebar" id="menu"></aside>
 
-function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function el(id){return document.getElementById(id)}
-function set(html){el('main').innerHTML=html}
-function moeda(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
-function norm(v){return String(v||'').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/
+    <main class="main" id="main">
+      <section class="login">
+        <div class="card">
+          <div class="login-logo">
+            EVOL
+            <span>PEOPLE</span>
+          </div>
+
+          <h2 style="text-align:center;margin-bottom:6px;">
+            Carregando sistema...
+          </h2>
+
+          <p class="muted" style="text-align:center;">
+            Aguarde alguns instantes.
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <div class="toast-area" id="toastArea"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

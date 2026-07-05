@@ -1,1694 +1,736 @@
-Substitua por estes **2 arquivos** no Apps Script: `Code.gs` e `index.html`.
+:root {
+  --azul: #13233f;
+  --azul-2: #1f3761;
+  --azul-3: #0f1e36;
+  --laranja: #e47b35;
+  --laranja-2: #c96525;
+  --bg: #f4f6fb;
+  --card: #ffffff;
+  --txt: #1f2937;
+  --muted: #6b7280;
+  --border: #e5e7eb;
+  --ok: #16a34a;
+  --bad: #dc2626;
+  --warn: #f59e0b;
+  --info: #2563eb;
+  --shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  --shadow-soft: 0 6px 18px rgba(15, 23, 42, 0.06);
+  --shadow-strong: 0 18px 44px rgba(15, 23, 42, 0.14);
+  --radius: 14px;
+  --radius-sm: 10px;
+}
 
-> Observação importante: o módulo de ponto abaixo gera espelho, trilha de auditoria, justificativas e controles operacionais; a validação final de aderência jurídica/MTE deve ser feita pela empresa/contabilidade/jurídico.
+* {
+  box-sizing: border-box;
+}
 
-## `Code.gs`
+html {
+  scroll-behavior: smooth;
+}
 
-```javascript
-const CONFIG = {
-  TZ: 'America/Fortaleza',
-  SHEETS: {
-    usuarios: 'Usuarios',
-    colaboradores: 'CONTROLE DE C&P',
-    cargos: 'CargosSalarios',
-    relacoes: 'LideresELiderados',
-    vagas: 'Vagas',
-    admissoes: 'AdmissoesPrevistas',
-    testes: 'TestesPraticos',
-    escalas: 'Escalas',
-    escalaItens: 'EscalaItens',
-    ponto: 'Ponto',
-    pontoAjustes: 'PontoAjustes',
-    feedbacks: 'Feedbacks',
-    avaliacoes: 'AvaliacoesExperiencia',
-    treinamentos: 'Treinamentos',
-    fardamento: 'FardamentoEPI',
-    movimentacoesFardamento: 'MovimentacoesFardamentoEPI',
-    indicadores: 'IndicadoresMensais',
-    sla: 'SLA',
-    mural: 'Mural',
-    ia: 'IA_Logs'
+body {
+  margin: 0;
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--txt);
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button {
+  transition: 0.18s ease;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.app {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  grid-template-rows: 78px 1fr;
+  grid-template-areas:
+    "top top"
+    "side main";
+}
+
+.topbar,
+header {
+  grid-area: top;
+  background: linear-gradient(135deg, var(--azul), var(--azul-2));
+  color: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 24px;
+  box-shadow: var(--shadow);
+  z-index: 10;
+  position: sticky;
+  top: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark,
+.mark {
+  width: 58px;
+  height: 54px;
+  border-radius: 14px;
+  background: #fff;
+  color: var(--azul);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-weight: 950;
+  font-size: 13px;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.brand-mark span,
+.mark b {
+  color: var(--laranja);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.brand h1,
+h1 {
+  font-size: 22px;
+  margin: 0;
+  letter-spacing: -0.03em;
+}
+
+.brand p,
+header p {
+  margin: 3px 0 0;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+}
+
+.top-actions,
+.user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: right;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.top-actions small {
+  display: block;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 12px;
+}
+
+.sidebar,
+aside {
+  grid-area: side;
+  background: var(--azul-3);
+  padding: 16px 12px;
+  overflow: auto;
+}
+
+.main,
+main {
+  grid-area: main;
+  padding: 22px;
+  overflow: auto;
+}
+
+.nav-title {
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin: 14px 10px 8px;
+  font-weight: 900;
+}
+
+.nav {
+  width: 100%;
+  background: transparent;
+  border: 0;
+  color: rgba(255, 255, 255, 0.82);
+  padding: 11px 12px;
+  text-align: left;
+  border-radius: 11px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.nav:hover,
+.nav.active {
+  background: var(--laranja);
+  color: #fff;
+  font-weight: 900;
+  box-shadow: 0 8px 20px rgba(228, 123, 53, 0.28);
+}
+
+.page-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.page-title h2 {
+  color: var(--azul);
+  margin-bottom: 4px;
+  letter-spacing: -0.03em;
+}
+
+.page-title p {
+  color: var(--muted);
+  font-size: 14px;
+  margin-bottom: 0;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.card h2,
+.card h3 {
+  margin: 0 0 14px;
+  color: var(--azul);
+  letter-spacing: -0.02em;
+}
+
+.card h2 {
+  font-size: 22px;
+}
+
+.card h3 {
+  font-size: 17px;
+}
+
+.card-subtitle {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: -8px;
+  margin-bottom: 16px;
+}
+
+.grid {
+  display: grid;
+  gap: 14px;
+}
+
+.g2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.g3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.g4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.g5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.kpi {
+  background: #fff;
+  border-left: 5px solid var(--laranja);
+  border-radius: var(--radius);
+  padding: 18px;
+  box-shadow: var(--shadow-soft);
+  min-height: 108px;
+}
+
+.kpi small {
+  display: block;
+  color: var(--muted);
+  font-weight: 900;
+  margin-bottom: 8px;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.kpi strong {
+  font-size: 29px;
+  color: var(--azul);
+  letter-spacing: -0.04em;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  margin-bottom: 6px;
+  color: #374151;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  font-size: 14px;
+  background: #fff;
+  color: var(--txt);
+  outline: none;
+  transition: 0.2s;
+}
+
+textarea {
+  min-height: 84px;
+  resize: vertical;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--laranja);
+  box-shadow: 0 0 0 4px rgba(228, 123, 53, 0.12);
+}
+
+input[readonly],
+select[readonly],
+textarea[readonly] {
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+.money {
+  background: #fff7ed !important;
+  border-color: #fed7aa !important;
+  color: var(--laranja-2) !important;
+  font-weight: 900;
+}
+
+.form-row {
+  margin-bottom: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+
+.btn {
+  border: 0;
+  border-radius: 11px;
+  padding: 11px 15px;
+  font-weight: 950;
+  cursor: pointer;
+  transition: 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 40px;
+}
+
+.btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(0.98);
+}
+
+.btn-primary,
+.primary {
+  background: var(--laranja);
+  color: #fff;
+}
+
+.btn-primary:hover,
+.primary:hover {
+  background: var(--laranja-2);
+}
+
+.btn-secondary,
+.secondary {
+  background: #e5e7eb;
+  color: #111827;
+}
+
+.btn-secondary:hover,
+.secondary:hover {
+  background: #d1d5db;
+}
+
+.btn-danger,
+.danger {
+  background: var(--bad);
+  color: #fff;
+}
+
+.btn-danger:hover,
+.danger:hover {
+  background: #b91c1c;
+}
+
+.btn-ok,
+.ok {
+  background: var(--ok);
+  color: #fff;
+}
+
+.btn-ok:hover,
+.ok:hover {
+  background: #15803d;
+}
+
+.warning {
+  background: var(--warn);
+  color: #fff;
+}
+
+.btn-light,
+.light {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.btn-light:hover,
+.light:hover {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.table-wrap {
+  overflow: auto;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: #fff;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #fff;
+}
+
+th {
+  background: var(--azul);
+  color: #fff;
+  text-align: left;
+  padding: 11px;
+  white-space: nowrap;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+td {
+  border-bottom: 1px solid var(--border);
+  padding: 10px;
+  vertical-align: top;
+}
+
+tr:hover td {
+  background: #f9fafb;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+  background: #dbeafe;
+  color: #1e40af;
+  white-space: nowrap;
+}
+
+.badge.ok,
+.badge.ok-badge {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge.bad,
+.badge.err-badge {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.badge.warn,
+.badge.warn-badge {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.badge.orange {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.msg {
+  padding: 12px 14px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  margin-top: 14px;
+  font-weight: 850;
+}
+
+.msg.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.msg.err {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.msg.warn {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.login {
+  max-width: 430px;
+  margin: 48px auto;
+}
+
+.login .card {
+  padding: 26px;
+  box-shadow: var(--shadow-strong);
+}
+
+.login-logo {
+  width: 76px;
+  height: 72px;
+  margin: 0 auto 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, var(--azul), var(--azul-2));
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: var(--shadow);
+}
+
+.login-logo span {
+  color: var(--laranja);
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.checklist {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  background: #fff;
+}
+
+.check {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+  font-size: 14px;
+}
+
+.check input {
+  width: auto;
+}
+
+.empty {
+  padding: 22px;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  color: var(--muted);
+  text-align: center;
+  background: #fff;
+}
+
+.toast-area {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 50;
+  display: grid;
+  gap: 10px;
+  max-width: 360px;
+}
+
+.toast {
+  padding: 13px 14px;
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  color: #fff;
+  font-weight: 850;
+  animation: toastIn 0.22s ease;
+}
+
+.toast.ok {
+  background: var(--ok);
+}
+
+.toast.err {
+  background: var(--bad);
+}
+
+.toast.warn {
+  background: var(--warn);
+}
+
+.toast.info {
+  background: var(--info);
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
   }
-};
 
-const UNIDADES = [
-  'PARRILEIRO ALDEOTA',
-  'PARRILEIRO SUL',
-  'PARRILEIRO RIO MAR',
-  'SEU CONRADO EUSÉBIO',
-  'EVOL (MATRIZ)'
-];
-
-const MASTER_PROFILES = ['DIRETORIA', 'RH', 'DP'];
-
-const PERFIS_MODULOS = {
-  DIRETORIA: ['dashboard','colaboradores','cargos','vagas','admissoes','testes','escalas','ponto','feedbacks','experiencia','treinamentos','fardamento','mural','ia','indicadores'],
-  RH: ['dashboard','colaboradores','cargos','vagas','admissoes','testes','escalas','ponto','feedbacks','experiencia','treinamentos','fardamento','mural','ia','indicadores'],
-  DP: ['dashboard','colaboradores','cargos','vagas','admissoes','testes','escalas','ponto','feedbacks','experiencia','treinamentos','fardamento','mural','ia','indicadores'],
-  SOCIO: ['dashboard','colaboradores','cargos','vagas','admissoes','testes','escalas','ponto','feedbacks','experiencia','treinamentos','fardamento','mural','ia'],
-  LIDER: ['testes','escalas','ponto','feedbacks','experiencia','treinamentos','mural','ia'],
-  COLABORADOR: ['ponto','mural','ia']
-};
-
-const USUARIOS_BASE = [
-  ['admin','123456','Administrador','DIRETORIA','ADMINISTRADOR',UNIDADES.join('|'),'SIM'],
-  ['lucas.nogueira','123456','Lucas Nogueira','DIRETORIA','DIRETOR DE OPERAÇÕES','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['gustavo.freitas','123456','Gustavo Freitas','DIRETORIA','DIRETOR DE OPERAÇÕES','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['victor.farias','123456','Victor Farias','DIRETORIA','DIRETOR ADM/FINANCEIRO','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['denayre.monte','123456','Denayre Monte','DIRETORIA','GERENTE ADM/FINANCEIRA','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['jeffany.alencar','123456','Jeffany Alencar','RH','GENTE DE C&P','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['jessica.monalisa','123456','Jessica Monalisa','DP','ANALISTA DE DP PL','EVOL (MATRIZ)|PARRILEIRO ALDEOTA|PARRILEIRO SUL|PARRILEIRO RIO MAR|SEU CONRADO EUSÉBIO','SIM'],
-  ['luiza.garzon','123456','Luiza Garzon','SOCIO','COORDENADORA DE COMUNICAÇÃO E MKT','EVOL (MATRIZ)','SIM'],
-  ['saulo.gomes','123456','Saulo Gomes','SOCIO','SÓCIO OPERADOR','PARRILEIRO RIO MAR','SIM'],
-  ['joao.ricardo','123456','João Ricardo','SOCIO','SÓCIO OPERADOR','PARRILEIRO ALDEOTA|PARRILEIRO SUL','SIM'],
-  ['alan.souza','123456','Alan Souza','SOCIO','SÓCIO OPERADOR','PARRILEIRO ALDEOTA','SIM'],
-  ['aline.cardoso','123456','Aline Cardoso','SOCIO','SÓCIO OPERADOR','PARRILEIRO SUL','SIM'],
-  ['analia.gabrielly','123456','Anália Gabrielly','LIDER','SUPERVISORA OPERACIONAL','SEU CONRADO EUSÉBIO','SIM'],
-  ['mariano.maia','123456','Mariano Maia','LIDER','SUPERVISOR OPERACIONAL','SEU CONRADO EUSÉBIO','SIM']
-];
-
-const RELACOES_TSV = `Lider	Liderado	Unidade
-Pablo Macedo	David Lira	PARRILEIRO ALDEOTA
-Pablo Macedo	Leidiana Silveira	PARRILEIRO ALDEOTA
-Pablo Macedo	Leoni Lima	PARRILEIRO ALDEOTA
-Pablo Macedo	Claudivan Vitalino	PARRILEIRO ALDEOTA
-Pablo Macedo	Dorgival de Paula	PARRILEIRO ALDEOTA
-Pablo Macedo	Jose Filipe Bento	PARRILEIRO ALDEOTA
-Pablo Macedo	Cristiano da Silva	PARRILEIRO ALDEOTA
-Pablo Macedo	Francisco Kaiki	PARRILEIRO ALDEOTA
-Pablo Macedo	Guilherme Matos	PARRILEIRO ALDEOTA
-Pablo Macedo	Julio Cesar Pereira	PARRILEIRO ALDEOTA
-Pablo Macedo	Lio Pedro Batista	PARRILEIRO ALDEOTA
-Pablo Macedo	Natanael Matos	PARRILEIRO ALDEOTA
-Pablo Macedo	Edgar Barroso	PARRILEIRO ALDEOTA
-Pablo Macedo	Lucas Marques	PARRILEIRO ALDEOTA
-Pablo Macedo	Carlos Marlom	PARRILEIRO ALDEOTA
-Pablo Macedo	Eduardo de Lima	PARRILEIRO ALDEOTA
-Pablo Macedo	Alexandre Alves	PARRILEIRO ALDEOTA
-Pablo Macedo	Alexandre Alves Costa	PARRILEIRO ALDEOTA
-Pablo Macedo	Aleson da Silva	PARRILEIRO ALDEOTA
-Pablo Macedo	Janderson Lucas	PARRILEIRO ALDEOTA
-Pablo Macedo	Wanderson Rodrigues Pinheiro	PARRILEIRO ALDEOTA
-Pablo Macedo	Francisca Rosiellen	PARRILEIRO ALDEOTA
-Pablo Macedo	Jose Mateus Lima	PARRILEIRO ALDEOTA
-Pablo Macedo	Ana Alice Graziele	PARRILEIRO ALDEOTA
-Pablo Macedo	Wladison Antonio	PARRILEIRO ALDEOTA
-Pablo Macedo	Francisco Jociel	PARRILEIRO ALDEOTA
-Pablo Macedo	Francisco Rodrigo	PARRILEIRO ALDEOTA
-Pablo Macedo	Yan Fabio de Oliveira	PARRILEIRO ALDEOTA
-Pablo Macedo	Maria Elisa Guerra	PARRILEIRO ALDEOTA
-Roger Fernando	Ana Gessica Miranda dos Santos	PARRILEIRO ALDEOTA
-Roger Fernando	Antonio Kennedy Tabosa André	PARRILEIRO ALDEOTA
-Roger Fernando	Henrique de Souza Lima	PARRILEIRO ALDEOTA
-Roger Fernando	Isaac Henrique Gomes de Oliveira	PARRILEIRO ALDEOTA
-Roger Fernando	Valmir Alves Ferreira	PARRILEIRO ALDEOTA
-Roger Fernando	Isabela Glenda Brito Oliveira	PARRILEIRO ALDEOTA
-Roger Fernando	Antonio Vitor Messias da Silva	PARRILEIRO ALDEOTA
-Roger Fernando	Izaque Santos da Silva	PARRILEIRO ALDEOTA
-Roger Fernando	Erilene Lima Silva	PARRILEIRO ALDEOTA
-Roger Fernando	Robson Souza Pereira	PARRILEIRO ALDEOTA
-Roger Fernando	Humberto Junior Silverio Sobrinho	PARRILEIRO ALDEOTA
-Roger Fernando	Erick Jaymison Amorim de Oliveira	PARRILEIRO ALDEOTA
-Roger Fernando	Joao Victor Alves da Silva	PARRILEIRO ALDEOTA
-Roger Fernando	Lilian Sousa Andrade	PARRILEIRO ALDEOTA
-Roger Fernando	Catiane Eleuterio Duarte	PARRILEIRO ALDEOTA
-Roger Fernando	Francisca Diana Correia de Azevedo	PARRILEIRO ALDEOTA
-Roger Fernando	Francisco Elano Santana Silva	PARRILEIRO ALDEOTA
-Amanda Linhares	Carlos Daniel da Silva Sousa	PARRILEIRO ALDEOTA
-Amanda Linhares	Wilnard Wladimir da Silva Junior	PARRILEIRO ALDEOTA
-Amanda Linhares	Gustavo da Costa Ribeiro	PARRILEIRO ALDEOTA
-Amanda Linhares	Antares Adriano da Silva	PARRILEIRO ALDEOTA
-Amanda Linhares	Jose Paulo Lima de Oliveira	PARRILEIRO ALDEOTA
-Amanda Linhares	Kleberson Pereira do Nascimento	PARRILEIRO ALDEOTA
-Amanda Linhares	Carlos Alberto Alves de Sousa	PARRILEIRO ALDEOTA
-Amanda Linhares	Jardeson Rodrigues do Nascimento	PARRILEIRO ALDEOTA
-Amanda Linhares	Joel Saboia Tomaz	PARRILEIRO ALDEOTA
-Amanda Linhares	Lenildo Rodrigues	PARRILEIRO ALDEOTA
-Amanda Linhares	Edson Pereira Solon	PARRILEIRO ALDEOTA
-Amanda Linhares	Marcos Alexandre Cavalcante	PARRILEIRO ALDEOTA
-Amanda Linhares	Carlos Washington Veras Feitosa Filho	PARRILEIRO ALDEOTA
-Amanda Linhares	Joao Hilmar Pereira Vieira Filho	PARRILEIRO ALDEOTA
-Amanda Linhares	Renato Menezes Santana	PARRILEIRO ALDEOTA
-Amanda Linhares	Marcus Cesar de Jesus Santos de Almeida	PARRILEIRO ALDEOTA
-Amaurilo	Indiara Silva	PARRILEIRO ALDEOTA
-Amaurilo	Natalia Elen	PARRILEIRO ALDEOTA
-João Ricardo	Valdisio Ferreira	PARRILEIRO ALDEOTA
-João Ricardo	Pablo Roberto	PARRILEIRO ALDEOTA
-Cardone Junior	Gabriel Barbosa	PARRILEIRO SUL
-Cardone Junior	Efrain Silva Pinheiro	PARRILEIRO SUL
-Cardone Junior	Geovane Teles da Silva	PARRILEIRO SUL
-Cardone Junior	Katiana Monteiro da Silva	PARRILEIRO SUL
-Cardone Junior	Isadora Cristina Soares Silva	PARRILEIRO SUL
-Cardone Junior	Larissa da Costa Rocha	PARRILEIRO SUL
-Cardone Junior	Angelo Maximo Silva de Oliveira	PARRILEIRO SUL
-Cardone Junior	Narviley Freitas do Nascimento	PARRILEIRO SUL
-Cardone Junior	Erika Rebeka Alves Correia Rabelo	PARRILEIRO SUL
-Cardone Junior	Julio Cesar Barros de Oliveira	PARRILEIRO SUL
-Cardone Junior	Kevin Leonardo Abreu da Silva	PARRILEIRO SUL
-Cardone Junior	Paulo Sergio Barbosa Batista	PARRILEIRO SUL
-Cardone Junior	Lazaro Dirceu Viana da Silva	PARRILEIRO SUL
-Cardone Junior	Lucas Matos de Oliveira	PARRILEIRO SUL
-Cardone Junior	Thiago Italo de Assis Silva	PARRILEIRO SUL
-Cardone Junior	Pedro Felipe Pinheiro Ferreira	PARRILEIRO SUL
-Bruno Ribeiro	Alcivan Alves da Silva	PARRILEIRO SUL
-Bruno Ribeiro	Danilo Morais dos Santos	PARRILEIRO SUL
-Bruno Ribeiro	Francisca Jane Correia de Alcantara	PARRILEIRO SUL
-Bruno Ribeiro	Glayoson Mendes Rocha	PARRILEIRO SUL
-Bruno Ribeiro	Leu Cleiton Bezerra Gurgel	PARRILEIRO SUL
-Bruno Ribeiro	Leandro Lima Oliveira	PARRILEIRO SUL
-Bruno Ribeiro	Liriel Ivinne Azevedo Uchoa	PARRILEIRO SUL
-Bruno Ribeiro	Davi Costa Moura	PARRILEIRO SUL
-Bruno Ribeiro	Gabriel Rudson Alves de Sousa	PARRILEIRO SUL
-Bruno Ribeiro	Jessica Ferreira de Freitas	PARRILEIRO SUL
-Bruno Ribeiro	Vilma Morais Borges Montel	PARRILEIRO SUL
-Bruno Ribeiro	Jucilany Pereira Lima	PARRILEIRO SUL
-Bruno Ribeiro	Francisco Epitacio Batista da Silva	PARRILEIRO SUL
-Bruno Ribeiro	Felipe Moreno dos Santos	PARRILEIRO SUL
-Bruno Ribeiro	Juan Carlos Gratecol Guillen	PARRILEIRO SUL
-Bruno Ribeiro	Jose Mateus Adeodato de Oliveira	PARRILEIRO SUL
-Bruno Ribeiro	Debora Kelly Ferreira Holanda	PARRILEIRO SUL
-Bruno Ribeiro	John Lennon Oliveira de Freitas	PARRILEIRO SUL
-Bruno Ribeiro	Ana Paula Machado dos Santos	PARRILEIRO SUL
-Jennifer Marques	Alanderson Ricardo Honorio Machado	PARRILEIRO SUL
-Jennifer Marques	Antonio Emenson da Silva Machado	PARRILEIRO SUL
-Jennifer Marques	Francisco Wesley Barroso da Silva	PARRILEIRO SUL
-Francisco Davi	Francisco das Chagas Levi Sousa dos Santos	PARRILEIRO SUL
-Cardone Junior	FRANCISCO WELLINGTON NASCIMENTO GOMES	SEU CONRADO EUSÉBIO
-Cardone Junior	ROZANA DOS SANTOS OLIVEIRA	SEU CONRADO EUSÉBIO
-Cardone Junior	FRANCISCO ELIVELTON NASCIMENTO GOMES	SEU CONRADO EUSÉBIO
-Cardone Junior	VALDENIZA GOMES DE MIRANDA	SEU CONRADO EUSÉBIO
-Cardone Junior	DAVID WILLIAM DA SILVA	SEU CONRADO EUSÉBIO
-Cardone Junior	FRANCISCO MARCONDES SILVA DE MELO	SEU CONRADO EUSÉBIO
-Cardone Junior	EDU ANGELO LIMA	SEU CONRADO EUSÉBIO
-Cardone Junior	CILENE GOMES DA SILVA ALMEIDA	SEU CONRADO EUSÉBIO
-Cardone Junior	MARIA DO SOCORRO DA SILVA	SEU CONRADO EUSÉBIO
-Larisse Mota	GABRIEL PAULO DE CARVALHO	SEU CONRADO EUSÉBIO
-Jose Junior Araujo do Nascimento	EVERARDO BATISTA DA SILVA FILHO	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	ANTONIO LUKAS RIBEIRO SILVA	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	ANGELA MARIA RIBEIRO DOS SANTOS	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	MARIA RAIANY COELHO DA SILVA	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	WALISON MEDEIROS COUTINHO	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	NALBERT CAETANO CALIXTO	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	WILTON DE SOUZA SANTOS	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	LUCAS PIRES FERREIRA	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	CARLOS BRUNO COSTA DE OLIVEIRA	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	EMANUEL DE SOUSA PONTES	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	PEDRO RICARDO FELIX GOMES	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	LAUAN KAIKY MONTEL SANTOS	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	MARIA EDUARDA DA SILVA DE MELO	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	CRISTINA FERREIRA DA SILVA	PARRILEIRO RIO MAR
-Jose Junior Araujo do Nascimento	DIONE COSTA RODRIGUES	PARRILEIRO RIO MAR
-Ralfo Ifanger	ADRIANA MONTE MARTINS	PARRILEIRO RIO MAR
-Ralfo Ifanger	LAUANDA STEFANY FARIAS MORAIS	PARRILEIRO RIO MAR
-Ralfo Ifanger	EDILAINE MIRANDA DOS SANTOS	PARRILEIRO RIO MAR
-Ralfo Ifanger	EMERSON CORDEIRO DE SOUSA	PARRILEIRO RIO MAR
-Ralfo Ifanger	RUBEM ESTANISLAU MARTINS	PARRILEIRO RIO MAR
-Ralfo Ifanger	MARIA DO SOCORRO ALENCAR DOS SANTOS	PARRILEIRO RIO MAR
-Ralfo Ifanger	LUCAS GUABIRABA SILVA	PARRILEIRO RIO MAR
-Ralfo Ifanger	ADRIAN FIGALDO DOS SANTOS SILVA	PARRILEIRO RIO MAR
-Ralfo Ifanger	ROGERIO DO NASCIMENTO DA SILVA	PARRILEIRO RIO MAR
-Ralfo Ifanger	DANIEL RODRIGUES DE SOUSA	PARRILEIRO RIO MAR
-Carlos Daniel Teixeira de Melo	THAIS VANIELLY DOS SANTOS SILVA	PARRILEIRO RIO MAR
-Luiza Garzon	Ingrid Aparecida	EVOL (MATRIZ)
-Luiza Garzon	Liah Rachel	EVOL (MATRIZ)
-Victor Farias	André Coelho	EVOL (MATRIZ)
-Victor Farias	Denayre Monte	EVOL (MATRIZ)
-Victor Farias	Cleylson	EVOL (MATRIZ)
-Victor Farias	Daniel	EVOL (MATRIZ)
-Gustavo Freitas	Anália Gabrielly	EVOL (MATRIZ)
-Gustavo Freitas	Mariano Maia	EVOL (MATRIZ)
-Gustavo Freitas	Aline Cardoso	EVOL (MATRIZ)
-Gustavo Freitas	João Ricardo	EVOL (MATRIZ)
-Gustavo Freitas	Luiza Garzon	EVOL (MATRIZ)
-Gustavo Freitas	Jeffany Alencar	EVOL (MATRIZ)
-Lucas Nogueira	Alan Souza	EVOL (MATRIZ)
-Lucas Nogueira	João Ricardo	EVOL (MATRIZ)
-Lucas Nogueira	Saulo Gomes	EVOL (MATRIZ)
-Lucas Nogueira	Jeffany Alencar	EVOL (MATRIZ)
-Denayre Monte	Jessica Monalisa	EVOL (MATRIZ)
-Denayre Monte	Cleylson	EVOL (MATRIZ)
-Cleylson	José Henrique	EVOL (MATRIZ)
-Jeffany Alencar	Vitor Pinheiro	EVOL (MATRIZ)
-Jeffany Alencar	Mary Diane	EVOL (MATRIZ)`;
-
-function doGet() {
-  bootstrap_();
-  return HtmlService
-    .createHtmlOutputFromFile('index')
-    .setTitle('EVOLPEOPLE')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
-function api(acao, dados) {
-  try {
-    bootstrap_();
-    dados = dados || {};
-    const rotas = {
-      login,
-      getInit,
-      dashboard,
-      listarColaboradores,
-      salvarColaborador,
-      excluirColaborador,
-      alterarSalario,
-      listarCargos,
-      salvarCargo,
-      salvarVaga,
-      listarVagas,
-      salvarAdmissao,
-      listarAdmissoes,
-      salvarTeste,
-      listarTestes,
-      listarParticipantesEscala,
-      gerarEscala,
-      listarEscalas,
-      registrarPonto,
-      listarEspelhoPonto,
-      solicitarAjustePonto,
-      listarAjustesPonto,
-      decidirAjustePonto,
-      salvarFeedback,
-      listarFeedbacks,
-      salvarAvaliacaoExperiencia,
-      listarAvaliacoesExperiencia,
-      salvarTreinamento,
-      listarTreinamentos,
-      salvarFardamento,
-      listarFardamento,
-      movimentarFardamento,
-      salvarIndicadorMensal,
-      listarIndicadoresMensais,
-      salvarSLA,
-      listarSLA,
-      salvarMural,
-      listarMural,
-      assistenteIA
-    };
-    if (!rotas[acao]) throw new Error('Ação não encontrada: ' + acao);
-    return rotas[acao](dados);
-  } catch (e) {
-    return { ok: false, erro: e.message || String(e) };
-  }
-}
-
-function ss_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  if (!ss) throw new Error('Apps Script precisa estar vinculado à planilha base.');
-  return ss;
-}
-
-function sh_(name, headers) {
-  const ss = ss_();
-  let sh = ss.getSheetByName(name);
-  if (!sh) sh = ss.insertSheet(name);
-
-  if (headers && sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sh.setFrozenRows(1);
-  } else if (headers && sh.getLastRow() >= 1) {
-    const current = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
-    const add = headers.filter(h => !current.includes(h));
-    if (add.length) sh.getRange(1, current.length + 1, 1, add.length).setValues([add]);
-  }
-  return sh;
-}
-
-function headers_() {
-  return {
-    usuarios: ['Login','Senha','Nome','Perfil','Funcao','Unidades','Ativo'],
-    colaboradores: ['ID','Nome','CPF','Unidade','Cargo','SalarioBase','Complementar','SalarioTotal','DataAdmissao','DataNascimento','FimExperiencia','Lider','Status','CidadeResidencia','QuerValeTransporte','ValorVTDiario','Observacoes','CriadoEm','AtualizadoEm'],
-    cargos: ['ID','Cargo','SalarioBase','Complementar','SalarioTotal','Ativo','AtualizadoEm'],
-    relacoes: ['Lider','Liderado','Unidade','Ativo'],
-    vagas: ['ID','DataRegistro','Unidade','Cargo','Quantidade','SalarioBase','Complementar','SalarioTotal','CustoProjetado','Status','Prioridade','Motivo','Solicitante','FuncaoSolicitante','Observacoes'],
-    admissoes: ['ID','DataRegistro','Unidade','Candidato','CPF','Telefone','Cargo','SalarioBase','Complementar','SalarioTotal','CidadeResidencia','QuerValeTransporte','ValorVTDiario','DiasVTProporcional','ValorVTProporcional','DescontoVT','DataPrevista','Status','Solicitante','FuncaoSolicitante','Observacoes'],
-    testes: ['ID','DataRegistro','Unidade','Candidato','CPF','Telefone','Cargo','SalarioBase','Complementar','SalarioTotal','CidadeResidencia','QuerValeTransporte','ValorVTDiario','DiasVTProporcional','ValorVTProporcional','DescontoVT','DataTeste','HoraTeste','Avaliador','Status','Nota','Resultado','Solicitante','FuncaoSolicitante','Observacoes'],
-    escalas: ['ID','Unidade','TipoEscala','PeriodoInicio','PeriodoFim','CriadoPor','CriadoEm','Status','Observacoes'],
-    escalaItens: ['ID','EscalaID','Unidade','TipoEscala','Data','DiaSemana','Colaborador','Lider','TipoPessoa','HorarioEntrada','HorarioSaida','Intervalo','Folga','SugestaoFolga','Observacoes'],
-    ponto: ['ID','DataHora','Data','Hora','Colaborador','CPF','Unidade','TipoBatida','Origem','Latitude','Longitude','Dispositivo','RegistradoPor','Status','Observacoes'],
-    pontoAjustes: ['ID','DataSolicitacao','Colaborador','CPF','Unidade','Data','Hora','TipoBatida','Justificativa','Solicitante','Status','DecididoPor','DataDecisao','Parecer'],
-    feedbacks: ['ID','Data','Unidade','Lider','Colaborador','Tipo','Nota','PontosFortes','PontosMelhoria','PlanoAcao','Prazo','Status','CriadoPor'],
-    avaliacoes: ['ID','Data','Unidade','Lider','Colaborador','Cargo','DataAdmissao','DiasExperiencia','Produtividade','Comportamento','Pontualidade','Equipe','Tecnica','Media','Resultado','Parecer','PlanoAcao','CriadoPor'],
-    treinamentos: ['ID','Data','Unidade','Tema','Tipo','LiderResponsavel','HorasDadas','HorasAssistidas','Participantes','ParticipantesManuais','Observacoes','CriadoPor'],
-    fardamento: ['ID','Unidade','Item','Tipo','Tamanho','QuantidadeEstoque','QuantidadeMinima','Status','Fornecedor','AtualizadoEm'],
-    movimentacoesFardamento: ['ID','Data','Unidade','Item','Tamanho','TipoMovimentacao','Quantidade','Colaborador','Responsavel','Observacoes'],
-    indicadores: ['ID','Mes','Ano','Unidade','TurnoverPercentual','AbsenteismoPercentual','Observacoes','AtualizadoPor','AtualizadoEm'],
-    sla: ['ID','Mes','Ano','Unidade','SLA_Dias','VagasFechadas','Observacoes','AtualizadoPor','AtualizadoEm'],
-    mural: ['ID','Data','Titulo','Mensagem','Unidade','PublicadoPor','Ativo'],
-    ia: ['ID','Data','Usuario','Perfil','Pergunta','Resposta']
-  };
-}
-
-function bootstrap_() {
-  const h = headers_();
-  Object.keys(CONFIG.SHEETS).forEach(k => sh_(CONFIG.SHEETS[k], h[k]));
-
-  seedUsuarios_();
-  seedRelacoes_();
-  seedColaboradoresDasRelacoes_();
-  seedLideresUsuarios_();
-}
-
-function seedUsuarios_() {
-  const sh = sh_(CONFIG.SHEETS.usuarios, headers_().usuarios);
-  if (sh.getLastRow() > 1) return;
-  USUARIOS_BASE.forEach(r => sh.appendRow(r));
-}
-
-function seedRelacoes_() {
-  const sh = sh_(CONFIG.SHEETS.relacoes, headers_().relacoes);
-  if (sh.getLastRow() > 1) return;
-
-  RELACOES_TSV.split('\n').slice(1).forEach(line => {
-    const [lider, liderado, unidade] = line.split('\t');
-    if (lider && liderado && unidade) sh.appendRow([lider.trim(), liderado.trim(), unidade.trim(), 'SIM']);
-  });
-}
-
-function seedColaboradoresDasRelacoes_() {
-  const colaboradores = read_(CONFIG.SHEETS.colaboradores);
-  if (colaboradores.length > 0) return;
-
-  const relacoes = read_(CONFIG.SHEETS.relacoes);
-  relacoes.forEach(r => {
-    append_(CONFIG.SHEETS.colaboradores, {
-      ID: id_('COL'),
-      Nome: r.Liderado,
-      CPF: '',
-      Unidade: r.Unidade,
-      Cargo: '',
-      SalarioBase: '',
-      Complementar: '',
-      SalarioTotal: '',
-      DataAdmissao: '',
-      DataNascimento: '',
-      FimExperiencia: '',
-      Lider: r.Lider,
-      Status: 'ATIVO',
-      CidadeResidencia: '',
-      QuerValeTransporte: '',
-      ValorVTDiario: '',
-      Observacoes: 'Importado automaticamente da relação real de líderes e liderados.',
-      CriadoEm: now_(),
-      AtualizadoEm: now_()
-    });
-  });
-}
-
-function seedLideresUsuarios_() {
-  const usuarios = read_(CONFIG.SHEETS.usuarios);
-  const logins = usuarios.map(u => norm_(u.Login));
-  const relacoes = read_(CONFIG.SHEETS.relacoes);
-
-  const mapa = {};
-  relacoes.forEach(r => {
-    const lider = String(r.Lider || '').trim();
-    if (!lider) return;
-    if (!mapa[lider]) mapa[lider] = new Set();
-    mapa[lider].add(r.Unidade);
-  });
-
-  const sh = sh_(CONFIG.SHEETS.usuarios, headers_().usuarios);
-  Object.keys(mapa).forEach(lider => {
-    const login = slug_(lider);
-    if (!logins.includes(norm_(login))) {
-      sh.appendRow([login, '123456', lider, 'LIDER', 'LÍDER OPERACIONAL', Array.from(mapa[lider]).join('|'), 'SIM']);
-    }
-  });
-}
-
-function read_(sheetName) {
-  const sh = sh_(sheetName);
-  const values = sh.getDataRange().getValues();
-  if (values.length <= 1) return [];
-  const heads = values[0].map(h => String(h).trim());
-  return values.slice(1).filter(r => r.some(c => c !== '')).map((row, idx) => {
-    const obj = { _row: idx + 2 };
-    heads.forEach((h, i) => obj[h] = row[i]);
-    return obj;
-  });
-}
-
-function append_(sheetName, obj) {
-  const sh = sh_(sheetName);
-  const heads = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  sh.appendRow(heads.map(h => obj[h] !== undefined ? obj[h] : ''));
-}
-
-function updateRow_(sheetName, row, obj) {
-  const sh = sh_(sheetName);
-  const heads = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const current = sh.getRange(row,1,1,heads.length).getValues()[0];
-  heads.forEach((h,i) => {
-    if (obj[h] !== undefined) current[i] = obj[h];
-  });
-  sh.getRange(row,1,1,heads.length).setValues([current]);
-}
-
-function deleteRow_(sheetName, row) {
-  sh_(sheetName).deleteRow(row);
-}
-
-function id_(p) {
-  return `${p}-${Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyyMMddHHmmss')}-${Math.floor(Math.random()*9999)}`;
-}
-
-function now_() {
-  return Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy-MM-dd HH:mm:ss');
-}
-
-function today_() {
-  return Utilities.formatDate(new Date(), CONFIG.TZ, 'yyyy-MM-dd');
-}
-
-function norm_(s) {
-  return String(s || '').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-}
-
-function slug_(s) {
-  return String(s || '')
-    .trim()
-    .toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g,'')
-    .replace(/[^a-z0-9]+/g,'.')
-    .replace(/^\.+|\.+$/g,'');
-}
-
-function num_(v) {
-  if (typeof v === 'number') return v;
-  const s = String(v || '').replace(/[R$\s.]/g,'').replace(',','.');
-  return Number(s) || 0;
-}
-
-function asDate_(v) {
-  if (!v) return null;
-  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v)) return v;
-  const s = String(v).substring(0,10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    const [y,m,d] = s.split('-').map(Number);
-    return new Date(y,m-1,d);
-  }
-  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
-    const [d,m,y] = s.split('/').map(Number);
-    return new Date(y,m-1,d);
-  }
-  return null;
-}
-
-function fmtDate_(d) {
-  if (!d) return '';
-  const dt = asDate_(d);
-  return dt ? Utilities.formatDate(dt, CONFIG.TZ, 'yyyy-MM-dd') : '';
-}
-
-function month_(d) {
-  const dt = asDate_(d);
-  return dt ? dt.getMonth() + 1 : '';
-}
-
-function year_(d) {
-  const dt = asDate_(d);
-  return dt ? dt.getFullYear() : '';
-}
-
-function startOfWeek_(date) {
-  const d = new Date(date);
-  const day = d.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  d.setHours(0,0,0,0);
-  return d;
-}
-
-function endOfWeek_(date) {
-  const d = startOfWeek_(date);
-  d.setDate(d.getDate() + 6);
-  d.setHours(23,59,59,999);
-  return d;
-}
-
-function userFrom_(dados) {
-  return dados && dados.__user ? dados.__user : null;
-}
-
-function login(dados) {
-  const login = norm_(dados.login);
-  const senha = String(dados.senha || '').trim();
-
-  const user = read_(CONFIG.SHEETS.usuarios).find(u =>
-    [u.Login, u.Nome].some(x => norm_(x) === login) &&
-    String(u.Senha || '').trim() === senha &&
-    norm_(u.Ativo || 'SIM') !== 'NAO'
-  );
-
-  if (!user) return { ok:false, erro:'Login ou senha inválidos.' };
-
-  const perfil = norm_(user.Perfil);
-  const unidades = String(user.Unidades || '').split('|').map(x => x.trim()).filter(Boolean);
-
-  return {
-    ok:true,
-    user:{
-      login:user.Login,
-      nome:user.Nome,
-      perfil,
-      funcao:user.Funcao,
-      unidades,
-      master: MASTER_PROFILES.includes(perfil),
-      modulos: PERFIS_MODULOS[perfil] || PERFIS_MODULOS.COLABORADOR
-    }
-  };
-}
-
-function getInit(dados) {
-  const user = userFrom_(dados);
-  return {
-    ok:true,
-    unidades: unidadesPermitidas_(user),
-    cargos: listarCargos(dados).cargos,
-    colaboradores: listarColaboradores(dados).colaboradores,
-    modulos: user ? user.modulos : []
-  };
-}
-
-function unidadesPermitidas_(user) {
-  if (!user) return [];
-  if (user.master) return UNIDADES;
-  return user.unidades && user.unidades.length ? user.unidades : [];
-}
-
-function isMaster_(user) {
-  return user && MASTER_PROFILES.includes(norm_(user.perfil));
-}
-
-function canModule_(user, modulo) {
-  if (!user) return false;
-  if (isMaster_(user)) return true;
-  return (user.modulos || []).includes(modulo);
-}
-
-function canUnit_(user, unidade) {
-  if (!user) return false;
-  if (isMaster_(user)) return true;
-  if (!unidade) return true;
-  return (user.unidades || []).map(norm_).includes(norm_(unidade));
-}
-
-function filterAccess_(rows, user, opts) {
-  opts = opts || {};
-  const unidadeFiltro = opts.unidadeFiltro || '';
-  const colaboradorCampo = opts.colaboradorCampo || 'Nome';
-
-  return rows.filter(r => {
-    const unidade = r.Unidade || r.unidade || '';
-    if (unidadeFiltro && norm_(unidade) !== norm_(unidadeFiltro)) return false;
-    if (!canUnit_(user, unidade)) return false;
-
-    if (user && norm_(user.perfil) === 'LIDER') {
-      const nome = norm_(user.nome);
-      const lider = norm_(r.Lider || r.LiderResponsavel || '');
-      const colab = norm_(r[colaboradorCampo] || r.Colaborador || r.Nome || '');
-      const liderados = lideradosDoLider_(user.nome).map(norm_);
-      if (lider && lider === nome) return true;
-      if (liderados.includes(colab)) return true;
-      return false;
-    }
-
-    if (user && norm_(user.perfil) === 'COLABORADOR') {
-      const nome = norm_(user.nome);
-      const colab = norm_(r[colaboradorCampo] || r.Colaborador || r.Nome || '');
-      return colab === nome;
-    }
-
-    return true;
-  });
-}
-
-function lideradosDoLider_(lider) {
-  return read_(CONFIG.SHEETS.relacoes)
-    .filter(r => norm_(r.Lider) === norm_(lider) && norm_(r.Ativo || 'SIM') !== 'NAO')
-    .map(r => r.Liderado);
-}
-
-function cargoInfo_(cargo) {
-  const c = read_(CONFIG.SHEETS.cargos).find(x => norm_(x.Cargo) === norm_(cargo) && norm_(x.Ativo || 'SIM') !== 'NAO');
-  if (!c) return { salarioBase:0, complementar:0, salarioTotal:0 };
-  const base = num_(c.SalarioBase);
-  const comp = num_(c.Complementar);
-  return { salarioBase:base, complementar:comp, salarioTotal:num_(c.SalarioTotal) || base + comp };
-}
-
-function diasUteisAteFimMes_(data) {
-  const ini = asDate_(data);
-  if (!ini) return 0;
-  const fim = new Date(ini.getFullYear(), ini.getMonth()+1, 0);
-  let total = 0;
-  for (let d = new Date(ini); d <= fim; d.setDate(d.getDate()+1)) {
-    if (![0,6].includes(d.getDay())) total++;
-  }
-  return total;
-}
-
-function diasCorridosAteFimMes_(data) {
-  const ini = asDate_(data);
-  if (!ini) return 0;
-  const fim = new Date(ini.getFullYear(), ini.getMonth()+1, 0);
-  return Math.floor((fim - ini) / 86400000) + 1;
-}
-
-function calcularRemuneracaoEVT_(dados) {
-  const info = cargoInfo_(dados.cargo || dados.Cargo);
-  const salarioBase = num_(dados.salarioBase || dados.SalarioBase || info.salarioBase);
-  const complementar = num_(dados.complementar || dados.Complementar || info.complementar);
-  const salarioTotal = salarioBase + complementar;
-  const unidade = norm_(dados.unidade || dados.Unidade);
-  const cidade = norm_(dados.cidadeResidencia || dados.CidadeResidencia);
-  const querVT = ['SIM','S','TRUE','1'].includes(norm_(dados.querValeTransporte || dados.QuerValeTransporte));
-  let vtDiario = 0;
-
-  if (querVT && unidade.includes('EUSEBIO') && cidade.includes('FORTALEZA')) vtDiario = 19.80;
-  else if (querVT) vtDiario = num_(dados.valorVTDiario || dados.ValorVTDiario);
-
-  const dataBase = dados.dataEntrada || dados.dataPrevista || dados.dataAdmissao || dados.dataTeste || dados.DataPrevista || dados.DataAdmissao || dados.DataTeste;
-  const diasVT = querVT ? diasUteisAteFimMes_(dataBase) : 0;
-  const vtProp = vtDiario * diasVT;
-  const salarioProp = dataBase ? (salarioBase / 30) * diasCorridosAteFimMes_(dataBase) : salarioBase;
-  const desconto = querVT ? Math.min(vtProp, salarioProp * 0.06) : 0;
-
-  return { salarioBase, complementar, salarioTotal, valorVTDiario:vtDiario, diasVTProporcional:diasVT, valorVTProporcional:vtProp, descontoVT:desconto };
-}
-
-function listarCargos(dados) {
-  const user = userFrom_(dados);
-  if (user && !canModule_(user,'cargos') && !canModule_(user,'vagas') && !canModule_(user,'testes')) return {ok:false, erro:'Sem acesso.'};
-  const cargos = read_(CONFIG.SHEETS.cargos)
-    .filter(c => norm_(c.Ativo || 'SIM') !== 'NAO')
-    .map(c => ({
-      ID:c.ID,
-      Cargo:c.Cargo,
-      SalarioBase:num_(c.SalarioBase),
-      Complementar:num_(c.Complementar),
-      SalarioTotal:num_(c.SalarioTotal) || num_(c.SalarioBase) + num_(c.Complementar)
-    }))
-    .sort((a,b) => String(a.Cargo).localeCompare(String(b.Cargo),'pt-BR'));
-  return {ok:true, cargos};
-}
-
-function salvarCargo(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'cargos')) return {ok:false, erro:'Sem acesso.'};
-
-  const cargo = String(dados.Cargo || dados.cargo || '').trim().toUpperCase();
-  if (!cargo) return {ok:false, erro:'Informe o cargo.'};
-
-  const base = num_(dados.SalarioBase || dados.salarioBase);
-  const comp = num_(dados.Complementar || dados.complementar);
-  const existente = read_(CONFIG.SHEETS.cargos).find(c => norm_(c.Cargo) === norm_(cargo));
-
-  const obj = {
-    ID: existente ? existente.ID : id_('CAR'),
-    Cargo:cargo,
-    SalarioBase:base,
-    Complementar:comp,
-    SalarioTotal:base+comp,
-    Ativo:'SIM',
-    AtualizadoEm:now_()
-  };
-
-  if (existente) updateRow_(CONFIG.SHEETS.cargos, existente._row, obj);
-  else append_(CONFIG.SHEETS.cargos, obj);
-
-  return {ok:true, msg:'Cargo e salário atualizados.'};
-}
-
-function listarColaboradores(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'colaboradores') && !canModule_(user,'escalas') && !canModule_(user,'ponto') && !canModule_(user,'feedbacks') && !canModule_(user,'experiencia') && !canModule_(user,'treinamentos')) return {ok:false, erro:'Sem acesso.'};
-
-  let rows = read_(CONFIG.SHEETS.colaboradores).filter(c => norm_(c.Status || 'ATIVO') !== 'EXCLUIDO');
-  rows = filterAccess_(rows, user, { unidadeFiltro:dados.unidade || dados.unidadeFiltro || '', colaboradorCampo:'Nome' });
-  return {ok:true, colaboradores:rows};
-}
-
-function salvarColaborador(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'colaboradores')) return {ok:false, erro:'Sem acesso.'};
-  if (!isMaster_(user) && norm_(user.perfil) !== 'SOCIO') return {ok:false, erro:'Somente Diretoria, RH, DP e Sócio podem incluir colaborador.'};
-  if (!canUnit_(user, dados.Unidade || dados.unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const id = dados.ID || id_('COL');
-  const calc = calcularRemuneracaoEVT_(dados);
-  const existente = read_(CONFIG.SHEETS.colaboradores).find(c => c.ID === id);
-
-  const obj = {
-    ID:id,
-    Nome:dados.Nome || dados.nome,
-    CPF:dados.CPF || dados.cpf || '',
-    Unidade:dados.Unidade || dados.unidade,
-    Cargo:dados.Cargo || dados.cargo || '',
-    SalarioBase:calc.salarioBase,
-    Complementar:calc.complementar,
-    SalarioTotal:calc.salarioTotal,
-    DataAdmissao:dados.DataAdmissao || dados.dataAdmissao || '',
-    DataNascimento:dados.DataNascimento || dados.dataNascimento || '',
-    FimExperiencia:dados.FimExperiencia || dados.fimExperiencia || '',
-    Lider:dados.Lider || dados.lider || '',
-    Status:dados.Status || dados.status || 'ATIVO',
-    CidadeResidencia:dados.CidadeResidencia || dados.cidadeResidencia || '',
-    QuerValeTransporte:dados.QuerValeTransporte || dados.querValeTransporte || '',
-    ValorVTDiario:calc.valorVTDiario,
-    Observacoes:dados.Observacoes || dados.observacoes || '',
-    AtualizadoEm:now_()
-  };
-
-  if (!existente) obj.CriadoEm = now_();
-
-  if (existente) updateRow_(CONFIG.SHEETS.colaboradores, existente._row, obj);
-  else append_(CONFIG.SHEETS.colaboradores, obj);
-
-  return {ok:true, msg:'Colaborador atualizado na base CONTROLE DE C&P.'};
-}
-
-function excluirColaborador(dados) {
-  const user = userFrom_(dados);
-  if (!isMaster_(user)) return {ok:false, erro:'Somente Diretoria, RH e DP podem excluir colaborador.'};
-  const c = read_(CONFIG.SHEETS.colaboradores).find(x => x.ID === dados.ID);
-  if (!c) return {ok:false, erro:'Colaborador não encontrado.'};
-  updateRow_(CONFIG.SHEETS.colaboradores, c._row, {Status:'EXCLUIDO', AtualizadoEm:now_(), Observacoes:(c.Observacoes || '') + ` | Excluído por ${user.nome} em ${now_()}`});
-  return {ok:true, msg:'Colaborador excluído logicamente da base.'};
-}
-
-function alterarSalario(dados) {
-  const user = userFrom_(dados);
-  if (!isMaster_(user)) return {ok:false, erro:'Somente Diretoria, RH e DP podem alterar salário direto no site.'};
-
-  const c = read_(CONFIG.SHEETS.colaboradores).find(x => x.ID === dados.ID);
-  if (!c) return {ok:false, erro:'Colaborador não encontrado.'};
-
-  const base = num_(dados.SalarioBase);
-  const comp = num_(dados.Complementar);
-  updateRow_(CONFIG.SHEETS.colaboradores, c._row, {
-    SalarioBase:base,
-    Complementar:comp,
-    SalarioTotal:base+comp,
-    AtualizadoEm:now_(),
-    Observacoes:(c.Observacoes || '') + ` | Salário alterado por ${user.nome} em ${now_()}`
-  });
-
-  return {ok:true, msg:'Salário atualizado na planilha CONTROLE DE C&P.'};
-}
-
-function salvarVaga(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'vagas')) return {ok:false, erro:'Sem acesso.'};
-  const unidade = dados.Unidade || dados.unidade;
-  if (!canUnit_(user, unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const calc = calcularRemuneracaoEVT_(dados);
-  const qtd = num_(dados.Quantidade || dados.quantidade || 1);
-
-  append_(CONFIG.SHEETS.vagas, {
-    ID:id_('VAG'),
-    DataRegistro:now_(),
-    Unidade:unidade,
-    Cargo:dados.Cargo || dados.cargo,
-    Quantidade:qtd,
-    SalarioBase:calc.salarioBase,
-    Complementar:calc.complementar,
-    SalarioTotal:calc.salarioTotal,
-    CustoProjetado:qtd * calc.salarioTotal,
-    Status:dados.Status || 'ABERTA',
-    Prioridade:dados.Prioridade || 'NORMAL',
-    Motivo:dados.Motivo || '',
-    Solicitante:user.nome,
-    FuncaoSolicitante:user.funcao,
-    Observacoes:dados.Observacoes || ''
-  });
-
-  return {ok:true, msg:'Vaga aberta e custo projetado lançado no dashboard.'};
-}
-
-function listarVagas(dados) {
-  const user = userFrom_(dados);
-  const rows = filterAccess_(read_(CONFIG.SHEETS.vagas), user, {unidadeFiltro:dados.unidade || ''});
-  return {ok:true, vagas:rows.reverse()};
-}
-
-function salvarAdmissao(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'admissoes')) return {ok:false, erro:'Sem acesso.'};
-  const unidade = dados.Unidade || dados.unidade;
-  if (!canUnit_(user, unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const calc = calcularRemuneracaoEVT_(dados);
-  append_(CONFIG.SHEETS.admissoes, {
-    ID:id_('ADM'),
-    DataRegistro:now_(),
-    Unidade:unidade,
-    Candidato:dados.Candidato || dados.candidato,
-    CPF:dados.CPF || '',
-    Telefone:dados.Telefone || '',
-    Cargo:dados.Cargo || '',
-    SalarioBase:calc.salarioBase,
-    Complementar:calc.complementar,
-    SalarioTotal:calc.salarioTotal,
-    CidadeResidencia:dados.CidadeResidencia || '',
-    QuerValeTransporte:dados.QuerValeTransporte || 'NÃO',
-    ValorVTDiario:calc.valorVTDiario,
-    DiasVTProporcional:calc.diasVTProporcional,
-    ValorVTProporcional:calc.valorVTProporcional,
-    DescontoVT:calc.descontoVT,
-    DataPrevista:dados.DataPrevista || '',
-    Status:dados.Status || 'PREVISTA',
-    Solicitante:user.nome,
-    FuncaoSolicitante:user.funcao,
-    Observacoes:dados.Observacoes || ''
-  });
-  return {ok:true, msg:'Admissão prevista registrada.'};
-}
-
-function listarAdmissoes(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, admissoes:filterAccess_(read_(CONFIG.SHEETS.admissoes), user, {unidadeFiltro:dados.unidade || ''}).reverse()};
-}
-
-function salvarTeste(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'testes')) return {ok:false, erro:'Sem acesso.'};
-  const unidade = dados.Unidade || dados.unidade;
-  if (!canUnit_(user, unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const calc = calcularRemuneracaoEVT_(dados);
-  append_(CONFIG.SHEETS.testes, {
-    ID:id_('TES'),
-    DataRegistro:now_(),
-    Unidade:unidade,
-    Candidato:dados.Candidato || '',
-    CPF:dados.CPF || '',
-    Telefone:dados.Telefone || '',
-    Cargo:dados.Cargo || '',
-    SalarioBase:calc.salarioBase,
-    Complementar:calc.complementar,
-    SalarioTotal:calc.salarioTotal,
-    CidadeResidencia:dados.CidadeResidencia || '',
-    QuerValeTransporte:dados.QuerValeTransporte || 'NÃO',
-    ValorVTDiario:calc.valorVTDiario,
-    DiasVTProporcional:calc.diasVTProporcional,
-    ValorVTProporcional:calc.valorVTProporcional,
-    DescontoVT:calc.descontoVT,
-    DataTeste:dados.DataTeste || '',
-    HoraTeste:dados.HoraTeste || '',
-    Avaliador:dados.Avaliador || user.nome,
-    Status:dados.Status || 'AGENDADO',
-    Nota:dados.Nota || '',
-    Resultado:dados.Resultado || '',
-    Solicitante:user.nome,
-    FuncaoSolicitante:user.funcao,
-    Observacoes:dados.Observacoes || ''
-  });
-  return {ok:true, msg:'Teste prático registrado.'};
-}
-
-function listarTestes(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, testes:filterAccess_(read_(CONFIG.SHEETS.testes), user, {unidadeFiltro:dados.unidade || ''}).reverse()};
-}
-
-function listarParticipantesEscala(dados) {
-  const user = userFrom_(dados);
-  const unidade = dados.unidade || '';
-  const colaboradores = listarColaboradores({...dados, unidade}).colaboradores || [];
-  return {ok:true, participantes:colaboradores.map(c => ({nome:c.Nome, lider:c.Lider, unidade:c.Unidade, cargo:c.Cargo}))};
-}
-
-function gerarEscala(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'escalas')) return {ok:false, erro:'Sem acesso.'};
-
-  const unidade = dados.unidade;
-  if (!canUnit_(user, unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const inicio = asDate_(dados.inicio);
-  const fim = asDate_(dados.fim);
-  if (!inicio || !fim) return {ok:false, erro:'Informe início e fim.'};
-
-  const tipo = dados.tipo || '6X1';
-  const entrada = dados.entrada || '08:00';
-  const saida = dados.saida || '16:20';
-  const intervalo = dados.intervalo || '01:00';
-
-  const selecionados = Array.isArray(dados.colaboradores) ? dados.colaboradores : [];
-  const avulsos = String(dados.avulsos || '').split('\n').map(x => x.trim()).filter(Boolean);
-
-  const escalaID = id_('ESC');
-  append_(CONFIG.SHEETS.escalas, {
-    ID:escalaID,
-    Unidade:unidade,
-    TipoEscala:tipo,
-    PeriodoInicio:fmtDate_(inicio),
-    PeriodoFim:fmtDate_(fim),
-    CriadoPor:user.nome,
-    CriadoEm:now_(),
-    Status:'GERADA',
-    Observacoes:dados.observacoes || ''
-  });
-
-  const pessoas = selecionados.map(n => ({nome:n, tipo:'COLABORADOR'})).concat(avulsos.map(n => ({nome:n, tipo:'AVULSO/TESTE PRÁTICO'})));
-  let total = 0;
-
-  pessoas.forEach((p, idx) => {
-    for (let d = new Date(inicio); d <= fim; d.setDate(d.getDate()+1)) {
-      const dia = d.getDay();
-      const semana = Math.floor((d - inicio) / (7*86400000));
-      let folga = false;
-      let sugestao = '';
-
-      if (tipo === '5X2') {
-        folga = dia === 0 || dia === 6;
-        sugestao = folga ? 'Folga padrão 5x2' : '';
-      } else if (tipo === '12X36') {
-        const diff = Math.floor((d - inicio) / 86400000);
-        folga = (diff + idx) % 2 === 1;
-        sugestao = folga ? 'Folga 36h sugerida' : '';
-      } else {
-        const folgaSemana = (idx + semana) % 6;
-        const diaUtilMap = [1,2,3,4,5,6];
-        folga = dia === diaUtilMap[folgaSemana];
-        sugestao = folga ? 'Folga semanal 6x1 sugerida automaticamente' : '';
-      }
-
-      append_(CONFIG.SHEETS.escalaItens, {
-        ID:id_('ESCI'),
-        EscalaID:escalaID,
-        Unidade:unidade,
-        TipoEscala:tipo,
-        Data:fmtDate_(d),
-        DiaSemana:['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'][dia],
-        Colaborador:p.nome,
-        Lider:user.nome,
-        TipoPessoa:p.tipo,
-        HorarioEntrada:folga ? '' : entrada,
-        HorarioSaida:folga ? '' : saida,
-        Intervalo:folga ? '' : intervalo,
-        Folga:folga ? 'SIM' : 'NÃO',
-        SugestaoFolga:sugestao,
-        Observacoes:'Gerado automaticamente'
-      });
-      total++;
-    }
-  });
-
-  return {ok:true, msg:'Escala gerada com sugestão de folgas.', escalaID, total};
-}
-
-function listarEscalas(dados) {
-  const user = userFrom_(dados);
-  let rows = read_(CONFIG.SHEETS.escalaItens);
-  rows = filterAccess_(rows, user, {unidadeFiltro:dados.unidade || '', colaboradorCampo:'Colaborador'});
-  return {ok:true, escalas:rows.reverse()};
-}
-
-function registrarPonto(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'ponto')) return {ok:false, erro:'Sem acesso.'};
-
-  const nome = dados.Colaborador || user.nome;
-  const col = read_(CONFIG.SHEETS.colaboradores).find(c => norm_(c.Nome) === norm_(nome));
-  const unidade = dados.Unidade || (col ? col.Unidade : (user.unidades || [''])[0]);
-
-  if (!canUnit_(user, unidade)) return {ok:false, erro:'Sem acesso à unidade.'};
-
-  const now = new Date();
-  append_(CONFIG.SHEETS.ponto, {
-    ID:id_('PON'),
-    DataHora:now_(),
-    Data:Utilities.formatDate(now, CONFIG.TZ, 'yyyy-MM-dd'),
-    Hora:Utilities.formatDate(now, CONFIG.TZ, 'HH:mm:ss'),
-    Colaborador:nome,
-    CPF:col ? col.CPF : '',
-    Unidade:unidade,
-    TipoBatida:dados.TipoBatida || 'ENTRADA',
-    Origem:'WEB',
-    Latitude:dados.Latitude || '',
-    Longitude:dados.Longitude || '',
-    Dispositivo:dados.Dispositivo || '',
-    RegistradoPor:user.nome,
-    Status:'REGISTRADO',
-    Observacoes:dados.Observacoes || ''
-  });
-
-  return {ok:true, msg:'Batida registrada com trilha de auditoria.'};
-}
-
-function listarEspelhoPonto(dados) {
-  const user = userFrom_(dados);
-  let rows = read_(CONFIG.SHEETS.ponto);
-  rows = filterAccess_(rows, user, {unidadeFiltro:dados.unidade || '', colaboradorCampo:'Colaborador'});
-
-  if (dados.colaborador) rows = rows.filter(r => norm_(r.Colaborador) === norm_(dados.colaborador));
-  if (dados.inicio) rows = rows.filter(r => fmtDate_(r.Data) >= dados.inicio);
-  if (dados.fim) rows = rows.filter(r => fmtDate_(r.Data) <= dados.fim);
-
-  const espelho = {};
-  rows.forEach(r => {
-    const key = `${r.Colaborador}|${fmtDate_(r.Data)}`;
-    if (!espelho[key]) espelho[key] = {Colaborador:r.Colaborador, Unidade:r.Unidade, Data:fmtDate_(r.Data), Batidas:[], HorasTrabalhadas:'', Alertas:[]};
-    espelho[key].Batidas.push(`${r.Hora} ${r.TipoBatida}`);
-  });
-
-  Object.keys(espelho).forEach(k => {
-    const e = espelho[k];
-    e.Batidas.sort();
-    if (e.Batidas.length % 2 !== 0) e.Alertas.push('Quantidade ímpar de batidas: validar ajuste.');
-    e.HorasTrabalhadas = calcularHorasBatidas_(e.Batidas);
-    e.Batidas = e.Batidas.join(' | ');
-    e.Alertas = e.Alertas.join(' | ');
-  });
-
-  return {ok:true, espelho:Object.values(espelho).sort((a,b) => String(b.Data).localeCompare(String(a.Data)))};
-}
-
-function calcularHorasBatidas_(batidas) {
-  try {
-    const horas = batidas.map(b => String(b).substring(0,8)).filter(Boolean);
-    let minutos = 0;
-    for (let i=0; i+1<horas.length; i+=2) {
-      const [h1,m1,s1] = horas[i].split(':').map(Number);
-      const [h2,m2,s2] = horas[i+1].split(':').map(Number);
-      minutos += ((h2*60+m2+(s2||0)/60) - (h1*60+m1+(s1||0)/60));
-    }
-    if (minutos < 0) minutos += 24*60;
-    const h = Math.floor(minutos/60);
-    const m = Math.round(minutos%60);
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
-  } catch(e) {
-    return '';
+  to {
+    opacity: 1;
+    transform: translateY(0);
   }
 }
 
-function solicitarAjustePonto(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'ponto')) return {ok:false, erro:'Sem acesso.'};
-
-  append_(CONFIG.SHEETS.pontoAjustes, {
-    ID:id_('AJU'),
-    DataSolicitacao:now_(),
-    Colaborador:dados.Colaborador || user.nome,
-    CPF:dados.CPF || '',
-    Unidade:dados.Unidade || (user.unidades || [''])[0],
-    Data:dados.Data,
-    Hora:dados.Hora,
-    TipoBatida:dados.TipoBatida,
-    Justificativa:dados.Justificativa,
-    Solicitante:user.nome,
-    Status:'PENDENTE',
-    DecididoPor:'',
-    DataDecisao:'',
-    Parecer:''
-  });
-  return {ok:true, msg:'Ajuste solicitado.'};
+.loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-weight: 800;
 }
 
-function listarAjustesPonto(dados) {
-  const user = userFrom_(dados);
-  let rows = filterAccess_(read_(CONFIG.SHEETS.pontoAjustes), user, {unidadeFiltro:dados.unidade || '', colaboradorCampo:'Colaborador'});
-  return {ok:true, ajustes:rows.reverse()};
+.loading::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  border-radius: 999px;
+  border: 2px solid #d1d5db;
+  border-top-color: var(--laranja);
+  animation: spin 0.8s linear infinite;
 }
 
-function decidirAjustePonto(dados) {
-  const user = userFrom_(dados);
-  if (!isMaster_(user) && norm_(user.perfil) !== 'LIDER') return {ok:false, erro:'Sem permissão para decidir ajuste.'};
-  const a = read_(CONFIG.SHEETS.pontoAjustes).find(x => x.ID === dados.ID);
-  if (!a) return {ok:false, erro:'Ajuste não encontrado.'};
+.loading-block {
+  opacity: 0.65;
+  pointer-events: none;
+}
 
-  updateRow_(CONFIG.SHEETS.pontoAjustes, a._row, {
-    Status:dados.Status,
-    DecididoPor:user.nome,
-    DataDecisao:now_(),
-    Parecer:dados.Parecer || ''
-  });
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
-  if (dados.Status === 'APROVADO') {
-    append_(CONFIG.SHEETS.ponto, {
-      ID:id_('PONAJ'),
-      DataHora:`${a.Data} ${a.Hora}`,
-      Data:a.Data,
-      Hora:a.Hora,
-      Colaborador:a.Colaborador,
-      CPF:a.CPF,
-      Unidade:a.Unidade,
-      TipoBatida:a.TipoBatida,
-      Origem:'AJUSTE APROVADO',
-      Latitude:'',
-      Longitude:'',
-      Dispositivo:'',
-      RegistradoPor:user.nome,
-      Status:'AJUSTADO',
-      Observacoes:`Ajuste aprovado. Justificativa: ${a.Justificativa}. Parecer: ${dados.Parecer || ''}`
-    });
+hr {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 18px 0;
+}
+
+@media (max-width: 1100px) {
+  .g4,
+  .g5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 950px) {
+  .app {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto 1fr;
+    grid-template-areas:
+      "top"
+      "side"
+      "main";
   }
 
-  return {ok:true, msg:'Ajuste processado.'};
-}
-
-function salvarFeedback(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'feedbacks')) return {ok:false, erro:'Sem acesso.'};
-
-  append_(CONFIG.SHEETS.feedbacks, {
-    ID:id_('FDB'),
-    Data:dados.Data || today_(),
-    Unidade:dados.Unidade || '',
-    Lider:user.nome,
-    Colaborador:dados.Colaborador || '',
-    Tipo:dados.Tipo || 'FEEDBACK DE DESENVOLVIMENTO',
-    Nota:num_(dados.Nota),
-    PontosFortes:dados.PontosFortes || '',
-    PontosMelhoria:dados.PontosMelhoria || '',
-    PlanoAcao:dados.PlanoAcao || gerarPlanoAcao_(num_(dados.Nota), dados.PontosMelhoria),
-    Prazo:dados.Prazo || '',
-    Status:'REGISTRADO',
-    CriadoPor:user.nome
-  });
-
-  return {ok:true, msg:'Feedback registrado.'};
-}
-
-function gerarPlanoAcao_(nota, pontosMelhoria) {
-  if (nota >= 8) return 'Reconhecer evolução, manter acompanhamento e definir novo desafio de crescimento.';
-  if (nota >= 6) return `Acompanhar semanalmente, reforçar padrão esperado e trabalhar melhoria: ${pontosMelhoria || 'ponto informado no feedback'}.`;
-  return `Criar plano de melhoria imediato, acompanhamento próximo do líder, treinamento direcionado e reavaliação em 15 dias. Foco: ${pontosMelhoria || 'desempenho/comportamento'}.`;
-}
-
-function listarFeedbacks(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, feedbacks:filterAccess_(read_(CONFIG.SHEETS.feedbacks), user, {unidadeFiltro:dados.unidade || '', colaboradorCampo:'Colaborador'}).reverse()};
-}
-
-function salvarAvaliacaoExperiencia(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'experiencia')) return {ok:false, erro:'Sem acesso.'};
-
-  const notas = ['Produtividade','Comportamento','Pontualidade','Equipe','Tecnica'].map(k => num_(dados[k]));
-  const media = notas.reduce((a,b)=>a+b,0) / notas.length;
-  let resultado = 'APROVADO';
-  if (media < 6) resultado = 'NÃO RECOMENDADO';
-  else if (media < 7.5) resultado = 'APROVADO COM PLANO DE ACOMPANHAMENTO';
-
-  const parecer = gerarParecerExperiencia_(media, dados);
-  append_(CONFIG.SHEETS.avaliacoes, {
-    ID:id_('AVA'),
-    Data:dados.Data || today_(),
-    Unidade:dados.Unidade || '',
-    Lider:user.nome,
-    Colaborador:dados.Colaborador || '',
-    Cargo:dados.Cargo || '',
-    DataAdmissao:dados.DataAdmissao || '',
-    DiasExperiencia:dados.DiasExperiencia || '90',
-    Produtividade:notas[0],
-    Comportamento:notas[1],
-    Pontualidade:notas[2],
-    Equipe:notas[3],
-    Tecnica:notas[4],
-    Media:media,
-    Resultado:resultado,
-    Parecer:parecer,
-    PlanoAcao:dados.PlanoAcao || gerarPlanoAcao_(media, dados.PontosMelhoria),
-    CriadoPor:user.nome
-  });
-  return {ok:true, msg:'Avaliação de experiência registrada.', media, resultado, parecer};
-}
-
-function gerarParecerExperiencia_(media, dados) {
-  const nome = dados.Colaborador || 'Colaborador';
-  if (media >= 9) return `${nome} demonstrou desempenho excelente no período de experiência, com forte aderência à cultura, boa entrega operacional e postura colaborativa. Recomendação: efetivação com reconhecimento e plano de crescimento.`;
-  if (media >= 7.5) return `${nome} apresentou desempenho satisfatório, boa evolução e aderência ao padrão esperado. Recomendação: efetivação com acompanhamento dos pontos de melhoria.`;
-  if (media >= 6) return `${nome} possui potencial, porém ainda precisa evoluir em pontos críticos. Recomendação: acompanhamento estruturado, metas claras e reavaliação em curto prazo.`;
-  return `${nome} apresentou desempenho abaixo do esperado para o período de experiência. Recomendação: avaliar desligamento ou plano corretivo imediato conforme orientação de RH/DP.`;
-}
-
-function listarAvaliacoesExperiencia(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, avaliacoes:filterAccess_(read_(CONFIG.SHEETS.avaliacoes), user, {unidadeFiltro:dados.unidade || '', colaboradorCampo:'Colaborador'}).reverse()};
-}
-
-function salvarTreinamento(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'treinamentos')) return {ok:false, erro:'Sem acesso.'};
-
-  const participantes = Array.isArray(dados.Participantes) ? dados.Participantes.join(', ') : (dados.Participantes || '');
-  append_(CONFIG.SHEETS.treinamentos, {
-    ID:id_('TRN'),
-    Data:dados.Data || today_(),
-    Unidade:dados.Unidade || '',
-    Tema:dados.Tema || '',
-    Tipo:dados.Tipo || 'OPERACIONAL',
-    LiderResponsavel:user.nome,
-    HorasDadas:num_(dados.HorasDadas),
-    HorasAssistidas:num_(dados.HorasAssistidas),
-    Participantes:participantes,
-    ParticipantesManuais:dados.ParticipantesManuais || '',
-    Observacoes:dados.Observacoes || '',
-    CriadoPor:user.nome
-  });
-  return {ok:true, msg:'Treinamento cadastrado.'};
-}
-
-function listarTreinamentos(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, treinamentos:filterAccess_(read_(CONFIG.SHEETS.treinamentos), user, {unidadeFiltro:dados.unidade || ''}).reverse()};
-}
-
-function listarFardamento(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, fardamento:filterAccess_(read_(CONFIG.SHEETS.fardamento), user, {unidadeFiltro:dados.unidade || ''})};
-}
-
-function salvarFardamento(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'fardamento')) return {ok:false, erro:'Sem acesso.'};
-
-  const id = dados.ID || id_('FAR');
-  const existente = read_(CONFIG.SHEETS.fardamento).find(x => x.ID === id);
-  const qtd = num_(dados.QuantidadeEstoque);
-  const min = num_(dados.QuantidadeMinima);
-
-  const obj = {
-    ID:id,
-    Unidade:dados.Unidade,
-    Item:dados.Item,
-    Tipo:dados.Tipo || 'FARDAMENTO',
-    Tamanho:dados.Tamanho || '',
-    QuantidadeEstoque:qtd,
-    QuantidadeMinima:min,
-    Status:qtd <= min ? 'ABAIXO DO MÍNIMO' : 'OK',
-    Fornecedor:dados.Fornecedor || '',
-    AtualizadoEm:now_()
-  };
-
-  if (existente) updateRow_(CONFIG.SHEETS.fardamento, existente._row, obj);
-  else append_(CONFIG.SHEETS.fardamento, obj);
-
-  return {ok:true, msg:'Estoque atualizado.'};
-}
-
-function movimentarFardamento(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'fardamento')) return {ok:false, erro:'Sem acesso.'};
-
-  append_(CONFIG.SHEETS.movimentacoesFardamento, {
-    ID:id_('MOVF'),
-    Data:now_(),
-    Unidade:dados.Unidade,
-    Item:dados.Item,
-    Tamanho:dados.Tamanho || '',
-    TipoMovimentacao:dados.TipoMovimentacao || 'SAÍDA',
-    Quantidade:num_(dados.Quantidade),
-    Colaborador:dados.Colaborador || '',
-    Responsavel:user.nome,
-    Observacoes:dados.Observacoes || ''
-  });
-
-  const item = read_(CONFIG.SHEETS.fardamento).find(x => norm_(x.Unidade) === norm_(dados.Unidade) && norm_(x.Item) === norm_(dados.Item) && norm_(x.Tamanho) === norm_(dados.Tamanho || ''));
-  if (item) {
-    const atual = num_(item.QuantidadeEstoque);
-    const qtd = num_(dados.Quantidade);
-    const novo = norm_(dados.TipoMovimentacao) === 'ENTRADA' ? atual + qtd : atual - qtd;
-    updateRow_(CONFIG.SHEETS.fardamento, item._row, {
-      QuantidadeEstoque:novo,
-      Status:novo <= num_(item.QuantidadeMinima) ? 'ABAIXO DO MÍNIMO' : 'OK',
-      AtualizadoEm:now_()
-    });
+  .topbar,
+  header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
   }
 
-  return {ok:true, msg:'Movimentação registrada.'};
-}
-
-function salvarIndicadorMensal(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'indicadores') && !isMaster_(user)) return {ok:false, erro:'Sem acesso.'};
-
-  const unidade = dados.Unidade;
-  const mes = num_(dados.Mes);
-  const ano = num_(dados.Ano);
-  const existente = read_(CONFIG.SHEETS.indicadores).find(x => norm_(x.Unidade) === norm_(unidade) && num_(x.Mes) === mes && num_(x.Ano) === ano);
-
-  const obj = {
-    ID: existente ? existente.ID : id_('IND'),
-    Mes:mes,
-    Ano:ano,
-    Unidade:unidade,
-    TurnoverPercentual:num_(dados.TurnoverPercentual),
-    AbsenteismoPercentual:num_(dados.AbsenteismoPercentual),
-    Observacoes:dados.Observacoes || '',
-    AtualizadoPor:user.nome,
-    AtualizadoEm:now_()
-  };
-
-  if (existente) updateRow_(CONFIG.SHEETS.indicadores, existente._row, obj);
-  else append_(CONFIG.SHEETS.indicadores, obj);
-
-  return {ok:true, msg:'Turnover e absenteísmo atualizados no dashboard.'};
-}
-
-function listarIndicadoresMensais(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, indicadores:filterAccess_(read_(CONFIG.SHEETS.indicadores), user, {unidadeFiltro:dados.unidade || ''}).reverse()};
-}
-
-function salvarSLA(dados) {
-  const user = userFrom_(dados);
-  if (!isMaster_(user)) return {ok:false, erro:'Somente master pode lançar SLA.'};
-
-  const unidade = dados.Unidade;
-  const mes = num_(dados.Mes);
-  const ano = num_(dados.Ano);
-  const existente = read_(CONFIG.SHEETS.sla).find(x => norm_(x.Unidade) === norm_(unidade) && num_(x.Mes) === mes && num_(x.Ano) === ano);
-
-  const obj = {
-    ID: existente ? existente.ID : id_('SLA'),
-    Mes:mes,
-    Ano:ano,
-    Unidade:unidade,
-    SLA_Dias:num_(dados.SLA_Dias),
-    VagasFechadas:num_(dados.VagasFechadas),
-    Observacoes:dados.Observacoes || '',
-    AtualizadoPor:user.nome,
-    AtualizadoEm:now_()
-  };
-
-  if (existente) updateRow_(CONFIG.SHEETS.sla, existente._row, obj);
-  else append_(CONFIG.SHEETS.sla, obj);
-
-  return {ok:true, msg:'SLA atualizado.'};
-}
-
-function listarSLA(dados) {
-  const user = userFrom_(dados);
-  return {ok:true, sla:filterAccess_(read_(CONFIG.SHEETS.sla), user, {unidadeFiltro:dados.unidade || ''}).reverse()};
-}
-
-function salvarMural(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'mural')) return {ok:false, erro:'Sem acesso.'};
-
-  append_(CONFIG.SHEETS.mural, {
-    ID:id_('MUR'),
-    Data:now_(),
-    Titulo:dados.Titulo,
-    Mensagem:dados.Mensagem,
-    Unidade:dados.Unidade || 'TODAS',
-    PublicadoPor:user.nome,
-    Ativo:'SIM'
-  });
-  return {ok:true, msg:'Publicado no mural.'};
-}
-
-function listarMural(dados) {
-  const user = userFrom_(dados);
-  let rows = read_(CONFIG.SHEETS.mural).filter(x => norm_(x.Ativo || 'SIM') !== 'NAO');
-  rows = rows.filter(r => norm_(r.Unidade) === 'TODAS' || canUnit_(user, r.Unidade));
-  return {ok:true, mural:rows.reverse()};
-}
-
-function dashboard(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'dashboard')) return {ok:false, erro:'Sem acesso ao dashboard.'};
-
-  const unidade = dados.unidade || '';
-  const hoje = new Date();
-  const mesAtual = hoje.getMonth()+1;
-  const anoAtual = hoje.getFullYear();
-  const iniSemana = startOfWeek_(hoje);
-  const fimSemana = endOfWeek_(hoje);
-
-  const colaboradores = filterAccess_(read_(CONFIG.SHEETS.colaboradores).filter(c => norm_(c.Status || 'ATIVO') === 'ATIVO'), user, {unidadeFiltro:unidade});
-  const vagas = filterAccess_(read_(CONFIG.SHEETS.vagas).filter(v => norm_(v.Status || 'ABERTA') === 'ABERTA'), user, {unidadeFiltro:unidade});
-  const admissoes = filterAccess_(read_(CONFIG.SHEETS.admissoes), user, {unidadeFiltro:unidade});
-  const testes = filterAccess_(read_(CONFIG.SHEETS.testes), user, {unidadeFiltro:unidade});
-  const feedbacks = filterAccess_(read_(CONFIG.SHEETS.feedbacks), user, {unidadeFiltro:unidade, colaboradorCampo:'Colaborador'});
-  const avaliacoes = filterAccess_(read_(CONFIG.SHEETS.avaliacoes), user, {unidadeFiltro:unidade, colaboradorCampo:'Colaborador'});
-  const treinamentos = filterAccess_(read_(CONFIG.SHEETS.treinamentos), user, {unidadeFiltro:unidade});
-  const fardamento = filterAccess_(read_(CONFIG.SHEETS.fardamento), user, {unidadeFiltro:unidade});
-  const indicadores = filterAccess_(read_(CONFIG.SHEETS.indicadores), user, {unidadeFiltro:unidade});
-  const sla = filterAccess_(read_(CONFIG.SHEETS.sla), user, {unidadeFiltro:unidade});
-
-  const aniversariantes = colaboradores.filter(c => {
-    const d = asDate_(c.DataNascimento);
-    return d && d.getMonth()+1 === mesAtual;
-  });
-
-  const admissoesSemana = admissoes.filter(a => {
-    const d = asDate_(a.DataPrevista);
-    return d && d >= iniSemana && d <= fimSemana;
-  });
-
-  const testesMes = testes.filter(t => month_(t.DataTeste) === mesAtual && year_(t.DataTeste) === anoAtual);
-  const testesSemana = testes.filter(t => {
-    const d = asDate_(t.DataTeste);
-    return d && d >= iniSemana && d <= fimSemana;
-  });
-
-  const headcountUnidade = groupCount_(colaboradores, 'Unidade');
-  const custoVagasUnidade = groupSum_(vagas, 'Unidade', 'CustoProjetado');
-  const feedbacksPorLider = groupCount_(feedbacks, 'Lider');
-  const horasDadasPorLider = groupSum_(treinamentos, 'LiderResponsavel', 'HorasDadas');
-  const horasAssistidasPorLider = groupSum_(treinamentos, 'LiderResponsavel', 'HorasAssistidas');
-
-  const experienciaProximas = colaboradores.filter(c => {
-    const d = asDate_(c.FimExperiencia);
-    if (!d) return false;
-    const diff = (d - hoje) / 86400000;
-    return diff >= -7 && diff <= 30;
-  });
-
-  const estoqueCritico = fardamento.filter(f => num_(f.QuantidadeEstoque) <= num_(f.QuantidadeMinima));
-
-  const indicadoresMes = indicadores.filter(i => num_(i.Ano) === anoAtual);
-  const slaJunAgo = sla.filter(s => num_(s.Ano) === anoAtual && [6,7,8].includes(num_(s.Mes)));
-
-  return {
-    ok:true,
-    dashboard:{
-      kpis:{
-        headcount:colaboradores.length,
-        vagasAbertas:vagas.length,
-        custoProjetado:vagas.reduce((a,b)=>a+num_(b.CustoProjetado),0),
-        admissoesSemana:admissoesSemana.length,
-        testesMes:testesMes.length,
-        testesSemana:testesSemana.length,
-        aniversariantes:aniversariantes.length,
-        avaliacoesPendentes:experienciaProximas.length,
-        estoqueCritico:estoqueCritico.length,
-        feedbacksMes:feedbacks.filter(f => month_(f.Data) === mesAtual && year_(f.Data) === anoAtual).length
-      },
-      aniversariantes,
-      admissoesSemana,
-      experienciaProximas,
-      avaliacoes:avaliacoes.slice(-50).reverse(),
-      headcountUnidade,
-      custoVagasUnidade,
-      feedbacksPorLider,
-      horasDadasPorLider,
-      horasAssistidasPorLider,
-      estoqueCritico,
-      indicadoresMes,
-      slaJunAgo,
-      testesMes:groupCount_(testesMes, 'Unidade'),
-      testesSemana:groupCount_(testesSemana, 'Unidade')
-    }
-  };
-}
-
-function groupCount_(rows, key) {
-  const o = {};
-  rows.forEach(r => {
-    const k = r[key] || 'SEM INFORMAÇÃO';
-    o[k] = (o[k] || 0) + 1;
-  });
-  return o;
-}
-
-function groupSum_(rows, key, val) {
-  const o = {};
-  rows.forEach(r => {
-    const k = r[key] || 'SEM INFORMAÇÃO';
-    o[k] = (o[k] || 0) + num_(r[val]);
-  });
-  return o;
-}
-
-function assistenteIA(dados) {
-  const user = userFrom_(dados);
-  if (!canModule_(user,'ia')) return {ok:false, erro:'Sem acesso.'};
-
-  const pergunta = String(dados.pergunta || '').trim();
-  const p = norm_(pergunta);
-  let resposta = '';
-
-  if (p.includes('ESCALA')) {
-    resposta = 'Para montar escala: escolha a unidade, selecione 6x1, 12x36 ou 5x2, marque os colaboradores, adicione avulsos/teste prático se necessário e clique em gerar. O sistema sugere folgas automaticamente e respeita líder/unidade.';
-  } else if (p.includes('PONTO')) {
-    resposta = 'No ponto, registre entrada/saída/intervalo e consulte o espelho por período. Ajustes precisam de justificativa e ficam em trilha de auditoria para aprovação.';
-  } else if (p.includes('TURNOVER') || p.includes('ABSENTEISMO')) {
-    resposta = 'Turnover e absenteísmo são lançados em Indicadores Mensais por mês/unidade e aparecem automaticamente no dashboard.';
-  } else if (p.includes('FEEDBACK')) {
-    resposta = 'Feedback bom precisa ter fato observado, impacto, orientação objetiva, plano de ação e prazo. Use nota, pontos fortes, pontos de melhoria e plano de ação.';
-  } else {
-    resposta = 'Posso ajudar com escala, ponto, feedback, avaliação de experiência, vagas, salários, fardamento/EPI, dashboard, turnover, absenteísmo e SLA. Faça uma pergunta objetiva sobre o processo.';
+  .top-actions,
+  .user {
+    width: 100%;
+    justify-content: space-between;
+    text-align: left;
   }
 
-  append_(CONFIG.SHEETS.ia, {
-    ID:id_('IA'),
-    Data:now_(),
-    Usuario:user.nome,
-    Perfil:user.perfil,
-    Pergunta:pergunta,
-    Resposta:resposta
-  });
+  .sidebar,
+  aside {
+    display: flex;
+    overflow-x: auto;
+    gap: 6px;
+    padding: 10px;
+  }
 
-  return {ok:true, resposta};
+  .nav-title {
+    display: none;
+  }
+
+  .nav {
+    white-space: nowrap;
+    margin-bottom: 0;
+    width: auto;
+  }
+
+  .main,
+  main {
+    padding: 16px;
+  }
+
+  .g2,
+  .g3,
+  .g4,
+  .g5 {
+    grid-template-columns: 1fr;
+  }
+
+  .page-title {
+    flex-direction: column;
+  }
 }
-```
-
-## `index.html`
-
-```html
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8">
-  <base target="_top">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>EVOLPEOPLE</title>
-  <style>
-    :root{
-      --azul:#13233f;
-      --azul2:#1f3761;
-      --laranja:#e47b35;
-      --bg:#f4f6fb;
-      --card:#fff;
-      --txt:#1f2937;
-      --muted:#6b7280;
-      --border:#e5e7eb;
-      --ok:#16a34a;
-      --bad:#dc2626;
-      --warn:#f59e0b;
-      --shadow:0 10px 28px rgba(15,23,42,.08);
-      --radius:14px;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;font-family:Inter,Segoe UI,Arial,sans-serif;background:var(--bg);color:var(--txt)}
-    .app{min-height:100vh;display:grid;grid-template-columns:280px 1fr;grid-template-rows:78px 1fr;grid-template-areas:"top top" "side main"}
-    header{grid-area:top;background:linear-gradient(135deg,var(--azul),var(--azul2));color:#fff;display:flex;justify-content:space-between;align-items:center;padding:14px 24px;box-shadow:var(--shadow);z-index:2}
-    .brand{display:flex;align-items:center;gap:12px}
-    .mark{width:54px;height:54px;border-radius:14px;background:#fff;color:var(--azul);display:flex;align-items:center;justify-content:center;flex-direction:column;font-weight:900;line-height:1}
-    .mark b{color:var(--laranja)}
-    h1{font-size:22px;margin:0}
-    header p{margin:3px 0 0;color:rgba(255,255,255,.75);font-size:13px}
-    aside{grid-area:side;background:#0f1e36;padding:16px 12px;overflow:auto}
-    main{grid-area:main;padding:22px;overflow:auto}
-    .nav-title{color:rgba(255,255,255,.45);font-size:11px;text-transform:uppercase;letter-spacing:.08em;margin:14px 10px 8px}
-    .nav{width:100%;background:transparent;border:0;color:rgba(255,255,255,.82);padding:11px 12px;text-align:left;border-radius:11px;cursor:pointer;margin-bottom:4px;font-size:14px}
-    .nav:hover,.nav.active{background:var(--laranja);color:#fff;font-weight:800}
-    .card{background:var(--card);border:1px solid var(--border);box-shadow:var(--shadow);border-radius:var(--radius);padding:20px;margin-bottom:16px}
-    .card h2,.card h3{margin:0 0 14px;color:var(--azul)}
-    .grid{display:grid;gap:14px}
-    .g2{grid-template-columns:repeat(2,minmax(0,1fr))}
-    .g3{grid-template-columns:repeat(3,minmax(0,1fr))}
-    .g4{grid-template-columns:repeat(4,minmax(0,1fr))}
-    .kpi{background:#fff;border-left:5px solid var(--laranja);border-radius:var(--radius);padding:18px;box-shadow:var(--shadow)}
-    .kpi small{display:block;color:var(--muted);font-weight:800;margin-bottom:8px}
-    .kpi strong{font-size:29px;color:var(--azul)}
-    label{display:block;font-size:13px;font-weight:800;margin-bottom:6px;color:#374151}
-    input,select,textarea{width:100%;padding:11px 12px;border:1px solid var(--border);border-radius:11px;font-size:14px;background:#fff;outline:none}
-    textarea{min-height:84px;resize:vertical}
-    input:focus,select:focus,textarea:focus{border-color:var(--laranja);box-shadow:0 0 0 4px rgba(228,123,53,.12)}
-    .money{background:#fff7ed!important;border-color:#fed7aa!important;color:#c96525!important;font-weight:900}
-    .btn{border:0;border-radius:11px;padding:11px 15px;font-weight:900;cursor:pointer}
-    .primary{background:var(--laranja);color:#fff}
-    .secondary{background:#e5e7eb;color:#111827}
-    .danger{background:var(--bad);color:#fff}
-    .ok{background:var(--ok);color:#fff}
-    .light{background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.2)}
-    .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
-    .table-wrap{overflow:auto}
-    table{width:100%;border-collapse:collapse;font-size:13px}
-    th{background:var(--azul);color:#fff;text-align:left;padding:11px;white-space:nowrap}
-    td{border-bottom:1px solid var(--border);padding:10px;vertical-align:top}
-    tr:hover td{background:#f9fafb}
-    .badge{display:inline-flex;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:900;background:#dbeafe;color:#1e40af}
-    .msg{padding:12px 14px;border-radius:12px;margin-bottom:14px;font-weight:800}
-    .msg.ok{background:#dcfce7;color:#166534}
-    .msg.err{background:#fee2e2;color:#991b1b}
-    .login{max-width:430px;margin:48px auto}
-    .user{display:flex;align-items:center;gap:12px}
-    .muted{color:var(--muted);font-size:13px}
-    .checklist{max-height:240px;overflow:auto;border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff}
-    .check{display:flex;gap:8px;align-items:center;margin:6px 0}
-    .check input{width:auto}
-    @media(max-width:950px){.app{grid-template-columns:1fr;grid-template-rows:auto auto 1fr;grid-template-areas:"top" "side" "main"}aside{display:flex;overflow-x:auto;gap:6px}.nav-title{display:none}.nav{white-space:nowrap}.g2,.g3,.g4{grid-template-columns:1fr}header{align-items:flex-start;flex-direction:column}}
-  </style>
-</head>
-<body>
-<div class="app">
-  <header>
-    <div class="brand">
-      <div class="mark">EVOL<b>PEOPLE</b></div>
-      <div><h1 id="title">EVOLPEOPLE</h1><p>Gestão de pessoas, escala, ponto, indicadores e operação</p></div>
-    </div>
-    <div class="user" id="userBox" style="display:none">
-      <span id="userName"></span>
-      <button class="btn light" onclick="logout()">Sair</button>
-    </div>
-  </header>
-  <aside id="menu"></aside>
-  <main id="main"></main>
-</div>
-
-<script>
-let USER = null;
-let INIT = {unidades:[], cargos:[], colaboradores:[]};
-let TELA = 'dashboard';
-
-const MODULOS = [
-  ['Principal',[
-    ['dashboard','📊 Dashboard'],
-    ['colaboradores','👥 Colaboradores'],
-    ['cargos','💰 Cargos & Salários'],
-    ['vagas','💼 Vagas'],
-    ['admissoes','📋 Admissões'],
-    ['testes','✅ Teste Prático']
-  ]],
-  ['Operação',[
-    ['escalas','📅 Gestão de Escalas'],
-    ['ponto','🕒 Ponto / Espelho'],
-    ['fardamento','👕 Fardamento & EPI']
-  ]],
-  ['Desenvolvimento',[
-    ['feedbacks','💬 Feedbacks'],
-    ['experiencia','⭐ Período de Experiência'],
-    ['treinamentos','🎓 Treinamentos'],
-    ['mural','📣 Mural'],
-    ['ia','🤖 IA']
-  ]],
-  ['Indicadores',[
-    ['indicadores','📈 Turnover / Absenteísmo / SLA']
-  ]]
-];
-
-document.addEventListener('DOMContentLoaded', telaLogin);
-
-function call(acao,dados={}){
-  return new Promise((resolve,reject)=>{
-    google.script.run
-      .withSuccessHandler(resolve)
-      .withFailureHandler(err=>resolve({ok:false,erro:err.message||String(err)}))
-      .api(acao,{...dados,__user:USER});
-  });
-}
-
-function esc(v){return String(v??'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
-function el(id){return document.getElementById(id)}
-function set(html){el('main').innerHTML=html}
-function moeda(v){return Number(v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
-function norm(v){return String(v||'').trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/

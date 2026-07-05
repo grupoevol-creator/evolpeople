@@ -1,4 +1,4 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyw4_tVtibVNDOlJY-Gq7cglBxsjC173bfivDV3QnPLGdxRVMnTdCRQ4nf27KbbrlXV/exec";";
+const API_URL = "https://script.google.com/macros/s/AKfycbyw4_tVtibVNDOlJY-Gq7cglBxsjC173bfivDV3QnPLGdxRVMnTdCRQ4nf27KbbrlXV/exec";
 
 let USER = null;
 let INIT = {

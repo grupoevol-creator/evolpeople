@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 250" role="img" aria-label="Grupo Evol - negócios gastronômicos">
+  <defs>
+    <style>
+      .azul { fill: #1d3a63; }
+      .laranja { fill: #b4581e; }
+      .txt { font-family: 'Segoe UI', Arial, Helvetica, sans-serif; }
+    </style>
+  </defs>
+
+  <!-- grupo (empilhado, laranja) -->
+  <text x="14" y="52" class="txt laranja" font-size="34" font-weight="800" letter-spacing="1">gru</text>
+  <text x="14" y="86" class="txt laranja" font-size="34" font-weight="800" letter-spacing="1">po</text>
+
+  <!-- e -->
+  <text x="84" y="178" class="txt azul" font-size="180" font-weight="800">e</text>
+
+  <!-- simbolo: pessoa de bracos abertos (o "v" da marca) -->
+  <g transform="translate(258,44)">
+    <!-- bracos formando o V, tracos grossos arredondados -->
+    <path d="M14 10 C 22 72, 38 104, 58 120 C 78 104, 94 72, 102 10"
+          fill="none" stroke="#b4581e" stroke-width="24" stroke-linecap="round"/>
+    <!-- cabeca separada -->
+    <circle class="laranja" cx="66" cy="50" r="17"/>
+  </g>
+
+  <!-- ol -->
+  <text x="396" y="178" class="txt azul" font-size="180" font-weight="800" letter-spacing="6">ol</text>
+
+  <!-- negocios gastronomicos -->
+  <text x="396" y="222" class="txt laranja" font-size="27" font-weight="600" letter-spacing="1">negócios gastronômicos</text>
+</svg>

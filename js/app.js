@@ -1,4 +1,4 @@
-const API_URL = "COLE_AQUI_A_URL_DO_WEB_APP_DO_APPS_SCRIPT_TERMINANDO_COM_EXEC";
+const API_URL = "https://script.google.com/macros/s/AKfycbz5bZqXB5iH3asaiLuvY_OhcJQftPU4IATbXyNeP1Z3WpvNBujHAU0Px2cpp2CRTSrm/exec";
 
 let USER = null;
 let INIT = {

@@ -79,8 +79,15 @@ async function fazerLogin(e) {
 function montarMenu() {
   const menu = document.getElementById('menu'); if (!menu || !USUARIO) return;
   let html = '';
-  if ((USUARIO.perfil === 'SOCIO' || USUARIO.perfil === 'LIDER') && USUARIO.unidades && USUARIO.unidades.length > 1) {
-    const ops = USUARIO.unidades.map(u => '<option value="'+esc(u)+'" '+(u===UNIDADE_SELECIONADA?'selected':'')+'>'+esc(u)+'</option>').join('');
+  let opcoesUnidade = null;
+  if (['RH','DP','DIRETORIA'].includes(USUARIO.perfil)) {
+    opcoesUnidade = ['TODAS'].concat(UNIDADES_OFICIAIS);
+  } else if ((USUARIO.perfil === 'SOCIO' || USUARIO.perfil === 'LIDER') && USUARIO.unidades && USUARIO.unidades.length > 1) {
+    opcoesUnidade = ['TODAS'].concat(USUARIO.unidades);
+  }
+  if (opcoesUnidade) {
+    const atual = UNIDADE_SELECIONADA || 'TODAS';
+    const ops = opcoesUnidade.map(u => '<option value="'+esc(u)+'" '+(u===atual?'selected':'')+'>'+esc(u==='TODAS'?'Todas as casas':u)+'</option>').join('');
     html += '<div class="campo" style="padding:8px 12px;"><label style="font-size:12px;color:#666;">Unidade</label>'
       + '<select id="seletorUnidade" onchange="trocarUnidade(this.value)">'+ops+'</select></div><hr style="border:none;border-top:1px solid #eee;margin:4px 0;"/>';
   }
@@ -90,7 +97,7 @@ function montarMenu() {
   menu.innerHTML = html;
 }
 
-function trocarUnidade(u) { UNIDADE_SELECIONADA = u; if (TELA_ATUAL && TELA_ATUAL!=='login') navegarPara(TELA_ATUAL); }
+function trocarUnidade(u) { UNIDADE_SELECIONADA = (u === 'TODAS' || !u) ? null : u; if (TELA_ATUAL && TELA_ATUAL!=='login') navegarPara(TELA_ATUAL); }
 
 function navegarPara(pagina) {
   TELA_ATUAL = pagina;
@@ -112,7 +119,7 @@ function navegarPara(pagina) {
 async function telaDashboard() {
   renderApp('<div class="card"><p>Carregando dashboard...</p></div>');
   const params = { cpf: USUARIO.cpf, senha: USUARIO.senha };
-  if (USUARIO.perfil === 'SOCIO' && UNIDADE_SELECIONADA) params.unidadeFiltro = UNIDADE_SELECIONADA;
+  if (UNIDADE_SELECIONADA) params.unidadeFiltro = UNIDADE_SELECIONADA;
   const res = await api('dashboardSocio', params);
   if (!res.sucesso) { renderApp('<div class="card"><p>Erro: '+esc(res.erro||'')+'</p></div>'); return; }
   const d = res.dashboard || {};
@@ -222,24 +229,53 @@ function desenharGraficoSla(slaData) {
 }
 
 // ===== VAGAS =====
+let VAGAS_CACHE = [];
+function normalizarStatus_(s){ return String(s||'').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
 async function telaVagas() {
   renderApp('<div class="card"><p>Carregando vagas...</p></div>');
   const res = await api('listarVagas', { cpf: USUARIO.cpf, senha: USUARIO.senha, unidadeFiltro: UNIDADE_SELECIONADA });
   if (!res.sucesso) { renderApp('<div class="card"><p>Erro: '+esc(res.erro||'')+'</p></div>'); return; }
-  const vagas = res.vagas || [];
+  VAGAS_CACHE = res.vagas || [];
   renderApp('<div class="card">'
-    + '<div style="display:flex;justify-content:space-between;align-items:center;">'
-    + '<h2 style="margin:0;">Vagas</h2>'
-    + '<button class="btn btn-destaque" onclick="mostrarFormVaga()">+ Abrir Vaga</button></div>'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">'
+    + '<h2 style="margin:0;">Vagas'+(UNIDADE_SELECIONADA?(' — '+esc(UNIDADE_SELECIONADA)):' — Todas as casas')+'</h2>'
+    + '<div style="display:flex;gap:8px;align-items:center;">'
+    + '<label style="font-size:13px;color:#666;">Status</label>'
+    + '<select id="filtroStatusVaga" onchange="renderVagas(this.value)">'
+    + '<option value="TODAS">Todas</option>'
+    + '<option value="SELECAO">Seleção</option>'
+    + '<option value="TESTE">Teste</option>'
+    + '<option value="ENCERRADA">Encerrada</option>'
+    + '<option value="CANCELADA">Cancelada</option>'
+    + '</select>'
+    + '<button class="btn btn-destaque" onclick="mostrarFormVaga()">+ Abrir Vaga</button>'
+    + '</div></div>'
     + '<div id="formVagaContainer"></div>'
-    + (vagas.length
-      ? '<table class="tabela"><thead><tr><th>Vaga</th><th>Unidade</th><th>Setor</th><th>Status</th><th>Candidato</th></tr></thead><tbody>'
-        + vagas.map(v => '<tr><td>'+esc(v.vaga)+'</td><td>'+esc(v.unidade)+'</td><td>'+esc(v.setor)+'</td>'
-          + '<td><span style="background:'+((v.status||'').toUpperCase()==='ABERTA'||(v.status||'').toUpperCase()==='SELECAO'?'#facc15':'#22c55e')+';padding:2px 8px;border-radius:6px;font-size:12px;">'+esc(v.status)+'</span></td>'
-          + '<td>'+esc(v.candidato||'-')+'</td></tr>').join('')
-        + '</tbody></table>'
-      : '<p>Nenhuma vaga.</p>')
+    + '<div id="listaVagas"></div>'
     + '</div>');
+  renderVagas('TODAS');
+}
+function renderVagas(status) {
+  const div = document.getElementById('listaVagas'); if (!div) return;
+  const alvo = normalizarStatus_(status);
+  const lista = (alvo === 'TODAS' || !alvo)
+    ? VAGAS_CACHE
+    : VAGAS_CACHE.filter(v => normalizarStatus_(v.status).indexOf(alvo) !== -1);
+  div.innerHTML = lista.length
+    ? '<table class="tabela"><thead><tr><th>Vaga</th><th>Unidade</th><th>Setor</th><th>Status</th><th>Candidato</th></tr></thead><tbody>'
+      + lista.map(v => '<tr><td>'+esc(v.vaga)+'</td><td>'+esc(v.unidade)+'</td><td>'+esc(v.setor)+'</td>'
+        + '<td><span style="background:'+corStatusVaga_(v.status)+';padding:2px 8px;border-radius:6px;font-size:12px;">'+esc(v.status)+'</span></td>'
+        + '<td>'+esc(v.candidato||'-')+'</td></tr>').join('')
+      + '</tbody></table>'
+      + '<p style="font-size:12px;color:#777;margin-top:8px;">'+lista.length+' vaga(s) exibida(s).</p>'
+    : '<p>Nenhuma vaga'+(alvo!=='TODAS'?' com status "'+esc(status)+'"':'')+'.</p>';
+}
+function corStatusVaga_(status) {
+  const s = normalizarStatus_(status);
+  if (s.indexOf('ENCERRADA') !== -1) return '#22c55e';
+  if (s.indexOf('CANCELADA') !== -1) return '#ef4444';
+  if (s.indexOf('TESTE') !== -1) return '#60a5fa';
+  return '#facc15'; // SELECAO / aberta
 }
 
 function mostrarFormVaga() {
@@ -279,7 +315,7 @@ async function telaColaboradores() {
   const res = await api('listarColaboradores', { cpf: USUARIO.cpf, senha: USUARIO.senha, unidadeFiltro: UNIDADE_SELECIONADA });
   if (!res.sucesso) { renderApp('<div class="card"><p>Erro: '+esc(res.erro||'')+'</p></div>'); return; }
   const cols = res.dados || [];
-  renderApp('<div class="card"><h2>Colaboradores</h2>'
+  renderApp('<div class="card"><h2>Colaboradores'+(UNIDADE_SELECIONADA?(' — '+esc(UNIDADE_SELECIONADA)):' — Todas as casas')+'</h2>'
     + (cols.length
       ? '<table class="tabela"><thead><tr><th>ID</th><th>Nome</th><th>Funcao</th><th>Unidade</th><th>Admissao</th></tr></thead><tbody>'
         + cols.slice(1).filter(l => l[1]).map(l => '<tr><td>'+esc(l[0])+'</td><td>'+esc(l[1])+'</td><td>'+esc(l[2])+'</td><td>'+esc(l[6])+'</td><td>'+esc(l[12]||'')+'</td></tr>').join('')

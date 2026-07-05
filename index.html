@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#13233f" />
   <title>EVOLPEOPLE</title>
+  <!-- style.css deve estar na MESMA pasta deste arquivo -->
   <link rel="stylesheet" href="style.css" />
 </head>
-
 <body>
   <div class="app">
     <header class="topbar">
@@ -16,19 +16,16 @@
           EVOL
           <span>PEOPLE</span>
         </div>
-
         <div>
           <h1>EVOLPEOPLE</h1>
           <p>Gestão de pessoas, escala, ponto, indicadores e operação</p>
         </div>
       </div>
-
       <div class="top-actions user" id="userBox" style="display:none;">
         <div>
           <strong id="userName"></strong>
           <small id="userPerfil"></small>
         </div>
-
         <button class="btn btn-light light" type="button" onclick="logout()">
           Sair
         </button>
@@ -44,14 +41,8 @@
             EVOL
             <span>PEOPLE</span>
           </div>
-
-          <h2 style="text-align:center;margin-bottom:6px;">
-            Carregando sistema...
-          </h2>
-
-          <p class="muted" style="text-align:center;">
-            Aguarde alguns instantes.
-          </p>
+          <h2 style="text-align:center;margin-bottom:6px;">Carregando sistema...</h2>
+          <p class="muted" style="text-align:center;">Aguarde alguns instantes.</p>
         </div>
       </section>
     </main>
@@ -59,6 +50,7 @@
 
   <div class="toast-area" id="toastArea"></div>
 
+  <!-- app.js deve estar na MESMA pasta deste arquivo -->
   <script src="app.js"></script>
 </body>
 </html>

@@ -1,1657 +1,948 @@
-const API_URL = "https://script.google.com/macros/s/AKfycbyw4_tVtibVNDOlJY-Gq7cglBxsjC173bfivDV3QnPLGdxRVMnTdCRQ4nf27KbbrlXV/exec";
+/*************************************************************
+ * EVOLPEOPLE - Front-end (app.js)
+ * Fala com o backend Code.gs via JSONP (script tag), porque o
+ * doGet/doPost do Apps Script responde texto com callback().
+ *
+ * CONFIGURAÇÃO OBRIGATÓRIA:
+ *  1) Implante o Code.gs como "App da Web" (Executar como: Eu;
+ *     Quem tem acesso: Qualquer pessoa).
+ *  2) Cole a URL terminada em /exec abaixo em CONFIG.API_URL.
+ *************************************************************/
 
-let USER = null;
-let INIT = {
-  unidades: [],
-  cargos: [],
-  colaboradores: [],
-  salarios: []
+const CONFIG = {
+  // ↓↓↓ COLE AQUI A URL /exec DA SUA IMPLANTAÇÃO. Sem isto, nada carrega. ↓↓↓
+  API_URL: "https://script.google.com/macros/s/AKfycbwJPi1I9tYYHWt470IgA7l-98fxQzt6XtqLlX-so-3N3VMJOcXwp9agbI7O1dYKTIVY/exec"
 };
 
-let TELA = "dashboard";
+const STATE = {
+  user: null,
+  init: { unidades: [], cargos: [], colaboradores: [], salarios: [] },
+  pagina: "dashboard",
+  cache: {} // cache simples por módulo: { colaboradores: [...], vagas: [...] }
+};
 
-const MODULOS = [
-  [
-    "Principal",
-    [
-      ["dashboard", "📊 Dashboard"],
-      ["colaboradores", "👥 Colaboradores"],
-      ["cargos", "💰 Cargos & Salários"],
-      ["vagas", "💼 Vagas"],
-      ["admissoes", "📋 Admissões"],
-      ["testes", "✅ Teste Prático"]
-    ]
-  ],
-  [
-    "Operação",
-    [
-      ["escalas", "📅 Gestão de Escalas"],
-      ["ponto", "🕒 Ponto / Espelho"],
-      ["fardamento", "👕 Fardamento & EPI"]
-    ]
-  ],
-  [
-    "Desenvolvimento",
-    [
-      ["feedbacks", "💬 Feedbacks"],
-      ["experiencia", "⭐ Período de Experiência"],
-      ["treinamentos", "🎓 Treinamentos"],
-      ["mural", "📣 Mural"],
-      ["ia", "🤖 IA"]
-    ]
-  ],
-  [
-    "Indicadores",
-    [
-      ["indicadores", "📈 Turnover / Absenteísmo / SLA"]
-    ]
-  ]
-];
+/* ===================== JSONP (chamada ao backend) ===================== */
 
-document.addEventListener("DOMContentLoaded", () => {
-  const salvo = localStorage.getItem("EVOLPEOPLE_USER");
-
-  if (salvo) {
-    try {
-      USER = JSON.parse(salvo);
-      iniciarSistemaLogado();
-    } catch (e) {
-      localStorage.removeItem("EVOLPEOPLE_USER");
-      telaLogin();
-    }
-  } else {
-    telaLogin();
-  }
-});
-
-function el(id) {
-  return document.getElementById(id);
-}
-
-function set(html) {
-  el("main").innerHTML = html;
-}
-
-function esc(v) {
-  return String(v ?? "").replace(/[&<>"']/g, m => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    '"': "&quot;",
-    "'": "&#039;"
-  }[m]));
-}
-
-function norm(v) {
-  return String(v || "")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function moeda(v) {
-  return Number(v || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL"
-  });
-}
-
-function hoje() {
-  return new Date().toISOString().substring(0, 10);
-}
-
-function mesAtual() {
-  return new Date().getMonth() + 1;
-}
-
-function anoAtual() {
-  return new Date().getFullYear();
-}
-
-function getVal(id) {
-  const node = el(id);
-  return node ? node.value : "";
-}
-
-function formData(ids) {
-  const obj = {};
-  ids.forEach(id => {
-    obj[id] = getVal(id);
-  });
-  return obj;
-}
-
-function msgOk(texto) {
-  return `<div class="msg ok">${esc(texto)}</div>`;
-}
-
-function msgErr(texto) {
-  return `<div class="msg err">${esc(texto)}</div>`;
-}
-
-function msgWarn(texto) {
-  return `<div class="msg warn">${esc(texto)}</div>`;
-}
-
-function toast(msg, tipo = "ok") {
-  const area = el("toastArea");
-  if (!area) return;
-
-  const div = document.createElement("div");
-  div.className = `toast ${tipo}`;
-  div.textContent = msg;
-  area.appendChild(div);
-
-  setTimeout(() => div.remove(), 4200);
-}
-
-function modulosUsuario() {
-  if (!USER) return [];
-
-  if (Array.isArray(USER.modulos)) return USER.modulos;
-
-  if (typeof USER.modulos === "string") {
-    return USER.modulos
-      .split(",")
-      .map(m => m.trim())
-      .filter(Boolean);
-  }
-
-  return [
-    "dashboard",
-    "colaboradores",
-    "cargos",
-    "vagas",
-    "admissoes",
-    "testes",
-    "escalas",
-    "ponto",
-    "fardamento",
-    "feedbacks",
-    "experiencia",
-    "treinamentos",
-    "mural",
-    "ia",
-    "indicadores"
-  ];
-}
-
-function temModulo(id) {
-  const mods = modulosUsuario();
-  return mods.includes(id) || mods.includes("*") || norm(USER?.perfil) === "ADMIN";
-}
-
-function api(acao, dados = {}) {
-  return new Promise((resolve) => {
-    if (!API_URL || API_URL.includes("COLE_AQUI")) {
-      resolve({
-        ok: false,
-        erro: "Configure a variável API_URL no app.js com a URL /exec do Web App do Apps Script."
-      });
+function apiCall(acao, dados) {
+  return new Promise((resolve, reject) => {
+    if (!CONFIG.API_URL || CONFIG.API_URL.indexOf("COLE_AQUI") !== -1) {
+      reject(new Error("Configure CONFIG.API_URL no topo do app.js com a URL /exec do seu App da Web."));
       return;
     }
-
-    const callback = "jsonp_" + Date.now() + "_" + Math.floor(Math.random() * 999999);
+    const cbName = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
     const script = document.createElement("script");
+    let timeoutId;
 
-    window[callback] = function (res) {
+    function limpar() {
+      clearTimeout(timeoutId);
+      delete window[cbName];
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cbName] = function (res) {
+      limpar();
       resolve(res);
-      delete window[callback];
-      script.remove();
     };
-
-    const payload = {
-      ...dados,
-      __user: USER
-    };
-
-    script.src =
-      API_URL +
-      "?callback=" +
-      encodeURIComponent(callback) +
-      "&acao=" +
-      encodeURIComponent(acao) +
-      "&dados=" +
-      encodeURIComponent(JSON.stringify(payload));
-
     script.onerror = function () {
-      resolve({
-        ok: false,
-        erro: "Falha ao conectar com o Apps Script. Confira a URL do Web App e a implantação."
-      });
-
-      delete window[callback];
-      script.remove();
+      limpar();
+      reject(new Error("Falha de conexão com o servidor. Verifique a URL e as permissões de implantação."));
     };
+    timeoutId = setTimeout(function () {
+      limpar();
+      reject(new Error("Tempo de resposta excedido."));
+    }, 25000);
 
+    const payload = Object.assign({}, dados || {});
+    if (STATE.user) payload.__user = STATE.user;
+
+    const url = CONFIG.API_URL +
+      "?acao=" + encodeURIComponent(acao) +
+      "&dados=" + encodeURIComponent(JSON.stringify(payload)) +
+      "&callback=" + cbName;
+
+    script.src = url;
     document.body.appendChild(script);
   });
 }
 
-function campo(label, id, type = "text", extra = "") {
-  return `
-    <div>
-      <label>${label}</label>
-      <input id="${id}" type="${type}" ${extra}>
-    </div>
-  `;
-}
-
-function selectUnidade(id = "Unidade", label = "Unidade") {
-  const onchange = id === "Unidade" ? ' onchange="onUnidadeChange()"' : "";
-  return `
-    <div>
-      <label>${label}</label>
-      <select id="${id}"${onchange}>
-        <option value="">Selecione</option>
-        ${INIT.unidades.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
-      </select>
-    </div>
-  `;
-}
-
-// Retorna os cargos disponíveis para a unidade escolhida (com salário daquela unidade).
-// Se a unidade não tiver referência salarial, cai na lista genérica de cargos.
-function cargosDaUnidade(uni) {
-  const daUni = (INIT.salarios || []).filter(s => norm(s.Unidade) === norm(uni));
-  if (daUni.length) {
-    return daUni.map(s => ({
-      Cargo: s.Cargo,
-      SalarioBase: s.SalarioFixo,
-      Complementar: s.Complemento,
-      VariavelTeto: s.VariavelTeto || 0
-    }));
+async function api(acao, dados) {
+  toggleLoading(true);
+  try {
+    const res = await apiCall(acao, dados);
+    if (!res || res.ok === false) {
+      throw new Error((res && res.erro) || "Erro desconhecido ao chamar " + acao + ".");
+    }
+    return res;
+  } finally {
+    toggleLoading(false);
   }
-  return (INIT.cargos || []).map(c => ({
-    Cargo: c.Cargo,
-    SalarioBase: c.SalarioBase,
-    Complementar: c.Complementar,
-    VariavelTeto: 0
-  }));
 }
 
-// Reconstrói o <select id="Cargo"> com base na unidade selecionada.
-function onUnidadeChange() {
-  const sel = el("Cargo");
-  if (!sel) return;
-  const lista = cargosDaUnidade(getVal("Unidade"));
-  const vistos = {};
-  let opts = `<option value="">Selecione</option>`;
-  lista.forEach(c => {
-    const k = norm(c.Cargo);
-    if (!c.Cargo || vistos[k]) return;
-    vistos[k] = 1;
-    opts += `<option value="${esc(c.Cargo)}"
-      data-base="${Number(c.SalarioBase || 0)}"
-      data-comp="${Number(c.Complementar || 0)}"
-      data-variavel="${Number(c.VariavelTeto || 0)}">${esc(c.Cargo)}</option>`;
-  });
-  sel.innerHTML = opts;
+/* ===================== UI: toast / loading / helpers ===================== */
+
+function toast(msg, tipo) {
+  tipo = tipo || "ok";
+  const area = document.getElementById("toastArea");
+  const el = document.createElement("div");
+  el.className = "toast " + tipo;
+  el.textContent = msg;
+  area.appendChild(el);
+  setTimeout(() => el.remove(), 4500);
 }
 
-function selectCargo(id = "Cargo", label = "Cargo") {
-  return `
-    <div>
-      <label>${label}</label>
-      <select id="${id}" onchange="preencherSalarioPorCargo()">
-        <option value="">Selecione</option>
-        ${INIT.cargos.map(c => `
-          <option
-            value="${esc(c.Cargo)}"
-            data-base="${Number(c.SalarioBase || 0)}"
-            data-comp="${Number(c.Complementar || 0)}"
-            data-total="${Number(c.SalarioTotal || 0)}"
-          >
-            ${esc(c.Cargo)}
-          </option>
-        `).join("")}
-      </select>
-    </div>
-  `;
+function toggleLoading(ligado) {
+  const main = document.getElementById("main");
+  if (!main) return;
+  main.classList.toggle("loading-block", !!ligado);
 }
 
-function selectColaborador(id = "Colaborador", label = "Colaborador") {
-  return `
-    <div>
-      <label>${label}</label>
-      <select id="${id}">
-        <option value="">Selecione</option>
-        ${INIT.colaboradores.map(c => `
-          <option value="${esc(c.Nome)}">
-            ${esc(c.Nome)} — ${esc(c.Unidade || "")}
-          </option>
-        `).join("")}
-      </select>
-    </div>
-  `;
+function el(sel) { return document.querySelector(sel); }
+function setMain(html) { document.getElementById("main").innerHTML = html; }
+
+function fmtMoeda(v) {
+  const n = Number(v) || 0;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function tabela(rows, cols) {
-  if (!rows || !rows.length) {
-    return `<div class="empty">Nenhum registro encontrado.</div>`;
+function normalize(s) {
+  return String(s || "").trim().toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function escapeHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+/* ===================== LOGIN / SESSÃO ===================== */
+
+const SESSION_KEY = "evolpeople_user";
+
+function salvarSessao(user) {
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch (e) {}
+}
+function lerSessao() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) { return null; }
+}
+function limparSessao() {
+  try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
+}
+
+async function fazerLogin(ev) {
+  ev.preventDefault();
+  const login = el("#loginUsuario").value.trim();
+  const senha = el("#loginSenha").value;
+  const msgEl = el("#loginMsg");
+  msgEl.style.display = "none";
+
+  if (!login || !senha) {
+    msgEl.textContent = "Informe usuário e senha.";
+    msgEl.className = "msg err";
+    msgEl.style.display = "block";
+    return;
   }
 
+  try {
+    const r = await api("login", { login: login, senha: senha });
+    STATE.user = r.user;
+    salvarSessao(r.user);
+    await iniciarApp();
+  } catch (e) {
+    msgEl.textContent = e.message || "Login ou senha inválidos.";
+    msgEl.className = "msg err";
+    msgEl.style.display = "block";
+  }
+}
+
+function sair() {
+  limparSessao();
+  STATE.user = null;
+  document.getElementById("appScreen").style.display = "none";
+  document.getElementById("loginScreen").style.display = "flex";
+}
+
+/* ===================== BOOT ===================== */
+
+window.addEventListener("load", async () => {
+  document.getElementById("loginForm").addEventListener("submit", fazerLogin);
+  const sess = lerSessao();
+  if (sess) {
+    STATE.user = sess;
+    try {
+      await iniciarApp();
+      return;
+    } catch (e) {
+      limparSessao();
+    }
+  }
+  document.getElementById("loginScreen").style.display = "flex";
+});
+
+async function iniciarApp() {
+  document.getElementById("loginScreen").style.display = "none";
+  document.getElementById("appScreen").style.display = "grid";
+  el("#userNome").textContent = STATE.user.nome || STATE.user.login || "";
+  el("#userInfo").textContent = [STATE.user.perfil, STATE.user.unidade].filter(Boolean).join(" · ");
+
+  await carregarInit();
+  montarSidebar();
+  navegar("dashboard");
+}
+
+async function carregarInit() {
+  const r = await api("getInit");
+  STATE.init.unidades = r.unidades || [];
+  STATE.init.cargos = r.cargos || [];
+  STATE.init.colaboradores = r.colaboradores || [];
+  STATE.init.salarios = r.salarios || [];
+  atualizarDatalists();
+}
+
+function atualizarDatalists() {
+  setDatalist("dl-unidades", STATE.init.unidades);
+  setDatalist("dl-cargos", STATE.init.cargos.map(c => c.Cargo));
+  setDatalist("dl-colaboradores", STATE.init.colaboradores.map(c => c.Nome));
+}
+
+function setDatalist(id, valores) {
+  let dl = document.getElementById(id);
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = id;
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = (valores || [])
+    .filter(Boolean)
+    .filter((v, i, arr) => arr.indexOf(v) === i)
+    .map(v => `<option value="${escapeHtml(v)}">`)
+    .join("");
+}
+
+/* ===================== NAVEGAÇÃO / SIDEBAR ===================== */
+
+const GRUPOS_NAV = [
+  { titulo: "Visão Geral", itens: [{ key: "dashboard", label: "Dashboard" }] },
+  { titulo: "Pessoas", itens: [
+    { key: "colaboradores", label: "Colaboradores" },
+    { key: "cargos", label: "Cargos e Salários" },
+    { key: "unidades", label: "Unidades" }
+  ]},
+  { titulo: "Recrutamento", itens: [
+    { key: "vagas", label: "Vagas" },
+    { key: "admissoes", label: "Admissões" },
+    { key: "testes", label: "Testes Seletivos" }
+  ]},
+  { titulo: "Gestão de Pessoas", itens: [
+    { key: "escalas", label: "Escalas" },
+    { key: "ponto", label: "Ponto" },
+    { key: "ajustesPonto", label: "Ajustes de Ponto" },
+    { key: "feedbacks", label: "Feedbacks" },
+    { key: "experiencia", label: "Avaliação de Experiência" },
+    { key: "treinamentos", label: "Treinamentos" }
+  ]},
+  { titulo: "Operações", itens: [
+    { key: "fardamento", label: "Fardamento / Estoque" },
+    { key: "mural", label: "Mural" },
+    { key: "indicadores", label: "Indicadores Mensais" },
+    { key: "sla", label: "SLA de Vagas" }
+  ]},
+  { titulo: "Assistente", itens: [{ key: "assistente", label: "Assistente IA" }] }
+];
+
+function permitido(key) {
+  const mods = STATE.user && STATE.user.modulos;
+  if (!mods || mods === "*") return true;
+  const lista = String(mods).split(",").map(m => normalize(m));
+  return lista.indexOf(normalize(key)) !== -1;
+}
+
+function montarSidebar() {
+  const html = GRUPOS_NAV.map(grupo => {
+    const itens = grupo.itens.filter(i => permitido(i.key));
+    if (!itens.length) return "";
+    return `
+      <div class="nav-title">${escapeHtml(grupo.titulo)}</div>
+      ${itens.map(i => `<button class="nav" data-nav="${i.key}" onclick="navegar('${i.key}')">${escapeHtml(i.label)}</button>`).join("")}
+    `;
+  }).join("");
+  document.getElementById("sidebar").innerHTML = html;
+}
+
+async function navegar(key) {
+  STATE.pagina = key;
+  document.querySelectorAll(".nav").forEach(b => b.classList.toggle("active", b.dataset.nav === key));
+
+  try {
+    if (key === "dashboard") return renderDashboard();
+    if (key === "unidades") return renderUnidades();
+    if (key === "escalas") return renderEscalas();
+    if (key === "ponto") return renderPonto();
+    if (key === "assistente") return renderAssistente();
+    if (MODULES[key]) return renderModulo(key);
+    setMain(`<div class="empty">Página não encontrada.</div>`);
+  } catch (e) {
+    setMain(`<div class="msg err">Erro ao carregar página: ${escapeHtml(e.message)}</div>`);
+  }
+}
+
+/* ===================== DASHBOARD ===================== */
+
+async function renderDashboard() {
+  setMain(`<div class="loading">Carregando dashboard...</div>`);
+  const r = await api("dashboard");
+  const k = r.dashboard.kpis;
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Dashboard</h2><p>Visão geral da operação em tempo real.</p></div>
+    </div>
+
+    <div class="grid g4">
+      <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
+      <div class="kpi"><small>Vagas Abertas</small><strong>${k.vagasAbertas}</strong></div>
+      <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
+      <div class="kpi"><small>Admissões (7 dias)</small><strong>${k.admissoesSemana}</strong></div>
+      <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
+      <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
+      <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
+      <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🎂 Aniversariantes do Mês</h3>
+        ${tabelaSimples(r.dashboard.aniversariantes, ["Nome", "Unidade", "DataNascimento"])}
+      </div>
+      <div class="card">
+        <h3>⏳ Experiência Vencendo (15 dias)</h3>
+        ${tabelaSimples(r.dashboard.experienciaProximas, ["Nome", "Unidade", "Cargo", "FimExperiencia"])}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>📦 Estoque Crítico de Fardamento</h3>
+      ${tabelaSimples(r.dashboard.estoqueCritico, ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima"])}
+    </div>
+  `);
+}
+
+function tabelaSimples(linhas, colunas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro.</div>`;
   return `
     <div class="table-wrap">
       <table>
-        <thead>
-          <tr>
-            ${cols.map(c => `<th>${esc(c[1])}</th>`).join("")}
-          </tr>
-        </thead>
+        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>
         <tbody>
-          ${rows.map(r => `
-            <tr>
-              ${cols.map(c => `<td>${esc(r[c[0]] ?? "")}</td>`).join("")}
-            </tr>
-          `).join("")}
+          ${linhas.map(l => `<tr>${colunas.map(c => `<td>${escapeHtml(l[c])}</td>`).join("")}</tr>`).join("")}
         </tbody>
       </table>
     </div>
   `;
 }
 
-function telaLogin() {
-  el("menu").innerHTML = "";
-  el("userBox").style.display = "none";
+/* ===================== UNIDADES (somente leitura) ===================== */
 
-  set(`
-    <section class="login">
-      <div class="card">
-        <div class="login-logo">
-          EVOL
-          <span>PEOPLE</span>
-        </div>
-
-        <h2 style="text-align:center;margin-bottom:6px;">Acessar sistema</h2>
-        <p class="muted" style="text-align:center;margin-bottom:18px;">
-          Entre com seu login e senha.
-        </p>
-
-        <div class="form-row">
-          <label>Login</label>
-          <input id="login" autocomplete="username" placeholder="Ex: admin">
-        </div>
-
-        <div class="form-row">
-          <label>Senha</label>
-          <input id="senha" type="password" autocomplete="current-password" placeholder="Digite sua senha">
-        </div>
-
-        <button class="btn btn-primary primary" style="width:100%;" onclick="login()">
-          Entrar
-        </button>
-
-        <div id="loginMsg"></div>
-
-        <p class="muted" style="margin-top:14px;text-align:center;">
-          Usuário inicial: admin / 123456
-        </p>
-      </div>
-    </section>
-  `);
-
-  setTimeout(() => {
-    const input = el("login");
-    if (input) input.focus();
-  }, 100);
-}
-
-async function login() {
-  el("loginMsg").innerHTML = "";
-
-  const r = await api("login", {
-    login: getVal("login"),
-    senha: getVal("senha")
-  });
-
-  if (!r.ok) {
-    el("loginMsg").innerHTML = msgErr(r.erro || "Erro ao entrar.");
-    return;
-  }
-
-  USER = r.user || r.usuario || r.data || null;
-
-  if (!USER) {
-    el("loginMsg").innerHTML = msgErr("Login realizado, mas o servidor não retornou os dados do usuário.");
-    return;
-  }
-
-  localStorage.setItem("EVOLPEOPLE_USER", JSON.stringify(USER));
-
-  await iniciarSistemaLogado();
-}
-
-async function iniciarSistemaLogado() {
-  el("userBox").style.display = "flex";
-
-  if (el("userName")) {
-    el("userName").textContent = USER.nome || USER.Nome || USER.login || "Usuário";
-  }
-
-  if (el("userPerfil")) {
-    el("userPerfil").textContent = USER.perfil || USER.Perfil || "";
-  }
-
-  await carregarInit();
-  montarMenu();
-
-  const mods = modulosUsuario();
-  const primeiraTela = mods.includes("dashboard") || norm(USER?.perfil) === "ADMIN"
-    ? "dashboard"
-    : (mods[0] || "dashboard");
-
-  abrir(primeiraTela);
-}
-
-function logout() {
-  USER = null;
-  INIT = {
-    unidades: [],
-    cargos: [],
-    colaboradores: []
-  };
-
-  localStorage.removeItem("EVOLPEOPLE_USER");
-  telaLogin();
-}
-
-async function carregarInit() {
-  const r = await api("getInit");
-
-  if (r.ok) {
-    INIT.unidades = r.unidades || [];
-    INIT.cargos = r.cargos || [];
-    INIT.colaboradores = r.colaboradores || [];
-    INIT.salarios = r.salarios || [];
-  } else {
-    toast(r.erro || "Erro ao carregar dados iniciais.", "err");
-  }
-}
-
-function montarMenu() {
-  let html = "";
-
-  MODULOS.forEach(([grupo, itens]) => {
-    const permitidos = itens.filter(([id]) => temModulo(id));
-    if (!permitidos.length) return;
-
-    html += `<div class="nav-title">${grupo}</div>`;
-
-    permitidos.forEach(([id, label]) => {
-      html += `<button class="nav" id="nav-${id}" onclick="abrir('${id}')">${label}</button>`;
-    });
-  });
-
-  el("menu").innerHTML = html;
-}
-
-function ativarNav(id) {
-  document.querySelectorAll(".nav").forEach(n => n.classList.remove("active"));
-  const n = el("nav-" + id);
-  if (n) n.classList.add("active");
-}
-
-async function abrir(tela) {
-  if (!temModulo(tela)) {
-    set(`<div class="card">${msgErr("Você não tem permissão para acessar este módulo.")}</div>`);
-    return;
-  }
-
-  TELA = tela;
-  ativarNav(tela);
-
-  if (tela === "dashboard") return telaDashboard();
-  if (tela === "colaboradores") return telaColaboradores();
-  if (tela === "cargos") return telaCargos();
-  if (tela === "vagas") return telaVagas();
-  if (tela === "admissoes") return telaAdmissoes();
-  if (tela === "testes") return telaTestes();
-  if (tela === "escalas") return telaEscalas();
-  if (tela === "ponto") return telaPonto();
-  if (tela === "feedbacks") return telaFeedbacks();
-  if (tela === "experiencia") return telaExperiencia();
-  if (tela === "treinamentos") return telaTreinamentos();
-  if (tela === "fardamento") return telaFardamento();
-  if (tela === "mural") return telaMural();
-  if (tela === "ia") return telaIA();
-  if (tela === "indicadores") return telaIndicadores();
-
-  set(`<div class="card"><h2>Módulo não encontrado</h2></div>`);
-}
-
-async function telaDashboard() {
-  set(`<div class="card"><h2>Carregando dashboard...</h2></div>`);
-
-  const r = await api("dashboard");
-
-  if (!r.ok) {
-    set(`<div class="card">${msgErr(r.erro || "Erro ao carregar dashboard.")}</div>`);
-    return;
-  }
-
-  const d = r.dashboard || {};
-  const k = d.kpis || {};
-
-  set(`
+function renderUnidades() {
+  setMain(`
     <div class="page-title">
-      <div>
-        <h2>Dashboard</h2>
-        <p>Visão geral dos principais indicadores de pessoas e operação.</p>
-      </div>
+      <div><h2>Unidades</h2><p>Unidades são criadas automaticamente ao serem usadas em Colaboradores, Vagas, etc.</p></div>
     </div>
-
-    <div class="grid g4">
-      <div class="kpi"><small>Headcount</small><strong>${k.headcount || 0}</strong></div>
-      <div class="kpi"><small>Vagas abertas</small><strong>${k.vagasAbertas || 0}</strong></div>
-      <div class="kpi"><small>Custo projetado</small><strong>${moeda(k.custoProjetado || 0)}</strong></div>
-      <div class="kpi"><small>Admissões na semana</small><strong>${k.admissoesSemana || 0}</strong></div>
-      <div class="kpi"><small>Testes no mês</small><strong>${k.testesMes || 0}</strong></div>
-      <div class="kpi"><small>Testes na semana</small><strong>${k.testesSemana || 0}</strong></div>
-      <div class="kpi"><small>Aniversariantes</small><strong>${k.aniversariantes || 0}</strong></div>
-      <div class="kpi"><small>Estoque crítico</small><strong>${k.estoqueCritico || 0}</strong></div>
-    </div>
-
     <div class="card">
-      <h3>Aniversariantes do mês</h3>
-      ${tabela(d.aniversariantes || [], [
-        ["Nome", "Nome"],
-        ["Unidade", "Unidade"],
-        ["DataNascimento", "Nascimento"]
-      ])}
-    </div>
-
-    <div class="card">
-      <h3>Experiências próximas do vencimento</h3>
-      ${tabela(d.experienciaProximas || [], [
-        ["Nome", "Nome"],
-        ["Unidade", "Unidade"],
-        ["Cargo", "Cargo"],
-        ["FimExperiencia", "Fim Experiência"]
-      ])}
-    </div>
-
-    <div class="card">
-      <h3>Estoque crítico</h3>
-      ${tabela(d.estoqueCritico || [], [
-        ["Unidade", "Unidade"],
-        ["Item", "Item"],
-        ["Tamanho", "Tamanho"],
-        ["QuantidadeEstoque", "Estoque"],
-        ["QuantidadeMinima", "Mínimo"],
-        ["Status", "Status"]
-      ])}
+      ${STATE.init.unidades.length
+        ? `<div class="grid g4">${STATE.init.unidades.map(u => `<div class="badge">${escapeHtml(u)}</div>`).join("")}</div>`
+        : `<div class="empty">Nenhuma unidade cadastrada ainda.</div>`}
     </div>
   `);
 }
 
-async function telaColaboradores() {
-  set(`
-    <div class="card">
-      <h2>Colaboradores</h2>
+/* ===================== MÓDULOS GENÉRICOS (CRUD) ===================== */
+/*
+ * Cada módulo descreve: ação de listar, chave da resposta, ação de salvar,
+ * campos do formulário e colunas exibidas na tabela.
+ * O restante (renderização, coleta, envio) é genérico — ver renderModulo().
+ */
 
-      <div class="grid g3">
-        ${campo("Nome", "Nome")}
-        ${campo("CPF", "CPF")}
-        ${selectUnidade()}
-        ${selectCargo()}
-        ${campo("Salário Base", "SalarioBase", "number", 'class="money" step="0.01"')}
-        ${campo("Complementar", "Complementar", "number", 'class="money" step="0.01"')}
-        ${campo("Data de Admissão", "DataAdmissao", "date")}
-        ${campo("Data de Nascimento", "DataNascimento", "date")}
-        ${campo("Fim da Experiência", "FimExperiencia", "date")}
-        ${campo("Líder", "Lider")}
-        ${campo("Cidade Residência", "CidadeResidencia")}
-        <div>
-          <label>Quer Vale Transporte?</label>
-          <select id="QuerValeTransporte">
-            <option value="">Selecione</option>
-            <option>SIM</option>
-            <option>NÃO</option>
+const MODULES = {
+  colaboradores: {
+    label: "Colaboradores",
+    listAction: "listarColaboradores", listKey: "colaboradores",
+    saveAction: "salvarColaborador",
+    columns: ["Nome", "CPF", "Unidade", "Cargo", "SalarioTotal", "Status"],
+    fields: [
+      { name: "Nome", label: "Nome", type: "text", required: true, col: "g2" },
+      { name: "CPF", label: "CPF", type: "text" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
+      { name: "SalarioBase", label: "Salário Base", type: "money" },
+      { name: "Complementar", label: "Complementar", type: "money" },
+      { name: "SalarioTotal", label: "Salário Total", type: "money", readonly: true, computed: true },
+      { name: "DataAdmissao", label: "Data de Admissão", type: "date" },
+      { name: "DataNascimento", label: "Data de Nascimento", type: "date" },
+      { name: "FimExperiencia", label: "Fim da Experiência", type: "date" },
+      { name: "Lider", label: "Líder", type: "text" },
+      { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
+      { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
+      { name: "Status", label: "Status", type: "select", options: ["ATIVO", "INATIVO", "DESLIGADO"], default: "ATIVO" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  cargos: {
+    label: "Cargos",
+    listAction: "listarCargos", listKey: "cargos",
+    saveAction: "salvarCargo",
+    columns: ["Cargo", "SalarioBase", "Complementar", "SalarioTotal"],
+    fields: [
+      { name: "Cargo", label: "Nome do Cargo", type: "text", required: true, col: "g2" },
+      { name: "SalarioBase", label: "Salário Base", type: "money" },
+      { name: "Complementar", label: "Complementar", type: "money" },
+      { name: "SalarioTotal", label: "Salário Total", type: "money", readonly: true, computed: true }
+    ]
+  },
+
+  vagas: {
+    label: "Vagas",
+    listAction: "listarVagas", listKey: "vagas",
+    saveAction: "salvarVaga",
+    columns: ["Unidade", "Cargo", "Quantidade", "SalarioTotal", "CustoProjetado", "Prioridade", "Status"],
+    fields: [
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true, required: true },
+      { name: "Quantidade", label: "Quantidade", type: "number", default: 1 },
+      { name: "SalarioBase", label: "Salário Base", type: "money" },
+      { name: "Complementar", label: "Complementar", type: "money" },
+      { name: "Prioridade", label: "Prioridade", type: "select", options: ["BAIXA", "NORMAL", "ALTA", "URGENTE"], default: "NORMAL" },
+      { name: "Motivo", label: "Motivo da Vaga", type: "text", col: "g2" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  admissoes: {
+    label: "Admissões",
+    listAction: "listarAdmissoes", listKey: "admissoes",
+    saveAction: "salvarAdmissao",
+    columns: ["Candidato", "Unidade", "Cargo", "DataPrevista", "Status"],
+    fields: [
+      { name: "Candidato", label: "Candidato", type: "text", required: true },
+      { name: "CPF", label: "CPF", type: "text" },
+      { name: "Telefone", label: "Telefone", type: "text" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "DataPrevista", label: "Data Prevista de Admissão", type: "date" },
+      { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
+      { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  testes: {
+    label: "Testes Seletivos",
+    listAction: "listarTestes", listKey: "testes",
+    saveAction: "salvarTeste",
+    columns: ["DataTeste", "Candidato", "Unidade", "Cargo", "Nota", "Resultado"],
+    fields: [
+      { name: "DataTeste", label: "Data do Teste", type: "date", required: true },
+      { name: "HoraTeste", label: "Hora do Teste", type: "time" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Candidato", label: "Candidato", type: "text", required: true },
+      { name: "CPF", label: "CPF", type: "text" },
+      { name: "Telefone", label: "Telefone", type: "text" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "Avaliador", label: "Avaliador", type: "text" },
+      { name: "Nota", label: "Nota (0 a 10)", type: "number", min: 0, max: 10, step: 0.1 },
+      { name: "Resultado", label: "Resultado", type: "select", options: ["APROVADO", "REPROVADO", "EM ANÁLISE"] },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  feedbacks: {
+    label: "Feedbacks",
+    listAction: "listarFeedbacks", listKey: "feedbacks",
+    saveAction: "salvarFeedback",
+    columns: ["Data", "Colaborador", "Unidade", "Tipo", "Nota", "Lider"],
+    fields: [
+      { name: "Data", label: "Data", type: "date" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
+      { name: "Tipo", label: "Tipo", type: "select", options: ["POSITIVO", "CONSTRUTIVO", "ADVERTÊNCIA"] },
+      { name: "Nota", label: "Nota (0 a 10)", type: "number", min: 0, max: 10, step: 0.1 },
+      { name: "Prazo", label: "Prazo para Plano de Ação", type: "date" },
+      { name: "PontosFortes", label: "Pontos Fortes", type: "textarea" },
+      { name: "PontosMelhoria", label: "Pontos de Melhoria", type: "textarea" },
+      { name: "PlanoAcao", label: "Plano de Ação", type: "textarea", col: "g2" }
+    ]
+  },
+
+  experiencia: {
+    label: "Avaliação de Experiência",
+    listAction: "listarAvaliacoesExperiencia", listKey: "avaliacoes",
+    saveAction: "salvarAvaliacaoExperiencia",
+    columns: ["Colaborador", "Unidade", "Cargo", "Media", "Resultado"],
+    fields: [
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "DataAdmissao", label: "Data de Admissão", type: "date" },
+      { name: "DiasExperiencia", label: "Dias de Experiência", type: "number" },
+      { name: "Produtividade", label: "Produtividade (0-10)", type: "number", min: 0, max: 10 },
+      { name: "Comportamento", label: "Comportamento (0-10)", type: "number", min: 0, max: 10 },
+      { name: "Pontualidade", label: "Pontualidade (0-10)", type: "number", min: 0, max: 10 },
+      { name: "Equipe", label: "Trabalho em Equipe (0-10)", type: "number", min: 0, max: 10 },
+      { name: "Tecnica", label: "Técnica (0-10)", type: "number", min: 0, max: 10 },
+      { name: "PlanoAcao", label: "Plano de Ação", type: "textarea", col: "g2" }
+    ]
+  },
+
+  treinamentos: {
+    label: "Treinamentos",
+    listAction: "listarTreinamentos", listKey: "treinamentos",
+    saveAction: "salvarTreinamento",
+    columns: ["Data", "Unidade", "Tema", "Tipo", "HorasDadas"],
+    fields: [
+      { name: "Data", label: "Data", type: "date" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Tema", label: "Tema", type: "text", required: true, col: "g2" },
+      { name: "Tipo", label: "Tipo", type: "select", options: ["PRESENCIAL", "ONLINE", "PRÁTICO"] },
+      { name: "HorasDadas", label: "Horas Dadas", type: "number" },
+      { name: "HorasAssistidas", label: "Horas Assistidas (média)", type: "number" },
+      { name: "ParticipantesManuais", label: "Participantes", type: "textarea", col: "g2" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  fardamento: {
+    label: "Fardamento / Estoque",
+    listAction: "listarFardamento", listKey: "fardamento",
+    saveAction: "salvarFardamento",
+    columns: ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima", "Status"],
+    fields: [
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Item", label: "Item", type: "text", required: true },
+      { name: "Tipo", label: "Tipo", type: "text" },
+      { name: "Tamanho", label: "Tamanho", type: "text" },
+      { name: "QuantidadeEstoque", label: "Quantidade em Estoque", type: "number" },
+      { name: "QuantidadeMinima", label: "Quantidade Mínima", type: "number" },
+      { name: "Fornecedor", label: "Fornecedor", type: "text" }
+    ]
+  },
+
+  mural: {
+    label: "Mural",
+    listAction: "listarMural", listKey: "mural",
+    saveAction: "salvarMural",
+    columns: ["Data", "Titulo", "Unidade", "PublicadoPor"],
+    fields: [
+      { name: "Titulo", label: "Título", type: "text", required: true },
+      { name: "Unidade", label: "Unidade (ou TODAS)", type: "datalist", list: "dl-unidades", default: "TODAS" },
+      { name: "Mensagem", label: "Mensagem", type: "textarea", col: "g2", required: true }
+    ]
+  },
+
+  indicadores: {
+    label: "Indicadores Mensais",
+    listAction: "listarIndicadoresMensais", listKey: "indicadores",
+    saveAction: "salvarIndicadorMensal",
+    columns: ["Mes", "Ano", "Unidade", "TurnoverPercentual", "AbsenteismoPercentual"],
+    fields: [
+      { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
+      { name: "Ano", label: "Ano", type: "number", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "TurnoverPercentual", label: "Turnover (%)", type: "number", step: 0.01 },
+      { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  sla: {
+    label: "SLA de Vagas",
+    listAction: "listarSLA", listKey: "sla",
+    saveAction: "salvarSLA",
+    columns: ["Mes", "Ano", "Unidade", "SLA_Dias", "VagasFechadas"],
+    fields: [
+      { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
+      { name: "Ano", label: "Ano", type: "number", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "SLA_Dias", label: "SLA (dias)", type: "number" },
+      { name: "VagasFechadas", label: "Vagas Fechadas no Período", type: "number" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  ajustesPonto: {
+    label: "Ajustes de Ponto",
+    listAction: "listarAjustesPonto", listKey: "ajustes",
+    saveAction: "solicitarAjustePonto",
+    columns: ["DataRegistro", "Colaborador", "Data", "Hora", "TipoBatida", "Status"],
+    fields: [
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Data", label: "Data do Ponto a Ajustar", type: "date", required: true },
+      { name: "Hora", label: "Hora Correta", type: "time", required: true },
+      { name: "TipoBatida", label: "Tipo de Batida", type: "select", options: ["ENTRADA", "SAÍDA", "INÍCIO INTERVALO", "FIM INTERVALO"] },
+      { name: "Justificativa", label: "Justificativa", type: "textarea", col: "g2", required: true }
+    ]
+  }
+};
+
+function campoValorInicial(f) {
+  if (f.default !== undefined) return f.default;
+  return "";
+}
+
+function campoHtml(f) {
+  const idc = "campo_" + f.name;
+  const req = f.required ? "required" : "";
+  const readonly = f.readonly ? "readonly" : "";
+  const val = escapeHtml(campoValorInicial(f));
+  const wrapClass = f.col ? f.col : "";
+
+  let inputHtml = "";
+  if (f.type === "textarea") {
+    inputHtml = `<textarea id="${idc}" ${req} ${readonly}>${val}</textarea>`;
+  } else if (f.type === "select") {
+    inputHtml = `<select id="${idc}" ${req}>
+      <option value="">Selecione...</option>
+      ${f.options.map(o => `<option value="${escapeHtml(o)}" ${o === f.default ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+    </select>`;
+  } else if (f.type === "datalist") {
+    inputHtml = `<input id="${idc}" type="text" list="${f.list}" value="${val}" autocomplete="off" ${req} ${readonly}
+      ${f.autofillSalario ? `onchange="autofillSalarioPorCargo(this.value)"` : ""}>`;
+  } else if (f.type === "money" || f.type === "number") {
+    inputHtml = `<input id="${idc}" type="number" step="${f.step || "0.01"}" min="${f.min !== undefined ? f.min : ""}"
+      max="${f.max !== undefined ? f.max : ""}" value="${val}" ${req} ${readonly}
+      class="${f.type === "money" ? "money" : ""}"
+      ${(f.name === "SalarioBase" || f.name === "Complementar") ? `oninput="recalcularSalarioTotal()"` : ""}>`;
+  } else if (f.type === "date") {
+    inputHtml = `<input id="${idc}" type="date" value="${val}" ${req} ${readonly}>`;
+  } else if (f.type === "time") {
+    inputHtml = `<input id="${idc}" type="time" value="${val}" ${req} ${readonly}>`;
+  } else {
+    inputHtml = `<input id="${idc}" type="text" value="${val}" ${req} ${readonly}>`;
+  }
+
+  return `<div class="form-row ${wrapClass}"><label>${escapeHtml(f.label)}${f.required ? " *" : ""}</label>${inputHtml}</div>`;
+}
+
+function autofillSalarioPorCargo(nomeCargo) {
+  const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
+  if (!c) return;
+  const base = document.getElementById("campo_SalarioBase");
+  const comp = document.getElementById("campo_Complementar");
+  if (base) base.value = c.SalarioBase || 0;
+  if (comp) comp.value = c.Complementar || 0;
+  recalcularSalarioTotal();
+}
+
+function recalcularSalarioTotal() {
+  const base = document.getElementById("campo_SalarioBase");
+  const comp = document.getElementById("campo_Complementar");
+  const total = document.getElementById("campo_SalarioTotal");
+  if (base && comp && total) {
+    total.value = (Number(base.value) || 0) + (Number(comp.value) || 0);
+  }
+}
+
+function coletarCampos(fields) {
+  const out = {};
+  fields.forEach(f => {
+    const elCampo = document.getElementById("campo_" + f.name);
+    if (elCampo) out[f.name] = elCampo.value;
+  });
+  return out;
+}
+
+function validarCampos(fields) {
+  for (const f of fields) {
+    if (f.required) {
+      const v = document.getElementById("campo_" + f.name).value;
+      if (!String(v || "").trim()) {
+        toast("Preencha o campo obrigatório: " + f.label, "err");
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+async function renderModulo(key) {
+  const cfg = MODULES[key];
+  setMain(`
+    <div class="page-title">
+      <div><h2>${escapeHtml(cfg.label)}</h2>${cfg.note ? `<p>${escapeHtml(cfg.note)}</p>` : ""}</div>
+    </div>
+
+    <div class="card">
+      <h3>Novo Registro</h3>
+      <form id="formModulo" class="grid g2" onsubmit="return false;">
+        ${cfg.fields.map(campoHtml).join("")}
+      </form>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="salvarModulo('${key}')">Salvar</button>
+        <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Registros</h3>
+      <div id="tabelaModulo"><div class="loading">Carregando...</div></div>
+    </div>
+  `);
+  await carregarTabelaModulo(key);
+}
+
+async function carregarTabelaModulo(key) {
+  const cfg = MODULES[key];
+  try {
+    const r = await api(cfg.listAction);
+    const linhas = r[cfg.listKey] || [];
+    STATE.cache[key] = linhas;
+    document.getElementById("tabelaModulo").innerHTML = tabelaComBadge(linhas, cfg.columns);
+  } catch (e) {
+    document.getElementById("tabelaModulo").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function tabelaComBadge(linhas, colunas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${linhas.map(l => `<tr>${colunas.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}</tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function formatarCelula(coluna, valor) {
+  if (/^(SalarioBase|Complementar|SalarioTotal|CustoProjetado)$/.test(coluna)) {
+    return fmtMoeda(valor);
+  }
+  if (coluna === "Status" || coluna === "Resultado" || coluna === "Prioridade") {
+    // ATENÇÃO: normalize() remove acentos, então as listas abaixo NÃO podem ter acento,
+    // senão status como "EM ANÁLISE", "NÃO EFETIVAR" e "CRÍTICO" nunca casam.
+    const v = normalize(valor);
+    let cls = "badge";
+    if (["ATIVO", "ABERTA", "APROVADO", "EFETIVAR", "OK", "PENDENTE"].includes(v)) cls += " ok";
+    else if (["DESLIGADO", "REPROVADO", "NAO EFETIVAR", "CRITICO", "URGENTE", "CANCELADA", "FECHADA"].includes(v)) cls += " bad";
+    else if (["INATIVO", "EM ANALISE", "ACOMPANHAR", "ALTA", "PREVISTA"].includes(v)) cls += " warn";
+    return `<span class="${cls}">${escapeHtml(valor)}</span>`;
+  }
+  return escapeHtml(valor);
+}
+
+async function salvarModulo(key) {
+  const cfg = MODULES[key];
+  if (!validarCampos(cfg.fields)) return;
+  const dados = coletarCampos(cfg.fields);
+  try {
+    const r = await api(cfg.saveAction, dados);
+    toast(r.msg || "Salvo com sucesso.", "ok");
+    if (r.resultado) toast("Resultado da avaliação: " + r.resultado, "info");
+    await carregarInit(); // atualiza datalists (nova unidade, etc.)
+    await renderModulo(key);
+  } catch (e) {
+    toast(e.message, "err");
+  }
+}
+
+/* ===================== ESCALAS (tela dedicada) ===================== */
+
+async function renderEscalas() {
+  const nomesColab = STATE.init.colaboradores.map(c => c.Nome);
+  setMain(`
+    <div class="page-title"><div><h2>Escalas</h2><p>Gere escalas em lote para um período.</p></div></div>
+
+    <div class="card">
+      <h3>Gerar Escala</h3>
+      <div class="grid g2">
+        <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Tipo de Escala</label>
+          <select id="escTipo">
+            <option value="6X1">6x1</option>
+            <option value="5X2">5x2</option>
+            <option value="12X36">12x36</option>
           </select>
+        </div>
+        <div class="form-row"><label>Início</label><input id="escInicio" type="date"></div>
+        <div class="form-row"><label>Fim</label><input id="escFim" type="date"></div>
+        <div class="form-row"><label>Horário de Entrada</label><input id="escEntrada" type="time"></div>
+        <div class="form-row"><label>Horário de Saída</label><input id="escSaida" type="time"></div>
+      </div>
+
+      <div class="form-row">
+        <label>Colaboradores Cadastrados</label>
+        <div class="checklist" id="escChecklist">
+          ${nomesColab.length
+            ? nomesColab.map(n => `<label class="check"><input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}</label>`).join("")
+            : `<div class="empty">Nenhum colaborador cadastrado ainda.</div>`}
         </div>
       </div>
 
-      <label style="margin-top:14px">Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarColaborador()">Salvar colaborador</button>
-        <button class="btn btn-secondary secondary" onclick="telaColaboradores()">Atualizar lista</button>
+      <div class="form-row">
+        <label>Colaboradores Avulsos (um por linha, para quem ainda não está cadastrado)</label>
+        <textarea id="escAvulsos"></textarea>
       </div>
 
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Base CONTROLE DE C&P</h3>
-      <div id="listaColaboradores">Carregando...</div>
-    </div>
-  `);
-
-  await listarColaboradoresTela();
-}
-
-async function listarColaboradoresTela() {
-  const r = await api("listarColaboradores");
-
-  if (r.ok) {
-    INIT.colaboradores = r.colaboradores || [];
-
-    el("listaColaboradores").innerHTML = tabela(r.colaboradores || [], [
-      ["Nome", "Nome"],
-      ["CPF", "CPF"],
-      ["Unidade", "Unidade"],
-      ["Cargo", "Cargo"],
-      ["SalarioTotal", "Salário Total"],
-      ["Lider", "Líder"],
-      ["Status", "Status"]
-    ]);
-  } else {
-    el("listaColaboradores").innerHTML = msgErr(r.erro || "Erro ao listar colaboradores.");
-  }
-}
-
-async function salvarColaborador() {
-  const dados = formData([
-    "Nome",
-    "CPF",
-    "Unidade",
-    "Cargo",
-    "SalarioBase",
-    "Complementar",
-    "DataAdmissao",
-    "DataNascimento",
-    "FimExperiencia",
-    "Lider",
-    "CidadeResidencia",
-    "QuerValeTransporte",
-    "Observacoes"
-  ]);
-
-  const r = await api("salvarColaborador", dados);
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Colaborador salvo.") : msgErr(r.erro);
-
-  if (r.ok) {
-    await carregarInit();
-    await listarColaboradoresTela();
-    toast("Colaborador salvo com sucesso.");
-  }
-}
-
-function preencherSalarioPorCargo() {
-  const s = el("Cargo");
-  if (!s) return;
-
-  const opt = s.options[s.selectedIndex];
-  if (!opt) return;
-
-  if (el("SalarioBase")) el("SalarioBase").value = opt.dataset.base || "";
-  if (el("Complementar")) el("Complementar").value = opt.dataset.comp || "";
-
-  const varTeto = Number(opt.dataset.variavel || 0);
-  if (el("VariavelTeto")) el("VariavelTeto").value = varTeto || "";
-  if (varTeto > 0) {
-    toast("Rio Mar: variável pode chegar até " + moeda(varTeto), "info");
-  }
-}
-
-async function telaCargos() {
-  set(`
-    <div class="card">
-      <h2>Cargos & Salários</h2>
-
-      <div class="grid g3">
-        ${campo("Cargo", "Cargo")}
-        ${campo("Salário Base", "SalarioBase", "number", 'class="money" step="0.01"')}
-        ${campo("Complementar", "Complementar", "number", 'class="money" step="0.01"')}
+      <div class="form-row">
+        <label>Observações</label>
+        <textarea id="escObs"></textarea>
       </div>
 
       <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarCargo()">Salvar cargo</button>
+        <button class="btn btn-primary" onclick="gerarEscala()">Gerar Escala</button>
       </div>
-
-      <div id="msg"></div>
     </div>
 
     <div class="card">
-      <h3>Cargos cadastrados</h3>
-      <div id="listaCargos">Carregando...</div>
+      <h3>Escalas Geradas</h3>
+      <div id="tabelaEscalas"><div class="loading">Carregando...</div></div>
     </div>
   `);
+  await carregarEscalas();
+}
 
-  const r = await api("listarCargos");
-
-  if (r.ok) {
-    INIT.cargos = r.cargos || [];
-    el("listaCargos").innerHTML = tabela(r.cargos || [], [
-      ["Cargo", "Cargo"],
-      ["SalarioBase", "Salário Base"],
-      ["Complementar", "Complementar"],
-      ["SalarioTotal", "Total"]
-    ]);
-  } else {
-    el("listaCargos").innerHTML = msgErr(r.erro || "Erro ao listar cargos.");
+async function carregarEscalas() {
+  try {
+    const r = await api("listarEscalas");
+    document.getElementById("tabelaEscalas").innerHTML =
+      tabelaComBadge(r.escalas, ["Data", "DiaSemana", "Unidade", "Colaborador", "Folga", "HorarioEntrada", "HorarioSaida"]);
+  } catch (e) {
+    document.getElementById("tabelaEscalas").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
-}
-
-async function salvarCargo() {
-  const r = await api("salvarCargo", formData(["Cargo", "SalarioBase", "Complementar"]));
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Cargo salvo.") : msgErr(r.erro);
-
-  if (r.ok) {
-    await carregarInit();
-    telaCargos();
-  }
-}
-
-async function telaVagas() {
-  set(`
-    <div class="card">
-      <h2>Vagas</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${selectCargo()}
-        ${campo("Quantidade", "Quantidade", "number", 'value="1"')}
-        ${campo("Salário Base", "SalarioBase", "number", 'class="money" step="0.01"')}
-        ${campo("Complementar", "Complementar", "number", 'class="money" step="0.01"')}
-        <div>
-          <label>Prioridade</label>
-          <select id="Prioridade">
-            <option>NORMAL</option>
-            <option>ALTA</option>
-            <option>URGENTE</option>
-          </select>
-        </div>
-      </div>
-
-      <label style="margin-top:14px">Motivo</label>
-      <textarea id="Motivo"></textarea>
-
-      <label>Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarVaga()">Abrir vaga</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Vagas registradas</h3>
-      <div id="listaVagas">Carregando...</div>
-    </div>
-  `);
-
-  await listarVagas();
-}
-
-async function listarVagas() {
-  const r = await api("listarVagas");
-
-  if (r.ok) {
-    el("listaVagas").innerHTML = tabela(r.vagas || [], [
-      ["DataRegistro", "Data"],
-      ["Unidade", "Unidade"],
-      ["Cargo", "Cargo"],
-      ["Quantidade", "Qtd"],
-      ["SalarioTotal", "Salário"],
-      ["CustoProjetado", "Custo"],
-      ["Status", "Status"],
-      ["Prioridade", "Prioridade"]
-    ]);
-  } else {
-    el("listaVagas").innerHTML = msgErr(r.erro || "Erro ao listar vagas.");
-  }
-}
-
-async function salvarVaga() {
-  const r = await api("salvarVaga", formData([
-    "Unidade",
-    "Cargo",
-    "Quantidade",
-    "SalarioBase",
-    "Complementar",
-    "Prioridade",
-    "Motivo",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Vaga salva.") : msgErr(r.erro);
-  if (r.ok) listarVagas();
-}
-
-async function telaAdmissoes() {
-  set(`
-    <div class="card">
-      <h2>Admissões Previstas</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${campo("Candidato", "Candidato")}
-        ${campo("CPF", "CPF")}
-        ${campo("Telefone", "Telefone")}
-        ${selectCargo()}
-        ${campo("Data Prevista", "DataPrevista", "date")}
-        ${campo("Cidade Residência", "CidadeResidencia")}
-        <div>
-          <label>Quer VT?</label>
-          <select id="QuerValeTransporte">
-            <option>NÃO</option>
-            <option>SIM</option>
-          </select>
-        </div>
-      </div>
-
-      <label style="margin-top:14px">Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarAdmissao()">Registrar admissão</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Admissões registradas</h3>
-      <div id="listaAdmissoes">Carregando...</div>
-    </div>
-  `);
-
-  await listarAdmissoes();
-}
-
-async function listarAdmissoes() {
-  const r = await api("listarAdmissoes");
-
-  if (r.ok) {
-    el("listaAdmissoes").innerHTML = tabela(r.admissoes || [], [
-      ["DataRegistro", "Registro"],
-      ["Unidade", "Unidade"],
-      ["Candidato", "Candidato"],
-      ["Cargo", "Cargo"],
-      ["DataPrevista", "Prevista"],
-      ["Status", "Status"]
-    ]);
-  } else {
-    el("listaAdmissoes").innerHTML = msgErr(r.erro || "Erro ao listar admissões.");
-  }
-}
-
-async function salvarAdmissao() {
-  const r = await api("salvarAdmissao", formData([
-    "Unidade",
-    "Candidato",
-    "CPF",
-    "Telefone",
-    "Cargo",
-    "DataPrevista",
-    "CidadeResidencia",
-    "QuerValeTransporte",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Admissão salva.") : msgErr(r.erro);
-  if (r.ok) listarAdmissoes();
-}
-
-async function telaTestes() {
-  set(`
-    <div class="card">
-      <h2>Teste Prático</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${campo("Candidato", "Candidato")}
-        ${campo("CPF", "CPF")}
-        ${campo("Telefone", "Telefone")}
-        ${selectCargo()}
-        ${campo("Data do Teste", "DataTeste", "date")}
-        ${campo("Hora do Teste", "HoraTeste", "time")}
-        ${campo("Avaliador", "Avaliador")}
-        ${campo("Nota", "Nota", "number", 'step="0.1"')}
-      </div>
-
-      <label style="margin-top:14px">Resultado</label>
-      <select id="Resultado">
-        <option value="">Selecione</option>
-        <option>APROVADO</option>
-        <option>REPROVADO</option>
-        <option>EM AVALIAÇÃO</option>
-      </select>
-
-      <label>Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarTeste()">Salvar teste</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Testes registrados</h3>
-      <div id="listaTestes">Carregando...</div>
-    </div>
-  `);
-
-  await listarTestes();
-}
-
-async function listarTestes() {
-  const r = await api("listarTestes");
-
-  if (r.ok) {
-    el("listaTestes").innerHTML = tabela(r.testes || [], [
-      ["DataTeste", "Data"],
-      ["HoraTeste", "Hora"],
-      ["Unidade", "Unidade"],
-      ["Candidato", "Candidato"],
-      ["Cargo", "Cargo"],
-      ["Avaliador", "Avaliador"],
-      ["Nota", "Nota"],
-      ["Resultado", "Resultado"]
-    ]);
-  } else {
-    el("listaTestes").innerHTML = msgErr(r.erro || "Erro ao listar testes.");
-  }
-}
-
-async function salvarTeste() {
-  const r = await api("salvarTeste", formData([
-    "Unidade",
-    "Candidato",
-    "CPF",
-    "Telefone",
-    "Cargo",
-    "DataTeste",
-    "HoraTeste",
-    "Avaliador",
-    "Nota",
-    "Resultado",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Teste salvo.") : msgErr(r.erro);
-  if (r.ok) listarTestes();
-}
-
-async function telaEscalas() {
-  set(`
-    <div class="card">
-      <h2>Gestão de Escalas</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        <div>
-          <label>Tipo de escala</label>
-          <select id="tipo">
-            <option>6X1</option>
-            <option>5X2</option>
-            <option>12X36</option>
-          </select>
-        </div>
-        ${campo("Início", "inicio", "date")}
-        ${campo("Fim", "fim", "date")}
-        ${campo("Entrada", "entrada", "time", 'value="08:00"')}
-        ${campo("Saída", "saida", "time", 'value="16:20"')}
-        ${campo("Intervalo", "intervalo", "time", 'value="01:00"')}
-      </div>
-
-      <label style="margin-top:14px">Colaboradores</label>
-      <div class="checklist">
-        ${INIT.colaboradores.map(c => `
-          <label class="check">
-            <input type="checkbox" name="colaboradorEscala" value="${esc(c.Nome)}">
-            ${esc(c.Nome)} — ${esc(c.Unidade || "")}
-          </label>
-        `).join("")}
-      </div>
-
-      <label style="margin-top:14px">Avulsos / Teste prático</label>
-      <textarea id="avulsos" placeholder="Um nome por linha"></textarea>
-
-      <label>Observações</label>
-      <textarea id="observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="gerarEscala()">Gerar escala</button>
-        <button class="btn btn-secondary secondary" onclick="listarEscalas()">Atualizar lista</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Escalas geradas</h3>
-      <div id="listaEscalas">Carregando...</div>
-    </div>
-  `);
-
-  listarEscalas();
 }
 
 async function gerarEscala() {
-  const colaboradores = Array
-    .from(document.querySelectorAll('input[name="colaboradorEscala"]:checked'))
-    .map(x => x.value);
+  const inicio = el("#escInicio").value;
+  const fim = el("#escFim").value;
+  if (!inicio || !fim) { toast("Informe início e fim da escala.", "err"); return; }
 
-  const r = await api("gerarEscala", {
-    unidade: getVal("Unidade"),
-    tipo: getVal("tipo"),
-    inicio: getVal("inicio"),
-    fim: getVal("fim"),
-    entrada: getVal("entrada"),
-    saida: getVal("saida"),
-    intervalo: getVal("intervalo"),
-    colaboradores,
-    avulsos: getVal("avulsos"),
-    observacoes: getVal("observacoes")
-  });
+  const colaboradores = Array.from(document.querySelectorAll("#escChecklist input:checked")).map(i => i.value);
 
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Escala gerada.") : msgErr(r.erro);
-  if (r.ok) listarEscalas();
-}
+  const dados = {
+    unidade: el("#escUnidade").value,
+    tipo: el("#escTipo").value,
+    inicio: inicio,
+    fim: fim,
+    entrada: el("#escEntrada").value,
+    saida: el("#escSaida").value,
+    colaboradores: colaboradores,
+    avulsos: el("#escAvulsos").value,
+    observacoes: el("#escObs").value
+  };
 
-async function listarEscalas() {
-  const r = await api("listarEscalas");
-
-  if (r.ok) {
-    el("listaEscalas").innerHTML = tabela(r.escalas || [], [
-      ["Data", "Data"],
-      ["DiaSemana", "Dia"],
-      ["Unidade", "Unidade"],
-      ["Colaborador", "Colaborador"],
-      ["TipoEscala", "Tipo"],
-      ["HorarioEntrada", "Entrada"],
-      ["HorarioSaida", "Saída"],
-      ["Folga", "Folga"],
-      ["SugestaoFolga", "Sugestão"]
-    ]);
-  } else {
-    el("listaEscalas").innerHTML = msgErr(r.erro || "Erro ao listar escalas.");
+  try {
+    const r = await api("gerarEscala", dados);
+    toast(r.msg, "ok");
+    await carregarEscalas();
+  } catch (e) {
+    toast(e.message, "err");
   }
 }
 
-async function telaPonto() {
-  set(`
-    <div class="card">
-      <h2>Ponto / Espelho</h2>
+/* ===================== PONTO ===================== */
 
+async function renderPonto() {
+  const nomesColab = STATE.init.colaboradores.map(c => c.Nome);
+  setMain(`
+    <div class="page-title"><div><h2>Ponto</h2><p>Registro de entrada, saída e intervalos.</p></div></div>
+
+    <div class="card">
+      <h3>Bater Ponto</h3>
       <div class="grid g3">
-        ${selectColaborador()}
-        ${selectUnidade()}
-        <div>
-          <label>Tipo de Batida</label>
-          <select id="TipoBatida">
-            <option>ENTRADA</option>
-            <option>SAÍDA INTERVALO</option>
-            <option>RETORNO INTERVALO</option>
-            <option>SAÍDA</option>
+        <div class="form-row"><label>Colaborador</label>
+          <input id="pontoColaborador" type="text" list="dl-colaboradores" autocomplete="off">
+        </div>
+        <div class="form-row"><label>Unidade</label>
+          <input id="pontoUnidade" type="text" list="dl-unidades" autocomplete="off">
+        </div>
+        <div class="form-row"><label>Tipo de Batida</label>
+          <select id="pontoTipo">
+            <option value="ENTRADA">Entrada</option>
+            <option value="INÍCIO INTERVALO">Início do Intervalo</option>
+            <option value="FIM INTERVALO">Fim do Intervalo</option>
+            <option value="SAÍDA">Saída</option>
           </select>
         </div>
       </div>
-
       <div class="actions">
-        <button class="btn btn-primary primary" onclick="registrarPonto()">Registrar ponto</button>
-        <button class="btn btn-secondary secondary" onclick="listarEspelho()">Atualizar espelho</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Solicitar Ajuste</h3>
-
-      <div class="grid g3">
-        ${campo("Data", "Data", "date")}
-        ${campo("Hora", "Hora", "time")}
-        <div>
-          <label>Tipo de Batida</label>
-          <select id="TipoBatidaAjuste">
-            <option>ENTRADA</option>
-            <option>SAÍDA INTERVALO</option>
-            <option>RETORNO INTERVALO</option>
-            <option>SAÍDA</option>
-          </select>
-        </div>
-      </div>
-
-      <label style="margin-top:14px">Justificativa</label>
-      <textarea id="Justificativa"></textarea>
-
-      <div class="actions">
-        <button class="btn warning" onclick="solicitarAjustePonto()">Solicitar ajuste</button>
+        <button class="btn btn-primary" onclick="baterPonto()">Registrar Ponto</button>
       </div>
     </div>
 
     <div class="card">
-      <h3>Espelho de ponto</h3>
-      <div id="espelho">Carregando...</div>
+      <h3>Espelho de Ponto</h3>
+      <div id="tabelaPonto"><div class="loading">Carregando...</div></div>
     </div>
   `);
-
-  listarEspelho();
+  await carregarEspelhoPonto();
 }
 
-async function registrarPonto() {
-  const r = await api("registrarPonto", {
-    Colaborador: getVal("Colaborador"),
-    Unidade: getVal("Unidade"),
-    TipoBatida: getVal("TipoBatida"),
+async function baterPonto() {
+  const colaborador = el("#pontoColaborador").value.trim();
+  if (!colaborador) { toast("Selecione o colaborador.", "err"); return; }
+
+  const dados = {
+    Colaborador: colaborador,
+    Unidade: el("#pontoUnidade").value.trim(),
+    TipoBatida: el("#pontoTipo").value,
     Dispositivo: navigator.userAgent
-  });
+  };
 
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Ponto registrado.") : msgErr(r.erro);
-  listarEspelho();
-}
-
-async function listarEspelho() {
-  const r = await api("listarEspelhoPonto");
-
-  if (r.ok) {
-    el("espelho").innerHTML = tabela(r.espelho || [], [
-      ["Data", "Data"],
-      ["Colaborador", "Colaborador"],
-      ["Unidade", "Unidade"],
-      ["Batidas", "Batidas"],
-      ["HorasTrabalhadas", "Horas"],
-      ["Alertas", "Alertas"]
-    ]);
-  } else {
-    el("espelho").innerHTML = msgErr(r.erro || "Erro ao listar espelho.");
+  try {
+    const r = await api("registrarPonto", dados);
+    toast(r.msg, "ok");
+    await carregarEspelhoPonto();
+  } catch (e) {
+    toast(e.message, "err");
   }
 }
 
-async function solicitarAjustePonto() {
-  const r = await api("solicitarAjustePonto", {
-    Colaborador: getVal("Colaborador"),
-    Unidade: getVal("Unidade"),
-    Data: getVal("Data"),
-    Hora: getVal("Hora"),
-    TipoBatida: getVal("TipoBatidaAjuste"),
-    Justificativa: getVal("Justificativa")
-  });
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Solicitação enviada.") : msgErr(r.erro);
-}
-
-async function telaFeedbacks() {
-  set(`
-    <div class="card">
-      <h2>Feedbacks</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${selectColaborador()}
-        ${campo("Data", "Data", "date")}
-        ${campo("Nota", "Nota", "number", 'step="0.1"')}
-        <div>
-          <label>Tipo</label>
-          <select id="Tipo">
-            <option>FEEDBACK DE DESENVOLVIMENTO</option>
-            <option>FEEDBACK POSITIVO</option>
-            <option>FEEDBACK CORRETIVO</option>
-          </select>
-        </div>
-        ${campo("Prazo", "Prazo", "date")}
-      </div>
-
-      <label style="margin-top:14px">Pontos fortes</label>
-      <textarea id="PontosFortes"></textarea>
-
-      <label>Pontos de melhoria</label>
-      <textarea id="PontosMelhoria"></textarea>
-
-      <label>Plano de ação</label>
-      <textarea id="PlanoAcao"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarFeedback()">Salvar feedback</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Feedbacks registrados</h3>
-      <div id="listaFeedbacks">Carregando...</div>
-    </div>
-  `);
-
-  await listarFeedbacks();
-}
-
-async function listarFeedbacks() {
-  const r = await api("listarFeedbacks");
-
-  if (r.ok) {
-    el("listaFeedbacks").innerHTML = tabela(r.feedbacks || [], [
-      ["Data", "Data"],
-      ["Unidade", "Unidade"],
-      ["Lider", "Líder"],
-      ["Colaborador", "Colaborador"],
-      ["Tipo", "Tipo"],
-      ["Nota", "Nota"],
-      ["PlanoAcao", "Plano"]
-    ]);
-  } else {
-    el("listaFeedbacks").innerHTML = msgErr(r.erro || "Erro ao listar feedbacks.");
+async function carregarEspelhoPonto() {
+  try {
+    const r = await api("listarEspelhoPonto");
+    document.getElementById("tabelaPonto").innerHTML =
+      tabelaComBadge(r.espelho, ["Data", "Colaborador", "Unidade", "Batidas", "Alertas"]);
+  } catch (e) {
+    document.getElementById("tabelaPonto").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
 
-async function salvarFeedback() {
-  const r = await api("salvarFeedback", formData([
-    "Unidade",
-    "Colaborador",
-    "Data",
-    "Nota",
-    "Tipo",
-    "Prazo",
-    "PontosFortes",
-    "PontosMelhoria",
-    "PlanoAcao"
-  ]));
+/* ===================== ASSISTENTE IA ===================== */
 
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Feedback salvo.") : msgErr(r.erro);
-  if (r.ok) listarFeedbacks();
-}
-
-async function telaExperiencia() {
-  set(`
+async function renderAssistente() {
+  setMain(`
+    <div class="page-title"><div><h2>Assistente</h2><p>Pergunte sobre vagas, colaboradores, aniversariantes, estoque ou testes.</p></div></div>
     <div class="card">
-      <h2>Período de Experiência</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${selectColaborador()}
-        ${campo("Cargo", "Cargo")}
-        ${campo("Data de Admissão", "DataAdmissao", "date")}
-        ${campo("Dias de Experiência", "DiasExperiencia", "number", 'value="90"')}
-        ${campo("Produtividade", "Produtividade", "number", 'step="0.1"')}
-        ${campo("Comportamento", "Comportamento", "number", 'step="0.1"')}
-        ${campo("Pontualidade", "Pontualidade", "number", 'step="0.1"')}
-        ${campo("Equipe", "Equipe", "number", 'step="0.1"')}
-        ${campo("Técnica", "Tecnica", "number", 'step="0.1"')}
-      </div>
-
-      <label style="margin-top:14px">Plano de ação</label>
-      <textarea id="PlanoAcao"></textarea>
-
+      <div id="chatArea" style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto;margin-bottom:14px;"></div>
       <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarExperiencia()">Salvar avaliação</button>
+        <input id="chatInput" type="text" style="flex:1" placeholder="Ex: quantas vagas estão abertas?" onkeydown="if(event.key==='Enter') perguntarAssistente()">
+        <button class="btn btn-primary" onclick="perguntarAssistente()">Perguntar</button>
       </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Avaliações registradas</h3>
-      <div id="listaAvaliacoes">Carregando...</div>
-    </div>
-  `);
-
-  await listarAvaliacoesExperiencia();
-}
-
-async function listarAvaliacoesExperiencia() {
-  const r = await api("listarAvaliacoesExperiencia");
-
-  if (r.ok) {
-    el("listaAvaliacoes").innerHTML = tabela(r.avaliacoes || [], [
-      ["Data", "Data"],
-      ["Unidade", "Unidade"],
-      ["Lider", "Líder"],
-      ["Colaborador", "Colaborador"],
-      ["Media", "Média"],
-      ["Resultado", "Resultado"],
-      ["Parecer", "Parecer"]
-    ]);
-  } else {
-    el("listaAvaliacoes").innerHTML = msgErr(r.erro || "Erro ao listar avaliações.");
-  }
-}
-
-async function salvarExperiencia() {
-  const r = await api("salvarAvaliacaoExperiencia", formData([
-    "Unidade",
-    "Colaborador",
-    "Cargo",
-    "DataAdmissao",
-    "DiasExperiencia",
-    "Produtividade",
-    "Comportamento",
-    "Pontualidade",
-    "Equipe",
-    "Tecnica",
-    "PlanoAcao"
-  ]));
-
-  el("msg").innerHTML = r.ok
-    ? msgOk(`${r.msg || "Avaliação salva."} ${r.resultado ? "Resultado: " + r.resultado : ""}`)
-    : msgErr(r.erro);
-
-  if (r.ok) listarAvaliacoesExperiencia();
-}
-
-async function telaTreinamentos() {
-  set(`
-    <div class="card">
-      <h2>Treinamentos</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${campo("Data", "Data", "date")}
-        ${campo("Tema", "Tema")}
-        <div>
-          <label>Tipo</label>
-          <select id="Tipo">
-            <option>OPERACIONAL</option>
-            <option>COMPORTAMENTAL</option>
-            <option>OBRIGATÓRIO</option>
-            <option>SEGURANÇA</option>
-          </select>
-        </div>
-        ${campo("Horas Dadas", "HorasDadas", "number", 'step="0.1"')}
-        ${campo("Horas Assistidas", "HorasAssistidas", "number", 'step="0.1"')}
-      </div>
-
-      <label style="margin-top:14px">Participantes manuais</label>
-      <textarea id="ParticipantesManuais"></textarea>
-
-      <label>Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarTreinamento()">Salvar treinamento</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Treinamentos registrados</h3>
-      <div id="listaTreinamentos">Carregando...</div>
-    </div>
-  `);
-
-  await listarTreinamentos();
-}
-
-async function listarTreinamentos() {
-  const r = await api("listarTreinamentos");
-
-  if (r.ok) {
-    el("listaTreinamentos").innerHTML = tabela(r.treinamentos || [], [
-      ["Data", "Data"],
-      ["Unidade", "Unidade"],
-      ["Tema", "Tema"],
-      ["Tipo", "Tipo"],
-      ["LiderResponsavel", "Responsável"],
-      ["HorasDadas", "Horas Dadas"],
-      ["HorasAssistidas", "Horas Assistidas"]
-    ]);
-  } else {
-    el("listaTreinamentos").innerHTML = msgErr(r.erro || "Erro ao listar treinamentos.");
-  }
-}
-
-async function salvarTreinamento() {
-  const r = await api("salvarTreinamento", formData([
-    "Unidade",
-    "Data",
-    "Tema",
-    "Tipo",
-    "HorasDadas",
-    "HorasAssistidas",
-    "ParticipantesManuais",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Treinamento salvo.") : msgErr(r.erro);
-  if (r.ok) listarTreinamentos();
-}
-
-async function telaFardamento() {
-  set(`
-    <div class="card">
-      <h2>Fardamento & EPI</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${campo("Item", "Item")}
-        <div>
-          <label>Tipo</label>
-          <select id="Tipo">
-            <option>FARDAMENTO</option>
-            <option>EPI</option>
-          </select>
-        </div>
-        ${campo("Tamanho", "Tamanho")}
-        ${campo("Quantidade Estoque", "QuantidadeEstoque", "number")}
-        ${campo("Quantidade Mínima", "QuantidadeMinima", "number")}
-        ${campo("Fornecedor", "Fornecedor")}
-      </div>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarFardamento()">Salvar estoque</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Estoque</h3>
-      <div id="listaFardamento">Carregando...</div>
-    </div>
-  `);
-
-  await listarFardamento();
-}
-
-async function listarFardamento() {
-  const r = await api("listarFardamento");
-
-  if (r.ok) {
-    el("listaFardamento").innerHTML = tabela(r.fardamento || [], [
-      ["Unidade", "Unidade"],
-      ["Item", "Item"],
-      ["Tipo", "Tipo"],
-      ["Tamanho", "Tamanho"],
-      ["QuantidadeEstoque", "Estoque"],
-      ["QuantidadeMinima", "Mínimo"],
-      ["Status", "Status"]
-    ]);
-  } else {
-    el("listaFardamento").innerHTML = msgErr(r.erro || "Erro ao listar fardamento.");
-  }
-}
-
-async function salvarFardamento() {
-  const r = await api("salvarFardamento", formData([
-    "Unidade",
-    "Item",
-    "Tipo",
-    "Tamanho",
-    "QuantidadeEstoque",
-    "QuantidadeMinima",
-    "Fornecedor"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Estoque salvo.") : msgErr(r.erro);
-  if (r.ok) listarFardamento();
-}
-
-async function telaMural() {
-  set(`
-    <div class="card">
-      <h2>Mural</h2>
-
-      <div class="grid g2">
-        ${campo("Título", "Titulo")}
-        ${selectUnidade("Unidade", "Unidade ou TODAS")}
-      </div>
-
-      <label style="margin-top:14px">Mensagem</label>
-      <textarea id="Mensagem"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarMural()">Publicar</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Publicações</h3>
-      <div id="listaMural">Carregando...</div>
-    </div>
-  `);
-
-  await listarMural();
-}
-
-async function listarMural() {
-  const r = await api("listarMural");
-
-  if (r.ok) {
-    el("listaMural").innerHTML = tabela(r.mural || [], [
-      ["Data", "Data"],
-      ["Titulo", "Título"],
-      ["Mensagem", "Mensagem"],
-      ["Unidade", "Unidade"],
-      ["PublicadoPor", "Publicado por"]
-    ]);
-  } else {
-    el("listaMural").innerHTML = msgErr(r.erro || "Erro ao listar mural.");
-  }
-}
-
-async function salvarMural() {
-  const unidade = getVal("Unidade") || "TODAS";
-
-  const r = await api("salvarMural", {
-    Titulo: getVal("Titulo"),
-    Mensagem: getVal("Mensagem"),
-    Unidade: unidade
-  });
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Publicação salva.") : msgErr(r.erro);
-  if (r.ok) listarMural();
-}
-
-async function telaIA() {
-  set(`
-    <div class="card">
-      <h2>Assistente IA</h2>
-      <p class="muted">
-        Pergunte sobre escala, ponto, feedback, experiência, vagas, fardamento, indicadores e SLA.
-      </p>
-
-      <label>Pergunta</label>
-      <textarea id="pergunta"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="perguntarIA()">Perguntar</button>
-      </div>
-
-      <div id="respostaIA" style="margin-top:14px"></div>
     </div>
   `);
 }
 
-async function perguntarIA() {
-  el("respostaIA").innerHTML = `<div class="loading">Consultando assistente...</div>`;
+async function perguntarAssistente() {
+  const input = el("#chatInput");
+  const pergunta = input.value.trim();
+  if (!pergunta) return;
+  input.value = "";
 
-  const r = await api("assistenteIA", {
-    pergunta: getVal("pergunta")
-  });
+  const area = el("#chatArea");
+  area.insertAdjacentHTML("beforeend", `<div class="msg info" style="align-self:flex-end;background:#dbeafe;color:#1e40af;">${escapeHtml(pergunta)}</div>`);
+  area.scrollTop = area.scrollHeight;
 
-  el("respostaIA").innerHTML = r.ok
-    ? `<div class="card"><strong>Resposta:</strong><p>${esc(r.resposta || "")}</p></div>`
-    : msgErr(r.erro || "Erro ao consultar IA.");
-}
-
-async function telaIndicadores() {
-  set(`
-    <div class="card">
-      <h2>Turnover / Absenteísmo / SLA</h2>
-
-      <div class="grid g3">
-        ${selectUnidade()}
-        ${campo("Mês", "Mes", "number", `value="${mesAtual()}"`)}
-        ${campo("Ano", "Ano", "number", `value="${anoAtual()}"`)}
-        ${campo("Turnover %", "TurnoverPercentual", "number", 'step="0.01"')}
-        ${campo("Absenteísmo %", "AbsenteismoPercentual", "number", 'step="0.01"')}
-        ${campo("SLA Dias", "SLA_Dias", "number", 'step="0.1"')}
-        ${campo("Vagas Fechadas", "VagasFechadas", "number")}
-      </div>
-
-      <label style="margin-top:14px">Observações</label>
-      <textarea id="Observacoes"></textarea>
-
-      <div class="actions">
-        <button class="btn btn-primary primary" onclick="salvarIndicador()">Salvar Turnover/Absenteísmo</button>
-        <button class="btn btn-secondary secondary" onclick="salvarSLA()">Salvar SLA</button>
-      </div>
-
-      <div id="msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Indicadores mensais</h3>
-      <div id="listaIndicadores">Carregando...</div>
-    </div>
-  `);
-
-  await listarIndicadores();
-}
-
-async function listarIndicadores() {
-  const r = await api("listarIndicadoresMensais");
-
-  if (r.ok) {
-    el("listaIndicadores").innerHTML = tabela(r.indicadores || [], [
-      ["Mes", "Mês"],
-      ["Ano", "Ano"],
-      ["Unidade", "Unidade"],
-      ["TurnoverPercentual", "Turnover %"],
-      ["AbsenteismoPercentual", "Absenteísmo %"],
-      ["AtualizadoPor", "Atualizado por"]
-    ]);
-  } else {
-    el("listaIndicadores").innerHTML = msgErr(r.erro || "Erro ao listar indicadores.");
+  try {
+    const r = await api("assistenteIA", { pergunta: pergunta });
+    area.insertAdjacentHTML("beforeend", `<div class="msg ok">${escapeHtml(r.resposta)}</div>`);
+  } catch (e) {
+    area.insertAdjacentHTML("beforeend", `<div class="msg err">${escapeHtml(e.message)}</div>`);
   }
-}
-
-async function salvarIndicador() {
-  const r = await api("salvarIndicadorMensal", formData([
-    "Unidade",
-    "Mes",
-    "Ano",
-    "TurnoverPercentual",
-    "AbsenteismoPercentual",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "Indicador salvo.") : msgErr(r.erro);
-  if (r.ok) listarIndicadores();
-}
-
-async function salvarSLA() {
-  const r = await api("salvarSLA", formData([
-    "Unidade",
-    "Mes",
-    "Ano",
-    "SLA_Dias",
-    "VagasFechadas",
-    "Observacoes"
-  ]));
-
-  el("msg").innerHTML = r.ok ? msgOk(r.msg || "SLA salvo.") : msgErr(r.erro);
+  area.scrollTop = area.scrollHeight;
 }

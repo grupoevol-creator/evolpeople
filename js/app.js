@@ -4,7 +4,8 @@ let USER = null;
 let INIT = {
   unidades: [],
   cargos: [],
-  colaboradores: []
+  colaboradores: [],
+  salarios: []
 };
 
 let TELA = "dashboard";
@@ -238,15 +239,55 @@ function campo(label, id, type = "text", extra = "") {
 }
 
 function selectUnidade(id = "Unidade", label = "Unidade") {
+  const onchange = id === "Unidade" ? ' onchange="onUnidadeChange()"' : "";
   return `
     <div>
       <label>${label}</label>
-      <select id="${id}">
+      <select id="${id}"${onchange}>
         <option value="">Selecione</option>
         ${INIT.unidades.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join("")}
       </select>
     </div>
   `;
+}
+
+// Retorna os cargos disponíveis para a unidade escolhida (com salário daquela unidade).
+// Se a unidade não tiver referência salarial, cai na lista genérica de cargos.
+function cargosDaUnidade(uni) {
+  const daUni = (INIT.salarios || []).filter(s => norm(s.Unidade) === norm(uni));
+  if (daUni.length) {
+    return daUni.map(s => ({
+      Cargo: s.Cargo,
+      SalarioBase: s.SalarioFixo,
+      Complementar: s.Complemento,
+      VariavelTeto: s.VariavelTeto || 0
+    }));
+  }
+  return (INIT.cargos || []).map(c => ({
+    Cargo: c.Cargo,
+    SalarioBase: c.SalarioBase,
+    Complementar: c.Complementar,
+    VariavelTeto: 0
+  }));
+}
+
+// Reconstrói o <select id="Cargo"> com base na unidade selecionada.
+function onUnidadeChange() {
+  const sel = el("Cargo");
+  if (!sel) return;
+  const lista = cargosDaUnidade(getVal("Unidade"));
+  const vistos = {};
+  let opts = `<option value="">Selecione</option>`;
+  lista.forEach(c => {
+    const k = norm(c.Cargo);
+    if (!c.Cargo || vistos[k]) return;
+    vistos[k] = 1;
+    opts += `<option value="${esc(c.Cargo)}"
+      data-base="${Number(c.SalarioBase || 0)}"
+      data-comp="${Number(c.Complementar || 0)}"
+      data-variavel="${Number(c.VariavelTeto || 0)}">${esc(c.Cargo)}</option>`;
+  });
+  sel.innerHTML = opts;
 }
 
 function selectCargo(id = "Cargo", label = "Cargo") {
@@ -423,6 +464,7 @@ async function carregarInit() {
     INIT.unidades = r.unidades || [];
     INIT.cargos = r.cargos || [];
     INIT.colaboradores = r.colaboradores || [];
+    INIT.salarios = r.salarios || [];
   } else {
     toast(r.erro || "Erro ao carregar dados iniciais.", "err");
   }
@@ -647,6 +689,12 @@ function preencherSalarioPorCargo() {
 
   if (el("SalarioBase")) el("SalarioBase").value = opt.dataset.base || "";
   if (el("Complementar")) el("Complementar").value = opt.dataset.comp || "";
+
+  const varTeto = Number(opt.dataset.variavel || 0);
+  if (el("VariavelTeto")) el("VariavelTeto").value = varTeto || "";
+  if (varTeto > 0) {
+    toast("Rio Mar: variável pode chegar até " + moeda(varTeto), "info");
+  }
 }
 
 async function telaCargos() {

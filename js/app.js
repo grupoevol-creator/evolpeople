@@ -1,5 +1,5 @@
 // ===== EVOL PEOPLE — Frontend v9.0 =====
-const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycby-EYnZaursYaJV5YNCF9bxGEaIBsDp0eHofZfwLfSGE_M2r0oAnSmJgBQDKe5nzBZR/exec';
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbwUCTuN7465i85rjUBwHTL6E9FSv1oZNLVeq2q29eukg0mWCjLhuUsNb4VB7w4abbA/exec';
 
 let USUARIO = null;
 let UNIDADE_SELECIONADA = null;
@@ -38,6 +38,14 @@ async function api(acao, dados) {
 function formatarMoeda(v) { const n = Number(v||0); return 'R$ ' + n.toLocaleString('pt-BR', {minimumFractionDigits:2,maximumFractionDigits:2}); }
 function esc(t) { return String(t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function renderApp(h) { const a = document.getElementById('app'); if (a) a.innerHTML = h; }
+
+// Unidades oficiais padronizadas (iguais as da planilha)
+const UNIDADES_OFICIAIS = ['PARRILEIRO SUL','PARRILEIRO ALDEOTA','PARRILEIRO RIO MAR','SEU CONRADO EUSÉBIO','EVOL (MATRIZ)'];
+function selectUnidadeHtml(id, selecionada) {
+  const sel = selecionada || UNIDADE_SELECIONADA || '';
+  const ops = UNIDADES_OFICIAIS.map(u => '<option value="'+esc(u)+'" '+(u===sel?'selected':'')+'>'+esc(u)+'</option>').join('');
+  return '<select id="'+id+'">'+ops+'</select>';
+}
 
 function telaLogin() {
   TELA_ATUAL = 'login';
@@ -241,7 +249,7 @@ function mostrarFormVaga() {
     + '<div class="grid-form">'
     + '<div class="campo"><label>Vaga</label><input type="text" id="vagaTitulo" required/></div>'
     + '<div class="campo"><label>Setor</label><input type="text" id="vagaSetor" required/></div>'
-    + '<div class="campo"><label>Unidade</label><input type="text" id="vagaUnidade" value="'+esc(UNIDADE_SELECIONADA||'')+'" required/></div>'
+    + '<div class="campo"><label>Unidade</label>'+selectUnidadeHtml('vagaUnidade')+'</div>'
     + '<div class="campo"><label>Gestor</label><input type="text" id="vagaGestor"/></div>'
     + '<div class="campo"><label>Motivo</label><input type="text" id="vagaMotivo"/></div>'
     + '</div>'
@@ -274,7 +282,7 @@ async function telaColaboradores() {
   renderApp('<div class="card"><h2>Colaboradores</h2>'
     + (cols.length
       ? '<table class="tabela"><thead><tr><th>ID</th><th>Nome</th><th>Funcao</th><th>Unidade</th><th>Admissao</th></tr></thead><tbody>'
-        + cols.map(l => '<tr><td>'+esc(l[0])+'</td><td>'+esc(l[1])+'</td><td>'+esc(l[2])+'</td><td>'+esc(l[6])+'</td><td>'+esc(l[18]||'')+'</td></tr>').join('')
+        + cols.slice(1).filter(l => l[1]).map(l => '<tr><td>'+esc(l[0])+'</td><td>'+esc(l[1])+'</td><td>'+esc(l[2])+'</td><td>'+esc(l[6])+'</td><td>'+esc(l[12]||'')+'</td></tr>').join('')
         + '</tbody></table>'
       : '<p>Sem colaboradores.</p>')
     + '</div>');
@@ -574,12 +582,59 @@ async function telaEpisFardamento() {
 }
 
 // ===== DOSSIE =====
-function telaDossie() {
-  renderApp('<div class="card"><h2>Dossie</h2><div class="grid-form">'
-    + '<div class="campo"><label>Nome</label><p>'+esc(USUARIO.nome||'')+'</p></div>'
-    + '<div class="campo"><label>Perfil</label><p>'+esc(USUARIO.perfil||'')+'</p></div>'
-    + '<div class="campo"><label>Unidade(s)</label><p>'+esc((USUARIO.unidades||[]).join(', '))+'</p></div>'
-    + '</div></div>');
+let DOSSIE_LISTA = [];
+async function telaDossie() {
+  // Colaborador ve apenas o proprio dossie
+  if (USUARIO.perfil === 'COLABORADOR') {
+    renderApp('<div class="card"><h2>Meu Dossie</h2><div class="grid-form">'
+      + '<div class="campo"><label>Nome</label><p>'+esc(USUARIO.nome||'')+'</p></div>'
+      + '<div class="campo"><label>Perfil</label><p>'+esc(USUARIO.perfil||'')+'</p></div>'
+      + '<div class="campo"><label>Unidade(s)</label><p>'+esc((USUARIO.unidades||[]).join(', '))+'</p></div>'
+      + '</div></div>');
+    return;
+  }
+  renderApp('<div class="card"><p>Carregando pessoas...</p></div>');
+  const res = await api('listarMeusLiderados', { cpf: USUARIO.cpf, senha: USUARIO.senha, unidadeFiltro: UNIDADE_SELECIONADA });
+  DOSSIE_LISTA = (res.sucesso ? res.liderados : []) || [];
+  if (!DOSSIE_LISTA.length) {
+    renderApp('<div class="card"><h2>Dossie</h2><p>'+(res.sucesso ? 'Nenhuma pessoa disponivel para o seu perfil.' : 'Erro: '+esc(res.erro||''))+'</p></div>');
+    return;
+  }
+  const ops = DOSSIE_LISTA.map((c,i) => '<option value="'+i+'">'+esc(c.nome)+' — '+esc(c.unidade)+'</option>').join('');
+  renderApp('<div class="card"><h2>Dossie do Colaborador</h2>'
+    + '<div class="grid-form">'
+    + '<div class="campo"><label>Buscar por nome</label><input type="text" id="dossieBusca" placeholder="Digite para filtrar..." oninput="filtrarDossie(this.value)"/></div>'
+    + '<div class="campo"><label>Colaborador</label><select id="dossieSelect" size="8" style="height:auto;" onchange="abrirDossie(this.value)">'+ops+'</select></div>'
+    + '</div></div>'
+    + '<div id="dossieDetalhe"></div>');
+}
+function filtrarDossie(termo) {
+  const t = String(termo||'').toUpperCase();
+  const sel = document.getElementById('dossieSelect'); if (!sel) return;
+  sel.innerHTML = DOSSIE_LISTA
+    .map((c,i) => ({c,i}))
+    .filter(x => (x.c.nome||'').toUpperCase().indexOf(t) !== -1)
+    .map(x => '<option value="'+x.i+'">'+esc(x.c.nome)+' — '+esc(x.c.unidade)+'</option>').join('');
+}
+async function abrirDossie(indice) {
+  const c = DOSSIE_LISTA[Number(indice)]; if (!c) return;
+  const div = document.getElementById('dossieDetalhe');
+  if (div) div.innerHTML = '<div class="card"><p>Carregando dossie de '+esc(c.nome)+'...</p></div>';
+  const res = await api('dossie', { cpf: USUARIO.cpf, senha: USUARIO.senha, id: c.id });
+  if (!res.sucesso) { if (div) div.innerHTML = '<div class="card"><p>Erro: '+esc(res.erro||'')+'</p></div>'; return; }
+  const d = res.colaborador || {};
+  if (div) div.innerHTML = '<div class="card"><h3>'+esc(d.nome||'')+'</h3><div class="grid-form">'
+    + '<div class="campo"><label>Funcao</label><p>'+esc(d.funcao||'-')+'</p></div>'
+    + '<div class="campo"><label>Unidade</label><p>'+esc(d.unidade||'-')+'</p></div>'
+    + '<div class="campo"><label>Status Admissao</label><p>'+esc(d.statusAdmissao||'-')+'</p></div>'
+    + '<div class="campo"><label>Data de Admissao</label><p>'+esc(d.dataAdmissao||'-')+'</p></div>'
+    + '<div class="campo"><label>Integracao</label><p>'+esc(d.statusIntegracao||'-')+(d.dataIntegracao?(' ('+esc(d.dataIntegracao)+')'):'')+'</p></div>'
+    + '<div class="campo"><label>Data de Nascimento</label><p>'+esc(d.dataNascimento||'-')+'</p></div>'
+    + '<div class="campo"><label>Horario</label><p>'+esc(d.horario||'-')+'</p></div>'
+    + '<div class="campo"><label>Folga</label><p>'+esc(d.folga||'-')+'</p></div>'
+    + '<div class="campo"><label>Salario</label><p>'+esc(d.salario||'-')+'</p></div>'
+    + '<div class="campo"><label>Salario Total</label><p>'+esc(d.totalSalario||'-')+'</p></div>'
+    + '</div></div>';
 }
 
 // ===== PDI (visualizacao do colaborador) =====

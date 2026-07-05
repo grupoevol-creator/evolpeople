@@ -343,6 +343,7 @@ textarea[readonly] {
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 12px;
+  align-items: center;
 }
 
 .btn {
@@ -733,4 +734,43 @@ hr {
   .page-title {
     flex-direction: column;
   }
+}
+
+/* =====================================================================
+ * ACRÉSCIMOS — necessários para o app.js (login, formulários, chat)
+ * ===================================================================== */
+
+/* Tela de login centralizada mesmo com body inteiro */
+#loginScreen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+#loginScreen .card {
+  width: 100%;
+}
+
+/* Campos que ocupam as duas colunas do grid do formulário (ex: Nome, Observações) */
+.form-row.g2 {
+  grid-column: span 2;
+}
+
+@media (max-width: 700px) {
+  .form-row.g2 {
+    grid-column: span 1;
+  }
+}
+
+/* Balões de mensagem do assistente / chat */
+#chatArea .msg {
+  max-width: 80%;
+  margin: 0;
+}
+
+/* Badges extras usados no formatador de célula do app.js */
+.badge.info {
+  background: #dbeafe;
+  color: #1e40af;
 }

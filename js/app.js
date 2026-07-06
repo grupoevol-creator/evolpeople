@@ -302,6 +302,16 @@ async function navegar(key) {
 
 /* ===================== DASHBOARD ===================== */
 
+function tabelaSlaMes(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Mês</th><th>Vagas Encerradas</th><th>Tempo Médio (dias)</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Mes)}</td><td>${escapeHtml(l.Encerradas)}</td>
+      <td>${l.SLADias === "" ? "—" : escapeHtml(l.SLADias) + " dias"}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
 function tabelaSlaUnidade(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
   return `<div class="table-wrap"><table>
@@ -363,13 +373,24 @@ async function renderDashboard(unidade) {
 
     <div class="grid g2">
       <div class="card">
-        <h3>⏱️ SLA de Vagas por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático do Controle de Vagas)</span></h3>
-        ${tabelaSlaUnidade(dash.slaPorUnidade)}
+        <h3>⏱️ SLA de Vagas por Mês <span class="muted" style="font-weight:400;font-size:12px">(tempo médio de fechamento)</span></h3>
+        ${tabelaSlaMes(dash.slaPorMes)}
       </div>
       <div class="card">
         <h3>🔄 Turnover e Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(editável em Indicadores Mensais)</span></h3>
         ${tabelaIndicadores(dash.indicadores)}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>📝 Avaliações de Período de Experiência</h3>
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="kpi" style="border-left-color:var(--info)"><small>Total</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.total) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--ok)"><small>Efetivar</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.efetivar) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--warn)"><small>Acompanhar</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.acompanhar) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--bad)"><small>Não Efetivar</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.naoEfetivar) || 0}</strong></div>
+      </div>
+      ${tabelaComBadge((dash.avaliacoesExp && dash.avaliacoesExp.recentes) || [], ["Colaborador", "Unidade", "Etapa", "Resultado"])}
     </div>
 
     <div class="grid g2">
@@ -559,14 +580,14 @@ async function renderUniversidade() {
     <div class="page-title"><div><h2>🎓 Universidade Evol</h2><p>Trilhas de desenvolvimento do Grupo Evol. Clique em "Ver conteúdo" para abrir o módulo.</p></div></div>
 
     <div class="card">
-      <h3>🎓 Academia de Novos Talentos <span class="muted" style="font-weight:400;font-size:13px">— Guia dos 12 Módulos</span></h3>
-      <p class="card-subtitle">Formação de base para desenvolver novos talentos, do autoconhecimento ao projeto de crescimento pessoal.</p>
+      <h3>🎓 Academia de Novos Talentos <span class="badge info">Para Colaboradores</span></h3>
+      <p class="card-subtitle">Trilha de base para os colaboradores, do autoconhecimento ao projeto de crescimento pessoal.</p>
       ${tabelaModulos(ACADEMIA_NOVOS_TALENTOS, "Módulo", "TALENTOS", "Módulo ")}
     </div>
 
     <div class="card">
-      <h3>👑 Academia de Líderes <span class="muted" style="font-weight:400;font-size:13px">— Programa de 12 meses</span></h3>
-      <p class="card-subtitle">Desenvolvimento de líderes: do papel do líder moderno à liderança integrada com PDI.</p>
+      <h3>👑 Academia de Líderes <span class="badge orange">Somente Liderança</span></h3>
+      <p class="card-subtitle">Programa de 12 meses exclusivo para a liderança: do papel do líder moderno à liderança integrada com PDI.</p>
       ${tabelaModulos(ACADEMIA_LIDERES, "Tema do Mês", "LIDERES", "")}
     </div>
   `);
@@ -892,10 +913,10 @@ async function renderVagas() {
     ${r.erroAba ? `<div class="msg warn">${escapeHtml(r.erroAba)}</div>` : ""}
 
     <div class="grid g4">
-      <div class="kpi"><small>Vagas em Aberto</small><strong>${k.aberto || 0}</strong></div>
-      <div class="kpi" style="border-left-color:var(--bad)"><small>Abertas com SLA Crítico</small><strong>${k.slaCritico || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Em Seleção</small><strong>${k.selecao || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Em Teste</small><strong>${k.teste || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--ok)"><small>Encerradas</small><strong>${k.encerradas || 0}</strong></div>
-      <div class="kpi" style="border-left-color:var(--warn)"><small>Canceladas</small><strong>${k.canceladas || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--bad)"><small>Canceladas</small><strong>${k.canceladas || 0}</strong></div>
     </div>
 
     <div class="card">
@@ -948,7 +969,7 @@ function filtrarVagas() {
 
   const cols = [
     ["ID", ["ID"]], ["VAGA", ["VAGA"]], ["UNIDADE", ["UNIDADE"]], ["SETOR", ["SETOR"]],
-    ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
+    ["MOTIVO", ["MOTIVO"]], ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
     ["DIAS EM ABERTO", ["DIAS EM ABERTO"]], ["CANDIDATO", ["CANDIDATO"]],
     ["STATUS", ["STATUS"]], ["SLA", ["SLA STATUS", "SLA"]]
   ];
@@ -956,11 +977,27 @@ function filtrarVagas() {
   if (!filtradas.length) { el("#tabelaVagas").innerHTML = `<div class="empty">Nenhuma vaga encontrada.</div>`; return; }
   el("#tabelaVagas").innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr>${cols.map(c => `<th>${escapeHtml(c[0])}</th>`).join("")}</tr></thead>
+      <thead><tr>${cols.map(c => `<th>${escapeHtml(c[0])}</th>`).join("")}<th>Alterar Status</th></tr></thead>
       <tbody>
-        ${filtradas.map(v => `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}</tr>`).join("")}
+        ${filtradas.map(v => {
+          const id = vagaGet(v, ["ID"]);
+          const st = normalize(vagaGet(v, ["STATUS"]));
+          const opts = ["ABERTA", "SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
+          const selHtml = `<select onchange="mudarStatusVagaUI('${escapeHtml(id)}', this.value)" style="min-width:130px">
+            ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
+          </select>`;
+          return `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}<td>${id ? selHtml : ""}</td></tr>`;
+        }).join("")}
       </tbody>
     </table></div>`;
+}
+
+async function mudarStatusVagaUI(id, status) {
+  try {
+    const r = await api("mudarStatusVaga", { id: id, status: status });
+    toast(r.msg, "ok");
+    await renderVagas();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 function formatarVagaCelula(coluna, valor) {
@@ -985,12 +1022,75 @@ function formatarVagaCelula(coluna, valor) {
 
 const SETORES = ["Cozinha", "Salão", "Bar", "Almoxarifado", "Administrativo", "Limpeza", "Caixa", "Recepção", "DP", "Compras"];
 
+// Líderes e sócios operadores por unidade (solicitantes de vaga): [nome, unidade, perfil]
+const SOLICITANTES = [
+  ["Pablo Macedo", "PARRILEIRO ALDEOTA", "Liderança"],
+  ["Roger Fernando", "PARRILEIRO ALDEOTA", "Liderança"],
+  ["Leidiana Silveira", "PARRILEIRO ALDEOTA", "Liderança"],
+  ["David Lira", "PARRILEIRO ALDEOTA", "Liderança"],
+  ["Alan Souza", "PARRILEIRO ALDEOTA", "Sócio Operador"],
+  ["João Ricardo", "PARRILEIRO ALDEOTA", "Sócio Operador"],
+  ["João Ricardo", "PARRILEIRO SUL", "Sócio Operador"],
+  ["Amanda Linhares", "PARRILEIRO ALDEOTA", "Liderança"],
+  ["Denayre Monte", "EVOL", "Sócio Operador"],
+  ["Jeffany Alencar", "EVOL", "RH"],
+  ["Jéssica Monalisa", "EVOL", "RH"],
+  ["Anália Gabriely", "SEU CONRADO EUSÉBIO", "Sócio Operador"],
+  ["Mariano Maia", "SEU CONRADO EUSÉBIO", "Sócio Operador"],
+  ["Dney", "PARRILEIRO RIO MAR", "Liderança"],
+  ["Saulo Gomes", "PARRILEIRO RIO MAR", "Sócio Operador"],
+  ["Ralfo Ifanger", "PARRILEIRO RIO MAR", "Sócio Operador"],
+  ["Luiza Garzon", "EVOL", "Liderança"],
+  ["Bruno Ribeiro", "PARRILEIRO SUL", "Liderança"],
+  ["Cardone Jr", "PARRILEIRO SUL", "Liderança"],
+  ["Cardone Jr", "SEU CONRADO EUSÉBIO", "Liderança"],
+  ["Paulo Sérgio", "SEU CONRADO EUSÉBIO", "Liderança"],
+  ["Larisse Mota", "SEU CONRADO EUSÉBIO", "Liderança"],
+  ["Jennifer Marques", "PARRILEIRO SUL", "Liderança"],
+  ["Gustavo Freitas", "EVOL", "Diretor"],
+  ["Victor Farias", "EVOL", "Diretor"],
+  ["Lucas Nogueira", "EVOL", "Diretor"]
+];
+
+// Perfil de um solicitante (opcionalmente dentro de uma unidade).
+function perfilSolicitante(nome, unidade) {
+  const n = normalize(nome), u = normalize(unidade);
+  let achou = SOLICITANTES.find(s => normalize(s[0]) === n && (!u || normalize(s[1]) === u));
+  if (!achou) achou = SOLICITANTES.find(s => normalize(s[0]) === n);
+  return achou ? achou[2] : "";
+}
+
+function solicitantesDaUnidade(unidade) {
+  const u = normalize(unidade);
+  const lider = (STATE.init.lideranca || []).map(l => l.Lider).filter(Boolean);
+  const base = !u ? SOLICITANTES.map(s => s[0]) : SOLICITANTES.filter(s => normalize(s[1]) === u).map(s => s[0]);
+  return [...new Set(base.concat(lider))].filter(Boolean).sort();
+}
+
+function filtrarSolicitantes() {
+  const u = el("#avUnidade") ? el("#avUnidade").value : "";
+  setDatalist("dl-solicitantes", solicitantesDaUnidade(u));
+}
+
+// Ao escolher o solicitante, já marca o perfil dele automaticamente.
+function autoPerfilSolicitante() {
+  const nome = el("#avSolicitante") ? el("#avSolicitante").value : "";
+  const uni = el("#avUnidade") ? el("#avUnidade").value : "";
+  const perfil = perfilSolicitante(nome, uni);
+  const sel = document.getElementById("avTipoSolic");
+  if (sel && perfil) {
+    let existe = Array.from(sel.options).some(o => o.value === perfil);
+    if (!existe) { const opt = document.createElement("option"); opt.value = perfil; opt.textContent = perfil; sel.appendChild(opt); }
+    sel.value = perfil;
+  }
+}
+
 function abrirVagaForm() {
   setMain(`
     <div class="page-title"><div><h2>Abrir Vaga</h2><p>A vaga entra no Controle de Vagas com status ABERTA e SLA de 10 dias.</p></div></div>
     <div class="card">
       <div class="grid g3">
-        <div class="form-row"><label>Unidade *</label><input id="avUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Unidade *</label><input id="avUnidade" type="text" list="dl-unidades" onchange="filtrarSolicitantes()"></div>
         <div class="form-row"><label>Vaga (cargo) *</label><input id="avVaga" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR"></div>
         <div class="form-row"><label>Setor *</label>
           <select id="avSetor"><option value="">Selecione...</option>${SETORES.map(s => `<option>${s}</option>`).join("")}</select>
@@ -1003,9 +1103,9 @@ function abrirVagaForm() {
         </div>
         <div class="form-row"><label>Colaborador substituído (se substituição)</label><input id="avSubstituido" type="text" list="dl-colaboradores" placeholder="Nome de quem saiu"></div>
         <div class="form-row"><label>Perfil do Solicitante *</label>
-          <select id="avTipoSolic"><option value="">Selecione...</option><option>Liderança</option><option>Sócio Operador</option></select>
+          <select id="avTipoSolic"><option value="">Selecione...</option><option>Liderança</option><option>Sócio Operador</option><option>RH</option><option>Diretor</option></select>
         </div>
-        <div class="form-row"><label>Solicitante *</label><input id="avSolicitante" type="text" list="dl-solicitantes" placeholder="Nome do solicitante"></div>
+        <div class="form-row"><label>Solicitante *</label><input id="avSolicitante" type="text" list="dl-solicitantes" placeholder="Nome do solicitante" onchange="autoPerfilSolicitante()"></div>
       </div>
       <div class="actions">
         <button class="btn btn-primary" onclick="submitAbrirVaga()">Abrir vaga</button>
@@ -1013,9 +1113,8 @@ function abrirVagaForm() {
       </div>
     </div>
   `);
-  // sugestões de solicitantes = líderes cadastrados na aba Lideranca
-  const lideres = (STATE.init.lideranca || []).map(l => l.Lider).filter(Boolean);
-  setDatalist("dl-solicitantes", lideres);
+  // sugestões de solicitantes = líderes/sócios cadastrados + aba Lideranca
+  setDatalist("dl-solicitantes", solicitantesDaUnidade(""));
 }
 
 async function submitAbrirVaga() {
@@ -1675,9 +1774,14 @@ function montarGradeEscala() {
   }
   function celula(e) {
     if (!e) return `<td style="text-align:center;color:#9ca3af">-</td>`;
-    if (normalize(e.Folga) === "SIM") return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
-    const h = fmtHoraCurta(e.HorarioEntrada) || "—";
-    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800">${escapeHtml(h)}</td>`;
+    if (normalize(e.Folga).indexOf("SIM") !== -1) return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
+    let txt = "";
+    const ent = fmtHoraCurta(e.HorarioEntrada), sai = fmtHoraCurta(e.HorarioSaida);
+    if (ent && sai) txt = ent + "–" + sai;
+    else if (ent) txt = ent;
+    else if (e.Turno) txt = ({ ABERTURA: "ABERT.", INTERMEDIARIO: "INTER.", FECHAMENTO: "FECH." }[normalize(e.Turno)] || e.Turno);
+    else txt = "TRAB.";
+    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800;white-space:nowrap">${escapeHtml(txt)}</td>`;
   }
 
   cont.innerHTML = `

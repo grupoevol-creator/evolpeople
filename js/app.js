@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ COLE AQUI A URL /exec DA SUA IMPLANTAÇÃO. Sem isto, nada carrega. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbzGaJwuLWC8JIGtiV5Y8CFk-VDtwJ4-zBy4-kqyrw__OCqtSIxCT_13tCZiDZXeoqp-/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbz_FzqChLmPpZdESPpz8Ajtwtp6ci2JvnrBbvAGzQCBNimR5gxk29kRun0HvxcAI6OA/exec"
 };
 
 const STATE = {
@@ -206,6 +206,7 @@ function atualizarDatalists() {
   setDatalist("dl-unidades", STATE.init.unidades);
   setDatalist("dl-cargos", STATE.init.cargos.map(c => c.Cargo));
   setDatalist("dl-colaboradores", STATE.init.colaboradores.map(c => c.Nome));
+  setDatalist("dl-bairros", BAIRROS_FORTALEZA.concat(MUNICIPIOS_RMF));
 }
 
 function setDatalist(id, valores) {
@@ -230,11 +231,11 @@ const GRUPOS_NAV = [
     { key: "colaboradores", label: "Colaboradores" },
     { key: "cargos", label: "Cargos e Salários" },
     { key: "unidades", label: "Unidades" },
-    { key: "lideranca", label: "Liderança" }
+    { key: "lideranca", label: "Liderança" },
+    { key: "dossie", label: "Dossiê" }
   ]},
   { titulo: "Recrutamento", itens: [
-    { key: "vagas", label: "Vagas" },
-    { key: "admissoes", label: "Admissões" },
+    { key: "vagas", label: "Recrutamento (Vagas)" },
     { key: "testes", label: "Teste Prático" }
   ]},
   { titulo: "Gestão de Pessoas", itens: [
@@ -247,7 +248,6 @@ const GRUPOS_NAV = [
   ]},
   { titulo: "Operações", itens: [
     { key: "fardamento", label: "Fardamento / Estoque" },
-    { key: "mural", label: "Mural" },
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
@@ -281,6 +281,11 @@ async function navegar(key) {
     if (key === "dashboard") return renderDashboard();
     if (key === "unidades") return renderUnidades();
     if (key === "lideranca") return renderLideranca();
+    if (key === "vagas") return renderVagas();
+    if (key === "testes") return renderTestePratico();
+    if (key === "experiencia") return renderExperiencia();
+    if (key === "feedbacks") return renderFeedback();
+    if (key === "dossie") return renderDossie();
     if (key === "escalas") return renderEscalas();
     if (key === "ponto") return renderPonto();
     if (key === "assistente") return renderAssistente();
@@ -293,41 +298,88 @@ async function navegar(key) {
 
 /* ===================== DASHBOARD ===================== */
 
-async function renderDashboard() {
+function tabelaSlaUnidade(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Unidade</th><th>Encerradas</th><th>Tempo Médio (dias)</th><th>Em Aberto Fora do SLA</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Unidade)}</td><td>${escapeHtml(l.Encerradas)}</td>
+      <td>${l.SLADias === "" ? "—" : escapeHtml(l.SLADias)}</td>
+      <td>${l.ForaSLA > 0 ? `<span class="badge bad">${escapeHtml(l.ForaSLA)}</span>` : escapeHtml(l.ForaSLA)}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+function tabelaIndicadores(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum indicador cadastrado. Edite em "Indicadores Mensais".</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Unidade</th><th>Turnover</th><th>Absenteísmo</th><th>Período</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Unidade)}</td><td>${escapeHtml(l.Turnover)}%</td>
+      <td>${escapeHtml(l.Absenteismo)}%</td><td>${escapeHtml(l.Periodo)}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+async function renderDashboard(unidade) {
   setMain(`<div class="loading">Carregando dashboard...</div>`);
-  const r = await api("dashboard");
-  const k = r.dashboard.kpis;
+  const r = await api("dashboard", unidade ? { unidade: unidade } : {});
+  const dash = r.dashboard;
+  const k = dash.kpis;
+  const unis = dash.unidades || [];
+  const sel = dash.filtroUnidade || "";
 
   setMain(`
     <div class="page-title">
-      <div><h2>Dashboard</h2><p>Visão geral da operação em tempo real.</p></div>
+      <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.</p></div>
+      <div style="min-width:230px">
+        <label>Filtrar por Unidade</label>
+        <select onchange="renderDashboard(this.value)">
+          <option value="">Todas as unidades</option>
+          ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(sel) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+        </select>
+      </div>
     </div>
 
     <div class="grid g4">
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
-      <div class="kpi"><small>Vagas Abertas</small><strong>${k.vagasAbertas}</strong></div>
+      <div class="kpi"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong></div>
       <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
-      <div class="kpi"><small>Admissões (7 dias)</small><strong>${k.admissoesSemana}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
       <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
       <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
       <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
     </div>
 
+    <div class="card">
+      <h3>👥 Headcount e Vagas por Unidade</h3>
+      ${tabelaSimples(dash.porUnidade, ["Unidade", "Headcount", "VagasAbertas"])}
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>⏱️ SLA de Vagas por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático do Controle de Vagas)</span></h3>
+        ${tabelaSlaUnidade(dash.slaPorUnidade)}
+      </div>
+      <div class="card">
+        <h3>🔄 Turnover e Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(editável em Indicadores Mensais)</span></h3>
+        ${tabelaIndicadores(dash.indicadores)}
+      </div>
+    </div>
+
     <div class="grid g2">
       <div class="card">
         <h3>🎂 Aniversariantes do Mês</h3>
-        ${tabelaSimples(r.dashboard.aniversariantes, ["Nome", "Unidade", "DataNascimento"])}
+        ${tabelaSimples(dash.aniversariantes, ["Nome", "Unidade", "DataNascimento"])}
       </div>
       <div class="card">
         <h3>⏳ Experiência Vencendo (15 dias)</h3>
-        ${tabelaSimples(r.dashboard.experienciaProximas, ["Nome", "Unidade", "Cargo", "FimExperiencia"])}
+        ${tabelaSimples(dash.experienciaProximas, ["Nome", "Unidade", "Cargo", "FimExperiencia"])}
       </div>
     </div>
 
     <div class="card">
       <h3>📦 Estoque Crítico de Fardamento</h3>
-      ${tabelaSimples(r.dashboard.estoqueCritico, ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima"])}
+      ${tabelaSimples(dash.estoqueCritico, ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima"])}
     </div>
   `);
 }
@@ -344,6 +396,671 @@ function tabelaSimples(linhas, colunas) {
       </table>
     </div>
   `;
+}
+
+/* ===================== VALE TRANSPORTE (por bairro/cidade) ===================== */
+
+const BAIRROS_FORTALEZA = ["Aerolândia", "Aeroporto", "Aldeota", "Alagadiço", "Alagadiço Novo", "Alto da Balança",
+  "Álvaro Weyne", "Amadeu Furtado", "Ancuri", "Antônio Bezerra", "Aracapé", "Autran Nunes", "Barra do Ceará",
+  "Barroso", "Bela Vista", "Benfica", "Bom Futuro", "Bom Jardim", "Bonsucesso", "Cais do Porto", "Cajazeiras",
+  "Cambeba", "Canindezinho", "Carlito Pamplona", "Castelo", "Caça e Pesca", "Centro", "Cidade 2000",
+  "Cidade dos Funcionários", "Cocó", "Conjunto Ceará", "Conjunto Esperança", "Conjunto Palmeiras",
+  "Cristo Redentor", "Curió", "Damas", "Demócrito Rocha", "Dias Macedo", "Dionísio Torres", "Dom Lustosa",
+  "Dunas", "Edson Queiroz", "Ellery", "Engenheiro Luciano Cavalcante", "Farias Brito", "Fátima", "Floresta",
+  "Genibaú", "Granja Lisboa", "Granja Portugal", "Guajeru", "Guararapes", "Henrique Jorge", "Itaoca", "Itaperi",
+  "Jacarecanga", "Jardim América", "Jardim Cearense", "Jardim das Oliveiras", "Jardim Guanabara", "Jardim Iracema",
+  "João XXIII", "Joaquim Távora", "Jóquei Clube", "José Bonifácio", "José de Alencar", "Lagoa Redonda",
+  "Manuel Dias Branco", "Manoel Sátiro", "Maraponga", "Meireles", "Messejana", "Mondubim", "Monte Castelo",
+  "Montese", "Moura Brasil", "Mucuripe", "Padre Andrade", "Pan Americano", "Papicu", "Parangaba", "Parque Araxá",
+  "Parque Dois Irmãos", "Parque Iracema", "Parque Manibura", "Parque Santa Maria", "Parque Santa Rosa",
+  "Parque São José", "Parquelândia", "Parreão", "Passaré", "Paupina", "Pedras", "Pici", "Planalto Ayrton Senna",
+  "Praia de Iracema", "Praia do Futuro I", "Praia do Futuro II", "Presidente Kennedy", "Presidente Vargas",
+  "Quintino Cunha", "Raquel de Queiroz", "Rodolfo Teófilo", "Sabiaguaba", "Salinas", "Sapiranga", "São Bento",
+  "São Gerardo", "São João do Tauape", "Serrinha", "Serviluz", "Siqueira", "Tancredo Neves", "Varjota",
+  "Vicente Pinzón", "Vila Ellery", "Vila Peri", "Vila União", "Vila Velha"];
+
+const MUNICIPIOS_RMF = ["Caucaia", "Maracanaú", "Maranguape", "Pacatuba", "Eusébio", "Aquiraz", "Itaitinga",
+  "Guaiúba", "Horizonte", "Pacajus", "Chorozinho", "Cascavel", "Pindoretama", "São Gonçalo do Amarante",
+  "Paracuru", "Paraipaba", "Trairi", "São Luís do Curu"];
+
+// Valor do VT por dia conforme cidade de moradia x cidade de trabalho.
+// Edite aqui se os valores mudarem.
+function vtPorDia(cidadeMora, cidadeTrabalha) {
+  const m = normalize(cidadeMora), t = normalize(cidadeTrabalha);
+  if (m === "FORTALEZA" && t === "FORTALEZA") return 10.80;
+  if (m === "FORTALEZA" && t === "EUSEBIO") return 19.80;
+  if (m === "EUSEBIO" && t === "EUSEBIO") return 10.80;
+  if (m === "EUSEBIO" && t === "FORTALEZA") return 19.80;
+  return 0; // combinação ainda não cadastrada
+}
+
+function cidadeDoBairro(bairro) {
+  const b = normalize(bairro);
+  const muni = MUNICIPIOS_RMF.find(x => normalize(x) === b);
+  if (muni) return muni;
+  // se está na lista de bairros de Fortaleza (ou qualquer coisa não-município), assume Fortaleza
+  return "Fortaleza";
+}
+
+function cidadeDaUnidade(unidade) {
+  const u = normalize(unidade);
+  if (u.indexOf("EUSEBIO") !== -1 || u.indexOf("CONRADO") !== -1) return "Eusébio";
+  return "Fortaleza";
+}
+
+function calcularVT() {
+  const bairroEl = document.getElementById("campo_Bairro");
+  const uniEl = document.getElementById("campo_Unidade");
+  const vtEl = document.getElementById("campo_ValeTransporteDia");
+  const cidResEl = document.getElementById("campo_CidadeResidencia");
+  if (!vtEl) return;
+  const bairro = bairroEl ? bairroEl.value : "";
+  const cidadeMora = cidadeDoBairro(bairro);
+  const cidadeTrab = cidadeDaUnidade(uniEl ? uniEl.value : "");
+  if (cidResEl && !cidResEl.value.trim()) cidResEl.value = cidadeMora;
+  const dia = vtPorDia(cidadeMora, cidadeTrab);
+  vtEl.value = dia;
+}
+
+/* ===================== LIDERANÇA AUTOMÁTICA ===================== */
+
+function liderDe(nomeColaborador) {
+  const lista = STATE.init.lideranca || [];
+  const alvo = normalize(nomeColaborador);
+  const achou = lista.find(l => normalize(l.Liderado) === alvo);
+  return achou ? achou.Lider : "";
+}
+
+function autofillGestor(nomeColaborador, campoDestinoId) {
+  const lider = liderDe(nomeColaborador);
+  const campo = document.getElementById(campoDestinoId);
+  if (campo && lider) campo.value = lider;
+}
+
+/* ===================== FEEDBACK (avaliação completa) ===================== */
+
+function fbChk(name, opcoes) {
+  return `<div class="grid g3">${opcoes.map(o => `<label class="check"><input type="checkbox" data-fb="${name}" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join("")}</div>`;
+}
+function fbRadio(name, opcoes) {
+  return `<div class="grid g3">${opcoes.map(o => `<label class="check"><input type="radio" name="fb_${name}" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join("")}</div>`;
+}
+function fbColetarChk(name) {
+  return Array.from(document.querySelectorAll(`#main input[data-fb="${name}"]:checked`)).map(i => i.value).join(", ");
+}
+function fbColetarRadio(name) {
+  const e = document.querySelector(`#main input[name="fb_${name}"]:checked`);
+  return e ? e.value : "";
+}
+
+async function renderFeedback() {
+  const decisoes = ["Reconhecer desempenho", "Registrar elogio", "Conceder destaque do mês", "Indicar para promoção",
+    "Indicar para sucessão", "Delegar novos desafios", "Criar Plano de Desenvolvimento (PDI)", "Realizar treinamento",
+    "Realizar reciclagem", "Acompanhamento semanal", "Acompanhamento quinzenal", "Acompanhamento mensal",
+    "Mentoria", "Coaching", "Feedback complementar", "Correção de rota", "Advertência verbal", "Advertência escrita",
+    "Suspensão (conforme RH)", "Encaminhar ao RH", "Encaminhar ao SESMT", "Encaminhar ao DP", "Outro"];
+  const desenvolver = ["Comunicação", "Liderança", "Trabalho em Equipe", "Organização", "Gestão do Tempo",
+    "Inteligência Emocional", "Atendimento ao Cliente", "Vendas", "Técnicas da Função", "Segurança do Trabalho",
+    "Produtividade", "Eficiência", "Planejamento", "Tomada de Decisão", "Relacionamento Interpessoal",
+    "Gestão de Conflitos", "Criatividade", "Inovação", "Senso de Dono", "Ética", "Respeito", "Outro"];
+  const indicadores = ["Cumprimento de metas", "Qualidade das entregas", "Produtividade", "Eficiência", "Pontualidade",
+    "Assiduidade", "Comprometimento", "Organização", "Iniciativa", "Comunicação", "Trabalho em equipe", "Liderança",
+    "Relacionamento interpessoal", "Atendimento ao cliente", "Cumprimento de normas", "Cumprimento dos POPs",
+    "Uso correto de EPI", "Uso correto do uniforme", "Segurança no trabalho", "Redução de retrabalho",
+    "Resolução de problemas", "Inovação", "Aprendizado rápido", "Autonomia", "Responsabilidade", "Senso de urgência",
+    "Adaptabilidade", "Gestão do tempo", "Proatividade", "Foco em resultados"];
+
+  setMain(`
+    <div class="page-title"><div><h2>Feedback</h2><p>Avaliação de desempenho — classificação automática por pontuação.</p></div></div>
+
+    <div class="card">
+      <h3>Identificação</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Colaborador *</label><input id="fbColab" type="text" list="dl-colaboradores" onchange="autofillGestor(this.value,'fbGestor')"></div>
+        <div class="form-row"><label>Unidade</label><input id="fbUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Nome do gestor</label><input id="fbGestor" type="text"></div>
+        <div class="form-row"><label>Data</label><input id="fbData" type="date"></div>
+        <div class="form-row"><label>Pontuação Geral (0 a 100) *</label><input id="fbPont" type="number" min="0" max="100" step="1" value="0" oninput="fbAtualizaClass()"></div>
+        <div class="form-row"><label>Classificação (automática)</label><input id="fbClass" type="text" readonly value="—"></div>
+      </div>
+      <div class="msg" id="fbClassMsg" style="display:none"></div>
+    </div>
+
+    <div class="card"><h3>Decisão do Gestor</h3>${fbChk("decisao", decisoes)}</div>
+
+    <div class="card">
+      <h3>Perfil</h3>
+      <label style="margin-top:6px">Potencial do colaborador</label>
+      ${fbRadio("potencial", ["Alto Potencial", "Potencial para Crescimento", "Potencial Moderado", "Necessita Desenvolvimento", "Necessita Acompanhamento Intensivo"])}
+      <label style="margin-top:12px">Risco de desligamento</label>
+      ${fbRadio("risco", ["Nenhum", "Baixo", "Médio", "Alto", "Crítico"])}
+      <label style="margin-top:12px">Prontidão para promoção</label>
+      ${fbRadio("prontidao", ["Pronto imediatamente", "Pronto em até 3 meses", "Pronto em até 6 meses", "Pronto em até 12 meses", "Ainda não elegível"])}
+      <label style="margin-top:12px">Nível de engajamento</label>
+      ${fbRadio("engajamento", ["Muito Engajado", "Engajado", "Neutro", "Pouco Engajado", "Desengajado"])}
+      <label style="margin-top:12px">Evolução desde o último feedback</label>
+      ${fbRadio("evolucao", ["Evoluiu muito", "Evoluiu", "Manteve o desempenho", "Oscilou", "Piorou", "Primeiro feedback"])}
+    </div>
+
+    <div class="card"><h3>Plano de Desenvolvimento — Necessita desenvolver</h3>${fbChk("desenvolver", desenvolver)}</div>
+
+    <div class="card">
+      <h3>Prazo para Reavaliação</h3>
+      ${fbRadio("prazo", ["7 dias", "15 dias", "30 dias", "45 dias", "60 dias", "90 dias", "6 meses", "12 meses"])}
+      <div class="form-row" style="max-width:280px;margin-top:12px"><label>Data da próxima avaliação</label><input id="fbDataProx" type="date"></div>
+    </div>
+
+    <div class="card"><h3>Indicadores Observados</h3>${fbChk("indicadores", indicadores)}</div>
+
+    <div class="card">
+      <h3>Status Final</h3>
+      ${fbRadio("status", ["Feedback concluído", "Aguardando retorno do colaborador", "Aguardando novo acompanhamento", "PDI em andamento", "Em monitoramento", "Encaminhado ao RH", "Encaminhado à Diretoria", "Processo encerrado"])}
+    </div>
+
+    <div class="card">
+      <h3>Comentários</h3>
+      <div class="grid g2">
+        <div class="form-row"><label>Pontos Fortes</label><textarea id="fbFortes"></textarea></div>
+        <div class="form-row"><label>Pontos de Melhoria</label><textarea id="fbMelhoria"></textarea></div>
+      </div>
+      <div class="form-row"><label>Plano de Ação</label><textarea id="fbPlano"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="salvarFeedbackCompleto()">Salvar Feedback</button></div>
+    </div>
+
+    <div class="card"><h3>Feedbacks Registrados</h3><div id="tabelaFb"><div class="loading">Carregando...</div></div></div>
+  `);
+  fbAtualizaClass();
+  await carregarFbTabela();
+}
+
+function classificaFbLocal(p) {
+  if (p >= 90) return "🔵 DESTAQUE";
+  if (p >= 80) return "🟢 ACIMA DAS EXPECTATIVAS";
+  if (p >= 70) return "🟡 DENTRO DAS EXPECTATIVAS";
+  if (p >= 50) return "🟠 NECESSITA DESENVOLVIMENTO";
+  return "🔴 PLANO DE AÇÃO IMEDIATO";
+}
+function fbAtualizaClass() {
+  const p = Number(el("#fbPont").value) || 0;
+  el("#fbClass").value = classificaFbLocal(p);
+}
+
+async function salvarFeedbackCompleto() {
+  const colab = el("#fbColab").value.trim();
+  if (!colab) { toast("Selecione o colaborador.", "err"); return; }
+  const dados = {
+    Colaborador: colab, Unidade: el("#fbUnidade").value.trim(), Gestor: el("#fbGestor").value.trim(),
+    Data: el("#fbData").value, Pontuacao: el("#fbPont").value,
+    DecisaoGestor: fbColetarChk("decisao"),
+    Potencial: fbColetarRadio("potencial"),
+    RiscoDesligamento: fbColetarRadio("risco"),
+    ProntidaoPromocao: fbColetarRadio("prontidao"),
+    Engajamento: fbColetarRadio("engajamento"),
+    Evolucao: fbColetarRadio("evolucao"),
+    PlanoDesenvolvimento: fbColetarChk("desenvolver"),
+    PrazoReavaliacao: fbColetarRadio("prazo"),
+    DataProxima: el("#fbDataProx").value,
+    Indicadores: fbColetarChk("indicadores"),
+    StatusFinal: fbColetarRadio("status"),
+    PontosFortes: el("#fbFortes").value, PontosMelhoria: el("#fbMelhoria").value, PlanoAcao: el("#fbPlano").value
+  };
+  try {
+    const r = await api("salvarFeedback", dados);
+    toast(r.msg, "ok");
+    if (r.classificacao) toast("Classificação: " + r.classificacao, "info");
+    await renderFeedback();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function carregarFbTabela() {
+  try {
+    const r = await api("listarFeedbacks");
+    document.getElementById("tabelaFb").innerHTML =
+      tabelaComBadge(r.feedbacks || [], ["Data", "Colaborador", "Unidade", "Pontuacao", "Classificacao", "StatusFinal"]);
+  } catch (e) { document.getElementById("tabelaFb").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
+}
+
+/* ===================== AVALIAÇÃO DE EXPERIÊNCIA (Nossos Valores) ===================== */
+
+async function renderExperiencia() {
+  const sel = (id) => `<select id="${id}"><option value="">Selecione...</option><option>Abaixo</option><option>Atende</option><option>Supera</option></select>`;
+  setMain(`
+    <div class="page-title"><div><h2>Avaliação de Período de Experiência</h2><p>Identificação e etapa da avaliação.</p></div></div>
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row"><label>Colaborador *</label><input id="exColab" type="text" list="dl-colaboradores" placeholder="Selecione o colaborador" onchange="autofillGestor(this.value,'exGestor')"></div>
+        <div class="form-row"><label>Nome do gestor</label><input id="exGestor" type="text"></div>
+        <div class="form-row"><label>Data desta avaliação *</label><input id="exDataAval" type="date"></div>
+        <div class="form-row"><label>Unidade</label><input id="exUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Cargo</label><input id="exCargo" type="text" list="dl-cargos"></div>
+        <div class="form-row"><label>Data de admissão</label><input id="exAdmissao" type="date"></div>
+      </div>
+      <div class="form-row"><label>Etapa da avaliação *</label>
+        <select id="exEtapa">
+          <option value="">Selecione...</option>
+          <option value="1ª AVALIAÇÃO — 45 DIAS">1ª Avaliação — 45 dias</option>
+          <option value="2ª AVALIAÇÃO — 90 DIAS">2ª Avaliação — 90 dias</option>
+        </select>
+      </div>
+
+      <h3 style="margin-top:8px">Nossos Valores</h3>
+      <p class="card-subtitle">Avalie a conduta do colaborador em cada valor do Grupo Evol (Abaixo, Atende ou Supera).</p>
+      <div class="grid g3">
+        <div class="form-row"><label>Produtividade e eficiência *</label>${sel("exProd")}</div>
+        <div class="form-row"><label>Trabalho em equipe *</label>${sel("exEquipe")}</div>
+        <div class="form-row"><label>Senso de dono *</label>${sel("exDono")}</div>
+        <div class="form-row"><label>Inovação *</label>${sel("exInov")}</div>
+        <div class="form-row"><label>Fazer a diferença *</label>${sel("exDif")}</div>
+      </div>
+
+      <div class="form-row"><label>Plano de ação</label><textarea id="exPlano"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="salvarExperiencia()">Salvar Avaliação</button></div>
+    </div>
+
+    <div class="card"><h3>Avaliações Registradas</h3><div id="tabelaExp"><div class="loading">Carregando...</div></div></div>
+  `);
+  await carregarExpTabela();
+}
+
+async function salvarExperiencia() {
+  const colab = el("#exColab").value.trim();
+  if (!colab) { toast("Selecione o colaborador.", "err"); return; }
+  const dados = {
+    Colaborador: colab, Gestor: el("#exGestor").value.trim(),
+    DataAvaliacao: el("#exDataAval").value, Unidade: el("#exUnidade").value.trim(),
+    Cargo: el("#exCargo").value.trim(), DataAdmissao: el("#exAdmissao").value,
+    Etapa: el("#exEtapa").value,
+    Produtividade: el("#exProd").value, TrabalhoEquipe: el("#exEquipe").value,
+    SensoDono: el("#exDono").value, Inovacao: el("#exInov").value, FazerDiferenca: el("#exDif").value,
+    PlanoAcao: el("#exPlano").value
+  };
+  try {
+    const r = await api("salvarAvaliacaoExperiencia", dados);
+    toast(r.msg, "ok");
+    if (r.resultado) toast("Resultado: " + r.resultado, "info");
+    await renderExperiencia();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function carregarExpTabela() {
+  try {
+    const r = await api("listarAvaliacoesExperiencia");
+    document.getElementById("tabelaExp").innerHTML =
+      tabelaComBadge(r.avaliacoes || [], ["Colaborador", "Unidade", "Etapa", "Resultado"]);
+  } catch (e) { document.getElementById("tabelaExp").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
+}
+
+/* ===================== DOSSIÊ DO COLABORADOR ===================== */
+
+async function renderDossie() {
+  setMain(`
+    <div class="page-title"><div><h2>Dossiê do Colaborador</h2><p>Histórico completo: ocorrências, avaliações, feedbacks e treinamentos.</p></div></div>
+    <div class="card">
+      <div class="actions">
+        <input id="dsColab" type="text" list="dl-colaboradores" placeholder="Selecione o colaborador" style="flex:1">
+        <button class="btn btn-primary" onclick="abrirDossie()">Abrir dossiê</button>
+      </div>
+    </div>
+    <div id="dossieConteudo"></div>
+  `);
+}
+
+async function abrirDossie() {
+  const nome = el("#dsColab").value.trim();
+  if (!nome) { toast("Selecione o colaborador.", "err"); return; }
+  const cont = document.getElementById("dossieConteudo");
+  cont.innerHTML = `<div class="loading">Carregando dossiê...</div>`;
+  let r;
+  try { r = await api("dossie", { colaborador: nome }); }
+  catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
+
+  const c = r.colaborador || {}, k = r.kpis || {};
+  STATE.cache.dossieNome = c.Nome || nome;
+
+  cont.innerHTML = `
+    <div class="card">
+      <h2 style="margin-bottom:4px">${escapeHtml(c.Nome || nome)}</h2>
+      <p class="muted">${escapeHtml([c.Cargo, c.Unidade].filter(Boolean).join(" · "))}${c.Status ? " · Status: " + escapeHtml(c.Status) : ""}</p>
+      <p class="muted">Admissão: ${escapeHtml(c.DataAdmissao || "não informada")}</p>
+    </div>
+
+    <div class="grid g4">
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Atrasos registrados</small><strong>${k.atrasos || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--bad)"><small>Faltas injustificadas</small><strong>${k.faltas || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--bad)"><small>Advertências</small><strong>${k.advertencias || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--ok)"><small>Freq. em treinamentos</small><strong>${(k.horasTreinamento || 0)}h</strong></div>
+    </div>
+
+    <div class="card">
+      <h3>Registrar Ocorrência</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Tipo</label>
+          <select id="ocTipo"><option>ATRASO</option><option>FALTA</option><option>ADVERTÊNCIA</option><option>ELOGIO</option><option>OUTRO</option></select></div>
+        <div class="form-row"><label>Data</label><input id="ocData" type="date"></div>
+        <div class="form-row"><label>Unidade</label><input id="ocUnidade" type="text" list="dl-unidades" value="${escapeHtml(c.Unidade || "")}"></div>
+      </div>
+      <div class="form-row"><label>Descrição</label><textarea id="ocDesc"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="salvarOcorrenciaDossie()">Registrar Ocorrência</button></div>
+    </div>
+
+    <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"])}</div>
+    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Nota", "Lider"])}</div>
+    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["Etapa", "Resultado", "DataAvaliacao"])}</div>
+    <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"])}</div>
+  `;
+}
+
+async function salvarOcorrenciaDossie() {
+  const nome = STATE.cache.dossieNome;
+  if (!nome) { toast("Abra um dossiê primeiro.", "err"); return; }
+  const dados = {
+    Colaborador: nome, Tipo: el("#ocTipo").value, Data: el("#ocData").value,
+    Unidade: el("#ocUnidade").value.trim(), Descricao: el("#ocDesc").value.trim()
+  };
+  try {
+    const r = await api("salvarOcorrencia", dados);
+    toast(r.msg, "ok");
+    el("#dsColab").value = nome;
+    await abrirDossie();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+/* ===================== RECRUTAMENTO / VAGAS ===================== */
+
+async function renderVagas() {
+  setMain(`<div class="loading">Carregando recrutamento...</div>`);
+  let r;
+  try { r = await api("listarVagas"); }
+  catch (e) { setMain(`<div class="msg err">${escapeHtml(e.message)}</div>`); return; }
+
+  STATE.cache.vagas = r.vagas || [];
+  STATE.cache.vagasUnidades = r.unidades || [];
+  const k = r.kpis || {};
+  const statusOpts = ["ABERTA", "SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Recrutamento</h2><p>Vagas do Controle de Vagas — Grupo Evol.</p></div>
+      <button class="btn btn-primary" onclick="abrirVagaForm()">+ Abrir Vaga</button>
+    </div>
+
+    ${r.erroAba ? `<div class="msg warn">${escapeHtml(r.erroAba)}</div>` : ""}
+
+    <div class="grid g4">
+      <div class="kpi"><small>Vagas em Aberto</small><strong>${k.aberto || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--bad)"><small>Abertas com SLA Crítico</small><strong>${k.slaCritico || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--ok)"><small>Encerradas</small><strong>${k.encerradas || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Canceladas</small><strong>${k.canceladas || 0}</strong></div>
+    </div>
+
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row"><label>Buscar vaga ou candidato</label>
+          <input id="vgBusca" type="text" placeholder="Digite..." oninput="filtrarVagas()"></div>
+        <div class="form-row"><label>Unidade</label>
+          <select id="vgUnidade" onchange="filtrarVagas()">
+            <option value="">Todas</option>
+            ${(STATE.cache.vagasUnidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row"><label>Status</label>
+          <select id="vgStatus" onchange="filtrarVagas()">
+            <option value="">Todos</option>
+            ${statusOpts.map(s => `<option value="${s}">${s}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+      <div id="tabelaVagas"></div>
+    </div>
+  `);
+  filtrarVagas();
+}
+
+function vagaGet(row, nomes) {
+  const limpa = s => normalize(s).replace(/[^A-Z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  for (const n of nomes) {
+    const alvo = limpa(n);
+    const k = Object.keys(row).find(h => limpa(h) === alvo);
+    if (k && String(row[k]).trim() !== "") return row[k];
+  }
+  return "";
+}
+
+function filtrarVagas() {
+  const dados = STATE.cache.vagas || [];
+  const busca = normalize(el("#vgBusca") ? el("#vgBusca").value : "");
+  const fU = normalize(el("#vgUnidade") ? el("#vgUnidade").value : "");
+  const fS = normalize(el("#vgStatus") ? el("#vgStatus").value : "");
+
+  const filtradas = dados.filter(v => {
+    const uni = normalize(vagaGet(v, ["UNIDADE"]));
+    const st = normalize(vagaGet(v, ["STATUS"]));
+    const texto = normalize(vagaGet(v, ["VAGA"]) + " " + vagaGet(v, ["CANDIDATO"]) + " " + vagaGet(v, ["GESTOR"]));
+    return (!fU || uni.indexOf(fU) !== -1) &&
+           (!fS || st.indexOf(fS) !== -1) &&
+           (!busca || texto.indexOf(busca) !== -1);
+  });
+
+  const cols = [
+    ["ID", ["ID"]], ["VAGA", ["VAGA"]], ["UNIDADE", ["UNIDADE"]], ["SETOR", ["SETOR"]],
+    ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
+    ["DIAS EM ABERTO", ["DIAS EM ABERTO"]], ["CANDIDATO", ["CANDIDATO"]],
+    ["STATUS", ["STATUS"]], ["SLA", ["SLA STATUS", "SLA"]]
+  ];
+
+  if (!filtradas.length) { el("#tabelaVagas").innerHTML = `<div class="empty">Nenhuma vaga encontrada.</div>`; return; }
+  el("#tabelaVagas").innerHTML = `
+    <div class="table-wrap"><table>
+      <thead><tr>${cols.map(c => `<th>${escapeHtml(c[0])}</th>`).join("")}</tr></thead>
+      <tbody>
+        ${filtradas.map(v => `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}</tr>`).join("")}
+      </tbody>
+    </table></div>`;
+}
+
+function formatarVagaCelula(coluna, valor) {
+  if (coluna === "STATUS") {
+    const v = normalize(valor);
+    let cls = "badge";
+    if (["ABERTA", "ENCERRADA"].includes(v)) cls += " ok";
+    else if (v === "CANCELADA") cls += " bad";
+    else if (["SELECAO", "TESTE"].includes(v)) cls += " warn";
+    return valor ? `<span class="${cls}">${escapeHtml(valor)}</span>` : "";
+  }
+  if (coluna === "SLA") {
+    const v = normalize(valor);
+    let cls = "badge";
+    if (v.indexOf("CRITIC") !== -1) cls += " bad";
+    else if (v.indexOf("ATENC") !== -1) cls += " warn";
+    else if (v.indexOf("NORMAL") !== -1) cls += " ok";
+    return valor ? `<span class="${cls}">${escapeHtml(valor)}</span>` : "";
+  }
+  return escapeHtml(valor);
+}
+
+const SETORES = ["Cozinha", "Salão", "Bar", "Almoxarifado", "Administrativo", "Limpeza", "Caixa", "Recepção", "DP", "Compras"];
+
+function abrirVagaForm() {
+  setMain(`
+    <div class="page-title"><div><h2>Abrir Vaga</h2><p>A vaga entra no Controle de Vagas com status ABERTA e SLA de 10 dias.</p></div></div>
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row"><label>Unidade *</label><input id="avUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Vaga (cargo) *</label><input id="avVaga" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR"></div>
+        <div class="form-row"><label>Setor *</label>
+          <select id="avSetor"><option value="">Selecione...</option>${SETORES.map(s => `<option>${s}</option>`).join("")}</select>
+        </div>
+        <div class="form-row"><label>Motivo *</label>
+          <select id="avMotivo">
+            <option>Substituição</option><option>Aumento de Quadro</option>
+            <option>Quadro Ideal</option><option>Substituição por Promoção</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Colaborador substituído (se substituição)</label><input id="avSubstituido" type="text" placeholder="Nome de quem saiu"></div>
+        <div class="form-row"><label>Perfil do Solicitante *</label>
+          <select id="avTipoSolic"><option value="">Selecione...</option><option>Liderança</option><option>Sócio Operador</option></select>
+        </div>
+        <div class="form-row"><label>Solicitante *</label><input id="avSolicitante" type="text" list="dl-solicitantes" placeholder="Nome do solicitante"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="submitAbrirVaga()">Abrir vaga</button>
+        <button class="btn btn-secondary" onclick="renderVagas()">Cancelar</button>
+      </div>
+    </div>
+  `);
+  // sugestões de solicitantes = líderes cadastrados na aba Lideranca
+  const lideres = (STATE.init.lideranca || []).map(l => l.Lider).filter(Boolean);
+  setDatalist("dl-solicitantes", lideres);
+}
+
+async function submitAbrirVaga() {
+  const dados = {
+    unidade: el("#avUnidade").value.trim(),
+    vaga: el("#avVaga").value.trim(),
+    setor: el("#avSetor").value,
+    motivo: el("#avMotivo").value,
+    substituido: el("#avSubstituido").value.trim(),
+    solicitante: el("#avSolicitante").value.trim()
+  };
+  if (!dados.unidade || !dados.vaga || !dados.setor || !dados.solicitante) {
+    toast("Preencha Unidade, Vaga, Setor e Solicitante.", "err"); return;
+  }
+  try {
+    const r = await api("abrirVaga", dados);
+    toast(r.msg, "ok");
+    await carregarInit();
+    renderVagas();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+/* ===================== TESTE PRÁTICO ===================== */
+
+async function renderTestePratico() {
+  const etapas = ["Teste Prático", "Entrevista RH", "Entrevista Gestor", "Etapa Final"];
+  const criterios = [
+    ["crit_tecnico", "Conhecimento técnico", "Domínio dos conteúdos específicos da vaga"],
+    ["crit_raciocinio", "Raciocínio lógico", "Capacidade de análise e tomada de decisão"],
+    ["crit_comunicacao", "Comunicação e clareza", "Clareza nas respostas e postura comunicativa"],
+    ["crit_organizacao", "Organização e tempo", "Cumprimento dos prazos dentro do teste"],
+    ["crit_cultura", "Aderência à cultura", "Alinhamento de valores e perfil comportamental"],
+    ["crit_experiencia", "Experiência prática", "Evidências de vivência real na área"]
+  ];
+
+  // Vagas em aberto para vincular o teste
+  let vagasAbertas = [];
+  try {
+    const rv = await api("listarVagas");
+    vagasAbertas = (rv.vagas || []).filter(v => ["ENCERRADA", "CANCELADA"].indexOf(normalize(vagaGet(v, ["STATUS"]))) === -1);
+  } catch (e) {}
+  const vagaOpts = vagasAbertas.map(v => {
+    const id = vagaGet(v, ["ID"]);
+    const label = [vagaGet(v, ["VAGA"]), vagaGet(v, ["UNIDADE"]), vagaGet(v, ["SETOR"])].filter(Boolean).join(" · ");
+    return `<option value="${escapeHtml(id)}">${escapeHtml(id ? "#" + id + " — " : "")}${escapeHtml(label)}</option>`;
+  }).join("");
+
+  setMain(`
+    <div class="page-title"><div><h2>Teste Prático</h2><p>Registro de resultado — Dados do candidato.</p></div></div>
+
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..."></div>
+        <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" placeholder="Nome completo"></div>
+        <div class="form-row"><label>Vaga pretendida (cargo)</label><input id="tpCargo" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR" onchange="autofillSalarioTeste(this.value)"></div>
+        <div class="form-row"><label>Salário do cargo (R$)</label><input id="tpSalario" type="number" step="0.01" class="money" readonly value="0"></div>
+        <div class="form-row"><label>Setor</label>
+          <select id="tpSetor"><option value="">Selecione...</option>${SETORES.map(s => `<option>${s}</option>`).join("")}</select></div>
+        <div class="form-row"><label>Vincular à vaga (Recrutamento)</label>
+          <select id="tpVagaId"><option value="">Nenhuma / avulso</option>${vagaOpts}</select></div>
+        <div class="form-row"><label>Data do teste *</label><input id="tpData" type="date"></div>
+        <div class="form-row"><label>Etapa do processo seletivo</label>
+          <select id="tpEtapa"><option value="">Selecione...</option>${etapas.map(s => `<option>${s}</option>`).join("")}</select></div>
+        <div class="form-row"><label>Escala *</label>
+          <select id="tpEscala"><option value="">Selecione a escala...</option><option>6X1</option><option>5X2</option><option>12X36</option><option>ROTATIVA</option></select></div>
+        <div class="form-row"><label>Dia de folga *</label>
+          <select id="tpFolga"><option value="">Selecione o dia...</option><option>Segunda</option><option>Terça</option><option>Quarta</option><option>Quinta</option><option>Sexta</option><option>Sábado</option><option>Domingo</option><option>Rotativa</option></select></div>
+        <div class="form-row"><label>Avaliador responsável *</label><input id="tpAvaliador" type="text" placeholder="Quem aplicou o teste"></div>
+      </div>
+
+      <h3 style="margin-top:10px">Critérios avaliados</h3>
+      <p class="card-subtitle">Marque os critérios em que o candidato foi aprovado.</p>
+      <div class="grid g3">
+        ${criterios.map(c => `
+          <label class="check" style="align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:10px">
+            <input type="checkbox" id="${c[0]}" value="${escapeHtml(c[1])}">
+            <span><strong>${escapeHtml(c[1])}</strong><br><span class="muted">${escapeHtml(c[2])}</span></span>
+          </label>`).join("")}
+      </div>
+
+      <div class="grid g3" style="margin-top:12px">
+        <div class="form-row"><label>Nota final (0–10)</label><input id="tpNota" type="number" min="0" max="10" step="0.1" value="0"></div>
+        <div class="form-row"><label>Nota mínima</label><input id="tpNotaMin" type="number" min="0" max="10" step="0.1" value="0"></div>
+        <div class="form-row"><label>Satisfação do avaliador (1 a 5)</label>
+          <select id="tpSatisfacao"><option value="">Selecione...</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
+      </div>
+
+      <div class="form-row"><label>Observações</label><textarea id="tpObs"></textarea></div>
+
+      <div class="actions">
+        <button class="btn btn-primary" onclick="salvarTestePratico()">Salvar Resultado</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Testes Registrados</h3>
+      <div id="tabelaTestes"><div class="loading">Carregando...</div></div>
+    </div>
+  `);
+  await carregarTestesTabela();
+}
+
+function autofillSalarioTeste(nomeCargo) {
+  const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
+  const campo = document.getElementById("tpSalario");
+  if (campo && c) campo.value = c.SalarioTotal || ((Number(c.SalarioBase) || 0) + (Number(c.Complementar) || 0));
+}
+
+async function salvarTestePratico() {
+  const candidato = el("#tpCandidato").value.trim();
+  const data = el("#tpData").value;
+  if (!candidato || !data) { toast("Preencha ao menos Candidato e Data do teste.", "err"); return; }
+
+  const criterios = Array.from(document.querySelectorAll('#main input[id^="crit_"]:checked')).map(i => i.value).join(", ");
+
+  const dados = {
+    Unidade: el("#tpUnidade").value.trim(),
+    Candidato: candidato,
+    Cargo: el("#tpCargo").value.trim(),
+    Salario: el("#tpSalario").value,
+    Setor: el("#tpSetor").value,
+    VagaId: el("#tpVagaId").value,
+    DataTeste: data,
+    Etapa: el("#tpEtapa").value,
+    Escala: el("#tpEscala").value,
+    Folga: el("#tpFolga").value,
+    Avaliador: el("#tpAvaliador").value.trim(),
+    Nota: el("#tpNota").value,
+    NotaMinima: el("#tpNotaMin").value,
+    Satisfacao: el("#tpSatisfacao").value,
+    Criterios: criterios,
+    Observacoes: el("#tpObs").value
+  };
+
+  try {
+    const r = await api("salvarTeste", dados);
+    toast(r.msg || "Teste salvo.", "ok");
+    if (r.resultado) toast("Resultado: " + r.resultado, "info");
+    await renderTestePratico();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function carregarTestesTabela() {
+  try {
+    const r = await api("listarTestes");
+    document.getElementById("tabelaTestes").innerHTML =
+      tabelaComBadge(r.testes || [], ["DataTeste", "Candidato", "Unidade", "Cargo", "Escala", "Folga", "Nota", "Resultado"]);
+  } catch (e) {
+    document.getElementById("tabelaTestes").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
 }
 
 /* ===================== LIDERANÇA (somente leitura) ===================== */
@@ -419,7 +1136,7 @@ const MODULES = {
     fields: [
       { name: "Nome", label: "Nome", type: "text", required: true, col: "g2" },
       { name: "CPF", label: "CPF", type: "text" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "calcularVT()" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
       { name: "SalarioBase", label: "Salário Base", type: "money" },
       { name: "Complementar", label: "Complementar", type: "money" },
@@ -428,8 +1145,10 @@ const MODULES = {
       { name: "DataNascimento", label: "Data de Nascimento", type: "date" },
       { name: "FimExperiencia", label: "Fim da Experiência", type: "date" },
       { name: "Lider", label: "Líder", type: "text" },
+      { name: "Bairro", label: "Bairro / Município", type: "datalist", list: "dl-bairros", onchange: "calcularVT()" },
       { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
       { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
+      { name: "ValeTransporteDia", label: "Vale Transporte por Dia (R$)", type: "money", readonly: true, computed: true },
       { name: "Status", label: "Status", type: "select", options: ["ATIVO", "INATIVO", "DESLIGADO"], default: "ATIVO" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
@@ -445,101 +1164,6 @@ const MODULES = {
       { name: "SalarioBase", label: "Salário Base", type: "money" },
       { name: "Complementar", label: "Complementar", type: "money" },
       { name: "SalarioTotal", label: "Salário Total", type: "money", readonly: true, computed: true }
-    ]
-  },
-
-  vagas: {
-    label: "Vagas",
-    listAction: "listarVagas", listKey: "vagas",
-    saveAction: "salvarVaga",
-    columns: ["Unidade", "Cargo", "Quantidade", "SalarioTotal", "CustoProjetado", "Prioridade", "Status"],
-    fields: [
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
-      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true, required: true },
-      { name: "Quantidade", label: "Quantidade", type: "number", default: 1 },
-      { name: "SalarioBase", label: "Salário Base", type: "money" },
-      { name: "Complementar", label: "Complementar", type: "money" },
-      { name: "Prioridade", label: "Prioridade", type: "select", options: ["BAIXA", "NORMAL", "ALTA", "URGENTE"], default: "NORMAL" },
-      { name: "Motivo", label: "Motivo da Vaga", type: "text", col: "g2" },
-      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
-    ]
-  },
-
-  admissoes: {
-    label: "Admissões",
-    listAction: "listarAdmissoes", listKey: "admissoes",
-    saveAction: "salvarAdmissao",
-    columns: ["Candidato", "Unidade", "Cargo", "DataPrevista", "Status"],
-    fields: [
-      { name: "Candidato", label: "Candidato", type: "text", required: true },
-      { name: "CPF", label: "CPF", type: "text" },
-      { name: "Telefone", label: "Telefone", type: "text" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
-      { name: "DataPrevista", label: "Data Prevista de Admissão", type: "date" },
-      { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
-      { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
-      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
-    ]
-  },
-
-  testes: {
-    label: "Teste Prático",
-    listAction: "listarTestes", listKey: "testes",
-    saveAction: "salvarTeste",
-    columns: ["DataTeste", "Candidato", "Unidade", "Cargo", "Escala", "Folga", "Nota", "Resultado"],
-    fields: [
-      { name: "DataTeste", label: "Data do Teste", type: "date", required: true },
-      { name: "HoraTeste", label: "Hora do Teste", type: "time" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Candidato", label: "Candidato", type: "text", required: true },
-      { name: "CPF", label: "CPF", type: "text" },
-      { name: "Telefone", label: "Telefone", type: "text" },
-      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
-      { name: "Escala", label: "Escala", type: "select", options: ["6X1", "5X2", "12X36", "ROTATIVA"] },
-      { name: "Folga", label: "Folga (dia)", type: "select", options: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo", "Rotativa"] },
-      { name: "Avaliador", label: "Avaliador", type: "text" },
-      { name: "Nota", label: "Nota (0 a 10)", type: "number", min: 0, max: 10, step: 0.1 },
-      { name: "Resultado", label: "Resultado", type: "select", options: ["APROVADO", "REPROVADO", "EM ANÁLISE"] },
-      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
-    ]
-  },
-
-  feedbacks: {
-    label: "Feedbacks",
-    listAction: "listarFeedbacks", listKey: "feedbacks",
-    saveAction: "salvarFeedback",
-    columns: ["Data", "Colaborador", "Unidade", "Tipo", "Nota", "Lider"],
-    fields: [
-      { name: "Data", label: "Data", type: "date" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
-      { name: "Tipo", label: "Tipo", type: "select", options: ["POSITIVO", "CONSTRUTIVO", "ADVERTÊNCIA"] },
-      { name: "Nota", label: "Nota (0 a 10)", type: "number", min: 0, max: 10, step: 0.1 },
-      { name: "Prazo", label: "Prazo para Plano de Ação", type: "date" },
-      { name: "PontosFortes", label: "Pontos Fortes", type: "textarea" },
-      { name: "PontosMelhoria", label: "Pontos de Melhoria", type: "textarea" },
-      { name: "PlanoAcao", label: "Plano de Ação", type: "textarea", col: "g2" }
-    ]
-  },
-
-  experiencia: {
-    label: "Avaliação de Experiência",
-    listAction: "listarAvaliacoesExperiencia", listKey: "avaliacoes",
-    saveAction: "salvarAvaliacaoExperiencia",
-    columns: ["Colaborador", "Unidade", "Cargo", "Media", "Resultado"],
-    fields: [
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
-      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
-      { name: "DataAdmissao", label: "Data de Admissão", type: "date" },
-      { name: "DiasExperiencia", label: "Dias de Experiência", type: "number" },
-      { name: "Produtividade", label: "Produtividade (0-10)", type: "number", min: 0, max: 10 },
-      { name: "Comportamento", label: "Comportamento (0-10)", type: "number", min: 0, max: 10 },
-      { name: "Pontualidade", label: "Pontualidade (0-10)", type: "number", min: 0, max: 10 },
-      { name: "Equipe", label: "Trabalho em Equipe (0-10)", type: "number", min: 0, max: 10 },
-      { name: "Tecnica", label: "Técnica (0-10)", type: "number", min: 0, max: 10 },
-      { name: "PlanoAcao", label: "Plano de Ação", type: "textarea", col: "g2" }
     ]
   },
 
@@ -573,18 +1197,6 @@ const MODULES = {
       { name: "QuantidadeEstoque", label: "Quantidade em Estoque", type: "number" },
       { name: "QuantidadeMinima", label: "Quantidade Mínima", type: "number" },
       { name: "Fornecedor", label: "Fornecedor", type: "text" }
-    ]
-  },
-
-  mural: {
-    label: "Mural",
-    listAction: "listarMural", listKey: "mural",
-    saveAction: "salvarMural",
-    columns: ["Data", "Titulo", "Unidade", "PublicadoPor"],
-    fields: [
-      { name: "Titulo", label: "Título", type: "text", required: true },
-      { name: "Unidade", label: "Unidade (ou TODAS)", type: "datalist", list: "dl-unidades", default: "TODAS" },
-      { name: "Mensagem", label: "Mensagem", type: "textarea", col: "g2", required: true }
     ]
   },
 
@@ -647,16 +1259,17 @@ function campoHtml(f) {
   const wrapClass = f.col ? f.col : "";
 
   let inputHtml = "";
+  const onch = f.onchange ? `onchange="${f.onchange}"` : "";
   if (f.type === "textarea") {
     inputHtml = `<textarea id="${idc}" ${req} ${readonly}>${val}</textarea>`;
   } else if (f.type === "select") {
-    inputHtml = `<select id="${idc}" ${req}>
+    inputHtml = `<select id="${idc}" ${req} ${onch}>
       <option value="">Selecione...</option>
       ${f.options.map(o => `<option value="${escapeHtml(o)}" ${o === f.default ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
     </select>`;
   } else if (f.type === "datalist") {
     inputHtml = `<input id="${idc}" type="text" list="${f.list}" value="${val}" autocomplete="off" ${req} ${readonly}
-      ${f.autofillSalario ? `onchange="autofillSalarioPorCargo(this.value)"` : ""}>`;
+      ${f.autofillSalario ? `onchange="autofillSalarioPorCargo(this.value); calcularVT();"` : onch}>`;
   } else if (f.type === "money" || f.type === "number") {
     inputHtml = `<input id="${idc}" type="number" step="${f.step || "0.01"}" min="${f.min !== undefined ? f.min : ""}"
       max="${f.max !== undefined ? f.max : ""}" value="${val}" ${req} ${readonly}
@@ -667,7 +1280,7 @@ function campoHtml(f) {
   } else if (f.type === "time") {
     inputHtml = `<input id="${idc}" type="time" value="${val}" ${req} ${readonly}>`;
   } else {
-    inputHtml = `<input id="${idc}" type="text" value="${val}" ${req} ${readonly}>`;
+    inputHtml = `<input id="${idc}" type="text" value="${val}" ${req} ${readonly} ${onch}>`;
   }
 
   return `<div class="form-row ${wrapClass}"><label>${escapeHtml(f.label)}${f.required ? " *" : ""}</label>${inputHtml}</div>`;
@@ -821,6 +1434,7 @@ async function renderEscalas() {
             <option value="6X1">6x1</option>
             <option value="5X2">5x2</option>
             <option value="12X36">12x36</option>
+            <option value="ROTATIVA">Rotativa (gira folga + turnos)</option>
           </select>
         </div>
         <div class="form-row"><label>Início</label><input id="escInicio" type="date"></div>

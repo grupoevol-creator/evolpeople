@@ -10,8 +10,8 @@
  *************************************************************/
 
 const CONFIG = {
-  // ↓↓↓ COLE AQUI A URL /exec DA SUA IMPLANTAÇÃO. Sem isto, nada carrega. ↓↓↓
-  API_URL: ""
+  // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
+  API_URL: "https://script.google.com/macros/s/AKfycbzXgdgdbAzHZhkBMR6xTkkIw5RPV1UQ3jNwL8K1tM6QgDSv-rWNpT_wsLkJ9_z-ESm_/exec"
 };
 
 const STATE = {
@@ -25,7 +25,7 @@ const STATE = {
 
 function apiCall(acao, dados) {
   return new Promise((resolve, reject) => {
-    if (!CONFIG.API_URL || CONFIG.API_URL.indexOf(https://script.google.com/macros/s/AKfycbzXgdgdbAzHZhkBMR6xTkkIw5RPV1UQ3jNwL8K1tM6QgDSv-rWNpT_wsLkJ9_z-ESm_/exec) {
+    if (!CONFIG.API_URL || CONFIG.API_URL.indexOf("COLE_AQUI") !== -1) {
       reject(new Error("Configure CONFIG.API_URL no topo do app.js com a URL /exec do seu App da Web."));
       return;
     }

@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ COLE AQUI A URL /exec DA SUA IMPLANTAÇÃO. Sem isto, nada carrega. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbwJPi1I9tYYHWt470IgA7l-98fxQzt6XtqLlX-so-3N3VMJOcXwp9agbI7O1dYKTIVY/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbzGaJwuLWC8JIGtiV5Y8CFk-VDtwJ4-zBy4-kqyrw__OCqtSIxCT_13tCZiDZXeoqp-/exec"
 };
 
 const STATE = {
@@ -198,6 +198,7 @@ async function carregarInit() {
   STATE.init.cargos = r.cargos || [];
   STATE.init.colaboradores = r.colaboradores || [];
   STATE.init.salarios = r.salarios || [];
+  STATE.init.lideranca = r.lideranca || [];
   atualizarDatalists();
 }
 
@@ -228,12 +229,13 @@ const GRUPOS_NAV = [
   { titulo: "Pessoas", itens: [
     { key: "colaboradores", label: "Colaboradores" },
     { key: "cargos", label: "Cargos e Salários" },
-    { key: "unidades", label: "Unidades" }
+    { key: "unidades", label: "Unidades" },
+    { key: "lideranca", label: "Liderança" }
   ]},
   { titulo: "Recrutamento", itens: [
     { key: "vagas", label: "Vagas" },
     { key: "admissoes", label: "Admissões" },
-    { key: "testes", label: "Testes Seletivos" }
+    { key: "testes", label: "Teste Prático" }
   ]},
   { titulo: "Gestão de Pessoas", itens: [
     { key: "escalas", label: "Escalas" },
@@ -278,6 +280,7 @@ async function navegar(key) {
   try {
     if (key === "dashboard") return renderDashboard();
     if (key === "unidades") return renderUnidades();
+    if (key === "lideranca") return renderLideranca();
     if (key === "escalas") return renderEscalas();
     if (key === "ponto") return renderPonto();
     if (key === "assistente") return renderAssistente();
@@ -341,6 +344,48 @@ function tabelaSimples(linhas, colunas) {
       </table>
     </div>
   `;
+}
+
+/* ===================== LIDERANÇA (somente leitura) ===================== */
+
+async function renderLideranca() {
+  setMain(`
+    <div class="page-title"><div><h2>Liderança</h2><p>Quem lidera quem, por unidade. Dados vêm da aba Lideranca da planilha.</p></div></div>
+    <div class="card">
+      <div class="grid g2">
+        <div class="form-row"><label>Filtrar por Unidade</label>
+          <input id="ldUnidade" type="text" list="dl-unidades" placeholder="Todas" oninput="filtrarLideranca()">
+        </div>
+        <div class="form-row"><label>Filtrar por Líder</label>
+          <input id="ldLider" type="text" placeholder="Todos" oninput="filtrarLideranca()">
+        </div>
+      </div>
+      <div id="tabelaLideranca"><div class="loading">Carregando...</div></div>
+    </div>
+  `);
+  await carregarLideranca();
+}
+
+async function carregarLideranca() {
+  try {
+    const r = await api("listarLideranca");
+    STATE.cache.lideranca = r.lideranca || [];
+    filtrarLideranca();
+  } catch (e) {
+    document.getElementById("tabelaLideranca").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+function filtrarLideranca() {
+  const dados = STATE.cache.lideranca || [];
+  const fU = normalize((el("#ldUnidade") && el("#ldUnidade").value) || "");
+  const fL = normalize((el("#ldLider") && el("#ldLider").value) || "");
+  const filtradas = dados.filter(l =>
+    (!fU || normalize(l.Unidade).indexOf(fU) !== -1) &&
+    (!fL || normalize(l.Lider).indexOf(fL) !== -1)
+  );
+  document.getElementById("tabelaLideranca").innerHTML =
+    tabelaComBadge(filtradas, ["Lider", "Liderado", "Unidade"]);
 }
 
 /* ===================== UNIDADES (somente leitura) ===================== */
@@ -439,10 +484,10 @@ const MODULES = {
   },
 
   testes: {
-    label: "Testes Seletivos",
+    label: "Teste Prático",
     listAction: "listarTestes", listKey: "testes",
     saveAction: "salvarTeste",
-    columns: ["DataTeste", "Candidato", "Unidade", "Cargo", "Nota", "Resultado"],
+    columns: ["DataTeste", "Candidato", "Unidade", "Cargo", "Escala", "Folga", "Nota", "Resultado"],
     fields: [
       { name: "DataTeste", label: "Data do Teste", type: "date", required: true },
       { name: "HoraTeste", label: "Hora do Teste", type: "time" },
@@ -451,6 +496,8 @@ const MODULES = {
       { name: "CPF", label: "CPF", type: "text" },
       { name: "Telefone", label: "Telefone", type: "text" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "Escala", label: "Escala", type: "select", options: ["6X1", "5X2", "12X36", "ROTATIVA"] },
+      { name: "Folga", label: "Folga (dia)", type: "select", options: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo", "Rotativa"] },
       { name: "Avaliador", label: "Avaliador", type: "text" },
       { name: "Nota", label: "Nota (0 a 10)", type: "number", min: 0, max: 10, step: 0.1 },
       { name: "Resultado", label: "Resultado", type: "select", options: ["APROVADO", "REPROVADO", "EM ANÁLISE"] },
@@ -753,13 +800,20 @@ async function salvarModulo(key) {
 
 /* ===================== ESCALAS (tela dedicada) ===================== */
 
+function selectTurnoHtml(padrao) {
+  const op = [["ABERTURA", "Abertura"], ["INTERMEDIARIO", "Intermediário"], ["FECHAMENTO", "Fechamento"]];
+  return `<select class="turno-select" style="width:auto;min-width:150px">
+    ${op.map(o => `<option value="${o[0]}" ${o[0] === padrao ? "selected" : ""}>${o[1]}</option>`).join("")}
+  </select>`;
+}
+
 async function renderEscalas() {
-  const nomesColab = STATE.init.colaboradores.map(c => c.Nome);
+  const nomesColab = STATE.init.colaboradores.map(c => c.Nome).filter(Boolean);
   setMain(`
-    <div class="page-title"><div><h2>Escalas</h2><p>Gere escalas em lote para um período.</p></div></div>
+    <div class="page-title"><div><h2>Escalas</h2><p>Defina os horários de cada turno e o turno de cada colaborador. A geração respeita abertura, intermediário e fechamento.</p></div></div>
 
     <div class="card">
-      <h3>Gerar Escala</h3>
+      <h3>1. Período e tipo</h3>
       <div class="grid g2">
         <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades"></div>
         <div class="form-row"><label>Tipo de Escala</label>
@@ -771,22 +825,54 @@ async function renderEscalas() {
         </div>
         <div class="form-row"><label>Início</label><input id="escInicio" type="date"></div>
         <div class="form-row"><label>Fim</label><input id="escFim" type="date"></div>
-        <div class="form-row"><label>Horário de Entrada</label><input id="escEntrada" type="time"></div>
-        <div class="form-row"><label>Horário de Saída</label><input id="escSaida" type="time"></div>
       </div>
+    </div>
 
+    <div class="card">
+      <h3>2. Horários dos turnos</h3>
+      <p class="card-subtitle">Preencha uma vez. Cada colaborador vai usar o horário do turno dele.</p>
+      <div class="grid g3">
+        <div>
+          <div class="form-row"><label>Abertura — Entrada</label><input id="tAberturaEntrada" type="time" value="08:00"></div>
+          <div class="form-row"><label>Abertura — Saída</label><input id="tAberturaSaida" type="time" value="16:20"></div>
+        </div>
+        <div>
+          <div class="form-row"><label>Intermediário — Entrada</label><input id="tIntermEntrada" type="time" value="11:00"></div>
+          <div class="form-row"><label>Intermediário — Saída</label><input id="tIntermSaida" type="time" value="19:20"></div>
+        </div>
+        <div>
+          <div class="form-row"><label>Fechamento — Entrada</label><input id="tFechamentoEntrada" type="time" value="15:40"></div>
+          <div class="form-row"><label>Fechamento — Saída</label><input id="tFechamentoSaida" type="time" value="00:00"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3. Colaboradores e turnos</h3>
       <div class="form-row">
-        <label>Colaboradores Cadastrados</label>
+        <label>Colaboradores Cadastrados (marque e escolha o turno de cada um)</label>
         <div class="checklist" id="escChecklist">
           ${nomesColab.length
-            ? nomesColab.map(n => `<label class="check"><input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}</label>`).join("")
+            ? nomesColab.map(n => `
+              <div class="check" style="justify-content:space-between;gap:12px">
+                <span style="display:flex;align-items:center;gap:8px;flex:1">
+                  <input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}
+                </span>
+                ${selectTurnoHtml("INTERMEDIARIO")}
+              </div>`).join("")
             : `<div class="empty">Nenhum colaborador cadastrado ainda.</div>`}
         </div>
       </div>
 
-      <div class="form-row">
-        <label>Colaboradores Avulsos (um por linha, para quem ainda não está cadastrado)</label>
-        <textarea id="escAvulsos"></textarea>
+      <div class="grid g2">
+        <div class="form-row">
+          <label>Colaboradores Avulsos (um por linha)</label>
+          <textarea id="escAvulsos"></textarea>
+        </div>
+        <div class="form-row">
+          <label>Turno dos avulsos</label>
+          ${selectTurnoHtml("INTERMEDIARIO").replace('class="turno-select"', 'id="escAvulsosTurno"')}
+        </div>
       </div>
 
       <div class="form-row">
@@ -811,7 +897,7 @@ async function carregarEscalas() {
   try {
     const r = await api("listarEscalas");
     document.getElementById("tabelaEscalas").innerHTML =
-      tabelaComBadge(r.escalas, ["Data", "DiaSemana", "Unidade", "Colaborador", "Folga", "HorarioEntrada", "HorarioSaida"]);
+      tabelaComBadge(r.escalas, ["Data", "DiaSemana", "Unidade", "Colaborador", "Turno", "Folga", "HorarioEntrada", "HorarioSaida"]);
   } catch (e) {
     document.getElementById("tabelaEscalas").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
@@ -822,17 +908,36 @@ async function gerarEscala() {
   const fim = el("#escFim").value;
   if (!inicio || !fim) { toast("Informe início e fim da escala.", "err"); return; }
 
-  const colaboradores = Array.from(document.querySelectorAll("#escChecklist input:checked")).map(i => i.value);
+  // Colaboradores marcados + o turno escolhido em cada linha.
+  const colaboradores = [];
+  document.querySelectorAll("#escChecklist .check").forEach(row => {
+    const cb = row.querySelector('input[type="checkbox"]');
+    const sel = row.querySelector("select");
+    if (cb && cb.checked) {
+      colaboradores.push({ nome: cb.value, turno: sel ? sel.value : "INTERMEDIARIO" });
+    }
+  });
+
+  // Avulsos (um por linha), todos com o mesmo turno escolhido.
+  const turnoAvulsos = el("#escAvulsosTurno") ? el("#escAvulsosTurno").value : "INTERMEDIARIO";
+  String(el("#escAvulsos").value || "").split(/\r?\n/).forEach(n => {
+    n = n.trim();
+    if (n) colaboradores.push({ nome: n, turno: turnoAvulsos });
+  });
+
+  if (!colaboradores.length) { toast("Selecione ao menos um colaborador.", "err"); return; }
 
   const dados = {
     unidade: el("#escUnidade").value,
     tipo: el("#escTipo").value,
     inicio: inicio,
     fim: fim,
-    entrada: el("#escEntrada").value,
-    saida: el("#escSaida").value,
+    turnos: {
+      ABERTURA: { entrada: el("#tAberturaEntrada").value, saida: el("#tAberturaSaida").value },
+      INTERMEDIARIO: { entrada: el("#tIntermEntrada").value, saida: el("#tIntermSaida").value },
+      FECHAMENTO: { entrada: el("#tFechamentoEntrada").value, saida: el("#tFechamentoSaida").value }
+    },
     colaboradores: colaboradores,
-    avulsos: el("#escAvulsos").value,
     observacoes: el("#escObs").value
   };
 
@@ -883,15 +988,32 @@ async function renderPonto() {
   await carregarEspelhoPonto();
 }
 
+function obterLocalizacao() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) { resolve(null); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  });
+}
+
 async function baterPonto() {
   const colaborador = el("#pontoColaborador").value.trim();
   if (!colaborador) { toast("Selecione o colaborador.", "err"); return; }
+
+  toast("Obtendo localização...", "info");
+  const loc = await obterLocalizacao();
+  if (!loc) toast("Sem localização (permissão negada ou indisponível). Ponto será registrado sem GPS.", "warn");
 
   const dados = {
     Colaborador: colaborador,
     Unidade: el("#pontoUnidade").value.trim(),
     TipoBatida: el("#pontoTipo").value,
-    Dispositivo: navigator.userAgent
+    Dispositivo: navigator.userAgent,
+    Latitude: loc ? loc.lat : "",
+    Longitude: loc ? loc.lng : ""
   };
 
   try {

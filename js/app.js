@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ COLE AQUI A URL /exec DA SUA IMPLANTAÇÃO. Sem isto, nada carrega. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbz_FzqChLmPpZdESPpz8Ajtwtp6ci2JvnrBbvAGzQCBNimR5gxk29kRun0HvxcAI6OA/exec"
+  API_URL: ""
 };
 
 const STATE = {
@@ -25,7 +25,7 @@ const STATE = {
 
 function apiCall(acao, dados) {
   return new Promise((resolve, reject) => {
-    if (!CONFIG.API_URL || CONFIG.API_URL.indexOf("COLE_AQUI") !== -1) {
+    if (!CONFIG.API_URL || CONFIG.API_URL.indexOf(https://script.google.com/macros/s/AKfycbzXgdgdbAzHZhkBMR6xTkkIw5RPV1UQ3jNwL8K1tM6QgDSv-rWNpT_wsLkJ9_z-ESm_/exec) {
       reject(new Error("Configure CONFIG.API_URL no topo do app.js com a URL /exec do seu App da Web."));
       return;
     }
@@ -246,6 +246,9 @@ const GRUPOS_NAV = [
     { key: "experiencia", label: "Avaliação de Experiência" },
     { key: "treinamentos", label: "Treinamentos" }
   ]},
+  { titulo: "Desenvolvimento", itens: [
+    { key: "universidade", label: "Universidade Evol" }
+  ]},
   { titulo: "Operações", itens: [
     { key: "fardamento", label: "Fardamento / Estoque" },
     { key: "indicadores", label: "Indicadores Mensais" },
@@ -286,6 +289,7 @@ async function navegar(key) {
     if (key === "experiencia") return renderExperiencia();
     if (key === "feedbacks") return renderFeedback();
     if (key === "dossie") return renderDossie();
+    if (key === "universidade") return renderUniversidade();
     if (key === "escalas") return renderEscalas();
     if (key === "ponto") return renderPonto();
     if (key === "assistente") return renderAssistente();
@@ -348,6 +352,8 @@ async function renderDashboard(unidade) {
       <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
       <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
       <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Treinamentos no Mês</small><strong>${k.treinamentosMes || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Horas de Treinamento (mês)</small><strong>${k.horasTreinMes || 0}h</strong></div>
     </div>
 
     <div class="card">
@@ -477,6 +483,103 @@ function autofillGestor(nomeColaborador, campoDestinoId) {
   if (campo && lider) campo.value = lider;
 }
 
+/* ===================== UNIVERSIDADE EVOL ===================== */
+
+const ACADEMIA_NOVOS_TALENTOS = [
+  ["01", "Autoconhecimento e Perfil Profissional", "Entender quem você é para crescer com intenção"],
+  ["02", "Comunicação e Oratória", "Falar com clareza, confiança e presença"],
+  ["03", "Inteligência Emocional", "Gerenciar emoções para agir com equilíbrio"],
+  ["04", "Gestão de Conflitos", "Transformar tensões em soluções"],
+  ["05", "Atendimento e Experiência do Cliente", "Encantar é uma escolha que se aprende"],
+  ["06", "Organização e Gestão do Tempo", "Fazer mais com o tempo que você já tem"],
+  ["07", "Trabalho em Equipe e Colaboração", "Ninguém cresce sozinho"],
+  ["08", "Pensamento Crítico e Resolução de Problemas", "Do 'não sei' para o 'vou descobrir'"],
+  ["09", "Feedback: Dar e Receber", "A ferramenta mais poderosa de crescimento"],
+  ["10", "Liderança Pessoal", "Liderar a si mesmo antes de liderar qualquer pessoa"],
+  ["11", "Ética, Postura e Imagem Profissional", "Sua reputação é seu maior ativo"],
+  ["12", "Projeto de Crescimento Pessoal", "De onde vim, onde estou, para onde vou"]
+];
+
+const ACADEMIA_LIDERES = [
+  ["Mês 1", "🧭 O Papel do Líder Moderno", "Identidade do líder"],
+  ["Mês 2", "🧠 Inteligência Emocional na Liderança", "Autorregulação emocional"],
+  ["Mês 3", "📚 Andragogia: Como Adultos Aprendem", "Ensinar e desenvolver"],
+  ["Mês 4", "💬 Feedback de Alto Impacto", "Conversas difíceis"],
+  ["Mês 5", "🌱 Acompanhamento e Desenvolvimento de Novos Talentos", "Onboarding e plano 90 dias"],
+  ["Mês 6", "🗣️ Comunicação Assertiva para Líderes", "Clareza e assertividade"],
+  ["Mês 7", "🔥 Gestão de Conflitos na Liderança", "Mediação e resolução"],
+  ["Mês 8", "🎯 Delegação e Desenvolvimento de Autonomia", "Autonomia e delegação"],
+  ["Mês 9", "⚡ Motivação e Engajamento de Equipes", "Motivação intrínseca"],
+  ["Mês 10", "🧩 Tomada de Decisão e Gestão sob Pressão", "Decisão e cognição"],
+  ["Mês 11", "🌐 Gestão de Clima e Cultura de Equipe", "Clima e comportamento"],
+  ["Mês 12", "🏆 Liderança Integrada: Plano de Evolução", "Integração e PDI"]
+];
+
+function tabelaModulos(linhas, colTitulo, programa, keyPrefix) {
+  return `<div class="table-wrap"><table>
+    <thead><tr><th style="width:80px">#</th><th>${escapeHtml(colTitulo)}</th><th>Foco</th><th style="width:150px"></th></tr></thead>
+    <tbody>${linhas.map(m => {
+      const chave = keyPrefix + m[0];
+      const titEsc = m[1].replace(/'/g, "\\'");
+      return `<tr>
+      <td style="font-weight:800;color:var(--azul)">${escapeHtml(m[0])}</td>
+      <td style="font-weight:700">${escapeHtml(m[1])}</td>
+      <td class="muted">${escapeHtml(m[2])}</td>
+      <td><button class="btn btn-primary" style="padding:6px 10px;min-height:auto" onclick="abrirModuloUniversidade('${programa}','${escapeHtml(chave)}','${escapeHtml(titEsc)}')">Ver conteúdo</button></td>
+    </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
+async function carregarUniversidadeJson() {
+  if (STATE.cache.universidade) return STATE.cache.universidade;
+  const r = await fetch("universidade.json");
+  if (!r.ok) throw new Error("Arquivo universidade.json não encontrado (envie-o ao GitHub, na raiz).");
+  const data = await r.json();
+  STATE.cache.universidade = data;
+  return data;
+}
+
+async function abrirModuloUniversidade(programa, chave, titulo) {
+  setMain(`<div class="loading">Carregando conteúdo do módulo...</div>`);
+  let data;
+  try { data = await carregarUniversidadeJson(); }
+  catch (e) { setMain(`<div class="msg err">${escapeHtml(e.message)}</div><div class="actions"><button class="btn btn-secondary" onclick="renderUniversidade()">← Voltar</button></div>`); return; }
+  const conteudo = (data[programa] && data[programa][chave]) || "Conteúdo não encontrado para este módulo.";
+  setMain(`
+    <div class="page-title"><div><h2>${escapeHtml(titulo)}</h2><p>Universidade Evol — conteúdo do módulo.</p></div>
+      <button class="btn btn-secondary" onclick="renderUniversidade()">← Voltar</button>
+    </div>
+    <div class="card"><div style="white-space:pre-wrap;line-height:1.65;font-size:14px">${escapeHtml(conteudo)}</div></div>
+    <div class="actions"><button class="btn btn-primary" onclick="treinarModulo('${escapeHtml(titulo.replace(/'/g, "\\'"))}')">Registrar treino deste módulo</button></div>
+  `);
+}
+
+async function renderUniversidade() {
+  setMain(`
+    <div class="page-title"><div><h2>🎓 Universidade Evol</h2><p>Trilhas de desenvolvimento do Grupo Evol. Clique em "Ver conteúdo" para abrir o módulo.</p></div></div>
+
+    <div class="card">
+      <h3>🎓 Academia de Novos Talentos <span class="muted" style="font-weight:400;font-size:13px">— Guia dos 12 Módulos</span></h3>
+      <p class="card-subtitle">Formação de base para desenvolver novos talentos, do autoconhecimento ao projeto de crescimento pessoal.</p>
+      ${tabelaModulos(ACADEMIA_NOVOS_TALENTOS, "Módulo", "TALENTOS", "Módulo ")}
+    </div>
+
+    <div class="card">
+      <h3>👑 Academia de Líderes <span class="muted" style="font-weight:400;font-size:13px">— Programa de 12 meses</span></h3>
+      <p class="card-subtitle">Desenvolvimento de líderes: do papel do líder moderno à liderança integrada com PDI.</p>
+      ${tabelaModulos(ACADEMIA_LIDERES, "Tema do Mês", "LIDERES", "")}
+    </div>
+  `);
+}
+
+function treinarModulo(tema) {
+  navegar("treinamentos");
+  setTimeout(() => {
+    const campo = document.getElementById("campo_Tema");
+    if (campo) { campo.value = tema; campo.focus(); }
+  }, 400);
+}
+
 /* ===================== FEEDBACK (avaliação completa) ===================== */
 
 function fbChk(name, opcoes) {
@@ -574,6 +677,7 @@ async function renderFeedback() {
 }
 
 function classificaFbLocal(p) {
+  if (!p || p <= 0) return "—";
   if (p >= 90) return "🔵 DESTAQUE";
   if (p >= 80) return "🟢 ACIMA DAS EXPECTATIVAS";
   if (p >= 70) return "🟡 DENTRO DAS EXPECTATIVAS";
@@ -581,8 +685,9 @@ function classificaFbLocal(p) {
   return "🔴 PLANO DE AÇÃO IMEDIATO";
 }
 function fbAtualizaClass() {
-  const p = Number(el("#fbPont").value) || 0;
-  el("#fbClass").value = classificaFbLocal(p);
+  const raw = el("#fbPont").value;
+  const p = Number(raw);
+  el("#fbClass").value = (raw === "" || isNaN(p) || p <= 0) ? "—" : classificaFbLocal(p);
 }
 
 async function salvarFeedbackCompleto() {
@@ -896,7 +1001,7 @@ function abrirVagaForm() {
             <option>Quadro Ideal</option><option>Substituição por Promoção</option>
           </select>
         </div>
-        <div class="form-row"><label>Colaborador substituído (se substituição)</label><input id="avSubstituido" type="text" placeholder="Nome de quem saiu"></div>
+        <div class="form-row"><label>Colaborador substituído (se substituição)</label><input id="avSubstituido" type="text" list="dl-colaboradores" placeholder="Nome de quem saiu"></div>
         <div class="form-row"><label>Perfil do Solicitante *</label>
           <select id="avTipoSolic"><option value="">Selecione...</option><option>Liderança</option><option>Sócio Operador</option></select>
         </div>
@@ -920,10 +1025,14 @@ async function submitAbrirVaga() {
     setor: el("#avSetor").value,
     motivo: el("#avMotivo").value,
     substituido: el("#avSubstituido").value.trim(),
+    tipoSolicitante: el("#avTipoSolic").value,
     solicitante: el("#avSolicitante").value.trim()
   };
   if (!dados.unidade || !dados.vaga || !dados.setor || !dados.solicitante) {
     toast("Preencha Unidade, Vaga, Setor e Solicitante.", "err"); return;
+  }
+  if (normalize(dados.motivo).indexOf("SUBSTITUICAO") !== -1 && !dados.substituido) {
+    toast("Informe o colaborador substituído.", "err"); return;
   }
   try {
     const r = await api("abrirVaga", dados);
@@ -1171,12 +1280,13 @@ const MODULES = {
     label: "Treinamentos",
     listAction: "listarTreinamentos", listKey: "treinamentos",
     saveAction: "salvarTreinamento",
-    columns: ["Data", "Unidade", "Tema", "Tipo", "HorasDadas"],
+    columns: ["Data", "Unidade", "Tema", "Tipo", "Ministrante", "HorasDadas"],
     fields: [
       { name: "Data", label: "Data", type: "date" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
       { name: "Tema", label: "Tema", type: "text", required: true, col: "g2" },
       { name: "Tipo", label: "Tipo", type: "select", options: ["PRESENCIAL", "ONLINE", "PRÁTICO"] },
+      { name: "Ministrante", label: "Ministrante / Instrutor", type: "text", required: true },
       { name: "HorasDadas", label: "Horas Dadas", type: "number" },
       { name: "HorasAssistidas", label: "Horas Assistidas (média)", type: "number" },
       { name: "ParticipantesManuais", label: "Participantes", type: "textarea", col: "g2" },
@@ -1420,15 +1530,38 @@ function selectTurnoHtml(padrao) {
   </select>`;
 }
 
+function linhasChecklistEscala(nomes) {
+  if (!nomes.length) return `<div class="empty">Nenhum colaborador nesta unidade.</div>`;
+  return nomes.map(n => `
+    <div class="check" style="justify-content:space-between;gap:12px">
+      <span style="display:flex;align-items:center;gap:8px;flex:1">
+        <input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}
+      </span>
+      ${selectTurnoHtml("INTERMEDIARIO")}
+    </div>`).join("");
+}
+
+function colabsDaUnidade(unidade) {
+  const u = normalize(unidade);
+  const todos = STATE.init.colaboradores || [];
+  const lista = !u ? todos : todos.filter(c => normalize(c.Unidade) === u);
+  return lista.map(c => c.Nome).filter(Boolean);
+}
+
+function filtrarColabsEscala() {
+  const uni = el("#escUnidade") ? el("#escUnidade").value : "";
+  const cont = document.getElementById("escChecklist");
+  if (cont) cont.innerHTML = linhasChecklistEscala(colabsDaUnidade(uni));
+}
+
 async function renderEscalas() {
-  const nomesColab = STATE.init.colaboradores.map(c => c.Nome).filter(Boolean);
   setMain(`
     <div class="page-title"><div><h2>Escalas</h2><p>Defina os horários de cada turno e o turno de cada colaborador. A geração respeita abertura, intermediário e fechamento.</p></div></div>
 
     <div class="card">
       <h3>1. Período e tipo</h3>
       <div class="grid g2">
-        <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades" onchange="filtrarColabsEscala()" placeholder="Filtra os colaboradores"></div>
         <div class="form-row"><label>Tipo de Escala</label>
           <select id="escTipo">
             <option value="6X1">6x1</option>
@@ -1464,18 +1597,8 @@ async function renderEscalas() {
     <div class="card">
       <h3>3. Colaboradores e turnos</h3>
       <div class="form-row">
-        <label>Colaboradores Cadastrados (marque e escolha o turno de cada um)</label>
-        <div class="checklist" id="escChecklist">
-          ${nomesColab.length
-            ? nomesColab.map(n => `
-              <div class="check" style="justify-content:space-between;gap:12px">
-                <span style="display:flex;align-items:center;gap:8px;flex:1">
-                  <input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}
-                </span>
-                ${selectTurnoHtml("INTERMEDIARIO")}
-              </div>`).join("")
-            : `<div class="empty">Nenhum colaborador cadastrado ainda.</div>`}
-        </div>
+        <label>Colaboradores da unidade (marque e escolha o turno de cada um)</label>
+        <div class="checklist" id="escChecklist">${linhasChecklistEscala(colabsDaUnidade(""))}</div>
       </div>
 
       <div class="grid g2">
@@ -1500,8 +1623,12 @@ async function renderEscalas() {
     </div>
 
     <div class="card">
-      <h3>Escalas Geradas</h3>
-      <div id="tabelaEscalas"><div class="loading">Carregando...</div></div>
+      <h3>Grade de Escala</h3>
+      <div class="form-row" style="max-width:320px">
+        <label>Ver grade da unidade</label>
+        <select id="gradeUnidade" onchange="montarGradeEscala()"><option value="">Todas</option></select>
+      </div>
+      <div id="gradeEscala"><div class="loading">Carregando...</div></div>
     </div>
   `);
   await carregarEscalas();
@@ -1510,11 +1637,58 @@ async function renderEscalas() {
 async function carregarEscalas() {
   try {
     const r = await api("listarEscalas");
-    document.getElementById("tabelaEscalas").innerHTML =
-      tabelaComBadge(r.escalas, ["Data", "DiaSemana", "Unidade", "Colaborador", "Turno", "Folga", "HorarioEntrada", "HorarioSaida"]);
+    STATE.cache.escalas = r.escalas || [];
+    const unis = [...new Set(STATE.cache.escalas.map(e => e.Unidade).filter(Boolean))].sort();
+    const sel = document.getElementById("gradeUnidade");
+    if (sel) sel.innerHTML = `<option value="">Todas</option>` + unis.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
+    montarGradeEscala();
   } catch (e) {
-    document.getElementById("tabelaEscalas").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+    document.getElementById("gradeEscala").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
+}
+
+function fmtHoraCurta(h) {
+  const s = String(h || "").trim();
+  if (!s) return "";
+  const m = s.match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return s;
+  return m[2] === "00" ? (m[1].padStart(2, "0") + "H") : (m[1].padStart(2, "0") + ":" + m[2]);
+}
+
+function montarGradeEscala() {
+  const dados = STATE.cache.escalas || [];
+  const uni = el("#gradeUnidade") ? el("#gradeUnidade").value : "";
+  const filtradas = uni ? dados.filter(e => normalize(e.Unidade) === normalize(uni)) : dados;
+  const cont = document.getElementById("gradeEscala");
+  if (!filtradas.length) { cont.innerHTML = `<div class="empty">Nenhuma escala gerada ainda.</div>`; return; }
+
+  const datas = [...new Set(filtradas.map(e => e.Data).filter(Boolean))].sort();
+  const colabs = [...new Set(filtradas.map(e => e.Colaborador).filter(Boolean))].sort();
+  const diaSemana = {};
+  filtradas.forEach(e => { if (e.Data) diaSemana[e.Data] = e.DiaSemana; });
+  const mapa = {};
+  filtradas.forEach(e => { mapa[e.Colaborador + "|" + e.Data] = e; });
+
+  function labelData(d) {
+    const p = String(d).split("-"); // yyyy-MM-dd
+    return p.length === 3 ? p[2] + "/" + p[1] : d;
+  }
+  function celula(e) {
+    if (!e) return `<td style="text-align:center;color:#9ca3af">-</td>`;
+    if (normalize(e.Folga) === "SIM") return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
+    const h = fmtHoraCurta(e.HorarioEntrada) || "—";
+    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800">${escapeHtml(h)}</td>`;
+  }
+
+  cont.innerHTML = `
+    <div class="table-wrap"><table>
+      <thead>
+        <tr><th>Colaborador</th>${datas.map(d => `<th style="text-align:center">${labelData(d)}<br><span style="font-weight:400;font-size:11px">${escapeHtml(diaSemana[d] || "")}</span></th>`).join("")}</tr>
+      </thead>
+      <tbody>
+        ${colabs.map(nome => `<tr><td style="font-weight:800;white-space:nowrap">${escapeHtml(nome)}</td>${datas.map(d => celula(mapa[nome + "|" + d])).join("")}</tr>`).join("")}
+      </tbody>
+    </table></div>`;
 }
 
 async function gerarEscala() {

@@ -302,6 +302,20 @@ async function navegar(key) {
 
 /* ===================== DASHBOARD ===================== */
 
+function tabelaPorUnidade(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhuma unidade.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Unidade</th><th>Headcount</th><th>Vagas Abertas</th><th>Folha (ativos)</th><th>Faturamento</th><th>Faturamento / Colaborador</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td style="font-weight:700">${escapeHtml(l.Unidade)}</td>
+      <td>${escapeHtml(l.Headcount)}</td>
+      <td>${escapeHtml(l.VagasAbertas)}</td>
+      <td>${fmtMoeda(l.Folha)}</td>
+      <td>${l.Faturamento ? fmtMoeda(l.Faturamento) : "—"}</td>
+      <td>${l.Faturamento ? fmtMoeda(l.FatPorColab) : "—"}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
 function tabelaSlaMes(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
   return `<div class="table-wrap"><table>
@@ -357,6 +371,7 @@ async function renderDashboard(unidade) {
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
       <div class="kpi"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong></div>
       <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>Folha Atual (ativos)</small><strong>${fmtMoeda(k.folhaTotal)}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
       <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
@@ -367,8 +382,8 @@ async function renderDashboard(unidade) {
     </div>
 
     <div class="card">
-      <h3>👥 Headcount e Vagas por Unidade</h3>
-      ${tabelaSimples(dash.porUnidade, ["Unidade", "Headcount", "VagasAbertas"])}
+      <h3>👥 Headcount, Folha e Faturamento por Unidade</h3>
+      ${tabelaPorUnidade(dash.porUnidade)}
     </div>
 
     <div class="grid g2">
@@ -1420,6 +1435,7 @@ const MODULES = {
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
       { name: "TurnoverPercentual", label: "Turnover (%)", type: "number", step: 0.01 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
+      { name: "Faturamento", label: "Faturamento do mês (R$)", type: "money" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },

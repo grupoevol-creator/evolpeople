@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbzXgdgdbAzHZhkBMR6xTkkIw5RPV1UQ3jNwL8K1tM6QgDSv-rWNpT_wsLkJ9_z-ESm_/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbyMerwMhK61wqTCPybSk2lu9z5_VIiuVNFQU-Bf8n_C_UauzQz6NOBGGBSPaJhLGF9H/exec"
 };
 
 const STATE = {
@@ -1133,7 +1133,7 @@ async function renderVagas() {
   STATE.cache.vagas = r.vagas || [];
   STATE.cache.vagasUnidades = r.unidades || [];
   const k = r.kpis || {};
-  const statusOpts = ["ABERTA", "SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
+  const statusOpts = ["SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
 
   setMain(`
     <div class="page-title">
@@ -1213,7 +1213,7 @@ function filtrarVagas() {
         ${filtradas.map(v => {
           const id = vagaGet(v, ["ID"]);
           const st = normalize(vagaGet(v, ["STATUS"]));
-          const opts = ["ABERTA", "SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
+          const opts = ["SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
           const selHtml = `<select onchange="mudarStatusVagaUI('${escapeHtml(id)}', this.value)" style="min-width:130px">
             ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
           </select>`;

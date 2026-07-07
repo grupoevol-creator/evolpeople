@@ -190,6 +190,7 @@ async function iniciarApp() {
   await carregarInit();
   montarSidebar();
   navegar("dashboard");
+  mostrarAvisosLogin();
 }
 
 async function carregarInit() {
@@ -207,6 +208,7 @@ function atualizarDatalists() {
   setDatalist("dl-cargos", STATE.init.cargos.map(c => c.Cargo));
   setDatalist("dl-colaboradores", STATE.init.colaboradores.map(c => c.Nome));
   setDatalist("dl-bairros", BAIRROS_FORTALEZA.concat(MUNICIPIOS_RMF));
+  setDatalist("dl-ministrantes", [...new Set(SOLICITANTES.map(s => s[0]))].sort());
 }
 
 function setDatalist(id, valores) {
@@ -228,7 +230,8 @@ function setDatalist(id, valores) {
 const GRUPOS_NAV = [
   { titulo: "Visão Geral", itens: [
     { key: "dashboard", label: "Dashboard" },
-    { key: "agenda", label: "Agenda" }
+    { key: "agenda", label: "Agenda" },
+    { key: "avisos", label: "Avisos" }
   ] },
   { titulo: "Pessoas", itens: [
     { key: "colaboradores", label: "Colaboradores" },
@@ -257,7 +260,7 @@ const GRUPOS_NAV = [
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
-  { titulo: "Assistente", itens: [{ key: "assistente", label: "Assistente IA" }] }
+  { titulo: "Assistente", itens: [{ key: "assistente", label: "EVA (Assistente)" }] }
 ];
 
 function permitido(key) {
@@ -286,6 +289,7 @@ async function navegar(key) {
   try {
     if (key === "dashboard") return renderDashboard();
     if (key === "agenda") return renderAgenda();
+    if (key === "avisos") return renderAvisos();
     if (key === "unidades") return renderUnidades();
     if (key === "lideranca") return renderLideranca();
     if (key === "vagas") return renderVagas();
@@ -359,6 +363,13 @@ async function renderDashboard(unidade) {
   const unis = dash.unidades || [];
   const sel = dash.filtroUnidade || "";
 
+  let aviso = "";
+  if (k.folhaTotal === undefined) {
+    aviso = `<div class="msg err">⚠️ O backend (Code.gs) está desatualizado. Cole o Code.gs novo e publique <b>Nova versão</b> no Apps Script — sem isso, folha, custo projetado e SLA por mês não funcionam.</div>`;
+  } else if (k.folhaTotal === 0) {
+    aviso = `<div class="msg warn">⚠️ O backend está atualizado, mas não achei os salários. Provável causa: a coluna de <b>Cargo</b> na aba Colaboradores tem nome diferente, ou os cargos não batem com a tabela de salários. Me manda os cabeçalhos da aba Colaboradores.</div>`;
+  }
+
   setMain(`
     <div class="page-title">
       <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.</p></div>
@@ -370,6 +381,18 @@ async function renderDashboard(unidade) {
         </select>
       </div>
     </div>
+
+    ${aviso}
+
+    ${(dash.avisos && dash.avisos.length) ? `<div class="card" style="border-left:5px solid var(--laranja)">
+      <h3>📢 Avisos</h3>
+      ${dash.avisos.map(a => `<div class="msg ${normalize(a.Prioridade) === "URGENTE" || normalize(a.Prioridade) === "CRITICA" ? "err" : "info"}" style="text-align:left"><strong>${escapeHtml(a.Titulo || "")}</strong><br>${escapeHtml(a.Mensagem || "")}</div>`).join("")}
+    </div>` : ""}
+
+    ${(dash.insights && dash.insights.length) ? `<div class="card" style="border-left:5px solid var(--info)">
+      <h3>🤖 Insights da EVA</h3>
+      ${dash.insights.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border)">${escapeHtml(i)}</div>`).join("")}
+    </div>` : ""}
 
     <div class="grid g4">
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
@@ -579,6 +602,36 @@ async function carregarUniversidadeJson() {
   return data;
 }
 
+function aplicaNegritoUni(s) {
+  return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
+function formatarConteudoModulo(texto) {
+  const linhas = String(texto || "").split("\n");
+  let html = "", buf = [];
+  function flush() {
+    if (!buf.length) return;
+    const rows = buf.map(l => l.split("|").map(c => c.trim()));
+    const head = rows[0], body = rows.slice(1);
+    html += `<div class="table-wrap" style="margin:12px 0"><table>
+      <thead><tr>${head.map(h => `<th>${aplicaNegritoUni(h)}</th>`).join("")}</tr></thead>
+      <tbody>${body.map(r => `<tr>${r.map(c => `<td>${aplicaNegritoUni(c)}</td>`).join("")}</tr>`).join("")}</tbody>
+    </table></div>`;
+    buf = [];
+  }
+  linhas.forEach(raw => {
+    const l = raw.trim();
+    if (!l) { flush(); return; }
+    const nPipes = (l.match(/\|/g) || []).length;
+    if (nPipes >= 2) { buf.push(l); return; }
+    flush();
+    if (l.indexOf("###") === 0) { html += `<h3 style="color:var(--azul);margin:16px 0 6px">${escapeHtml(l.replace(/^#+\s*/, ""))}</h3>`; return; }
+    html += `<p style="margin:6px 0;line-height:1.6">${aplicaNegritoUni(l.replace(/\s*\|\s*/g, " · "))}</p>`;
+  });
+  flush();
+  return html;
+}
+
 async function abrirModuloUniversidade(programa, chave, titulo) {
   setMain(`<div class="loading">Carregando conteúdo do módulo...</div>`);
   let data;
@@ -589,7 +642,7 @@ async function abrirModuloUniversidade(programa, chave, titulo) {
     <div class="page-title"><div><h2>${escapeHtml(titulo)}</h2><p>Universidade Evol — conteúdo do módulo.</p></div>
       <button class="btn btn-secondary" onclick="renderUniversidade()">← Voltar</button>
     </div>
-    <div class="card"><div style="white-space:pre-wrap;line-height:1.65;font-size:14px">${escapeHtml(conteudo)}</div></div>
+    <div class="card">${formatarConteudoModulo(conteudo)}</div>
     <div class="actions"><button class="btn btn-primary" onclick="treinarModulo('${escapeHtml(titulo.replace(/'/g, "\\'"))}')">Registrar treino deste módulo</button></div>
   `);
 }
@@ -774,9 +827,9 @@ async function renderExperiencia() {
     <div class="card">
       <div class="grid g3">
         <div class="form-row"><label>Colaborador *</label><input id="exColab" type="text" list="dl-colaboradores" placeholder="Selecione o colaborador" onchange="autofillGestor(this.value,'exGestor')"></div>
-        <div class="form-row"><label>Nome do gestor</label><input id="exGestor" type="text"></div>
+        <div class="form-row"><label>Nome do gestor</label><input id="exGestor" type="text" list="dl-gestores" placeholder="Líder responsável"></div>
         <div class="form-row"><label>Data desta avaliação *</label><input id="exDataAval" type="date"></div>
-        <div class="form-row"><label>Unidade</label><input id="exUnidade" type="text" list="dl-unidades"></div>
+        <div class="form-row"><label>Unidade</label><input id="exUnidade" type="text" list="dl-unidades" onchange="filtrarGestoresExp()"></div>
         <div class="form-row"><label>Cargo</label><input id="exCargo" type="text" list="dl-cargos"></div>
         <div class="form-row"><label>Data de admissão</label><input id="exAdmissao" type="date"></div>
       </div>
@@ -804,7 +857,13 @@ async function renderExperiencia() {
 
     <div class="card"><h3>Avaliações Registradas</h3><div id="tabelaExp"><div class="loading">Carregando...</div></div></div>
   `);
+  setDatalist("dl-gestores", lideresDaUnidade(""));
   await carregarExpTabela();
+}
+
+function filtrarGestoresExp() {
+  const u = el("#exUnidade") ? el("#exUnidade").value : "";
+  setDatalist("dl-gestores", lideresDaUnidade(u));
 }
 
 async function salvarExperiencia() {
@@ -908,6 +967,78 @@ async function salvarOcorrenciaDossie() {
     el("#dsColab").value = nome;
     await abrirDossie();
   } catch (e) { toast(e.message, "err"); }
+}
+
+/* ===================== MODAL / AVISOS ===================== */
+
+function mostrarModal(titulo, htmlConteudo) {
+  let ov = document.getElementById("modalOverlay");
+  if (!ov) { ov = document.createElement("div"); ov.id = "modalOverlay"; document.body.appendChild(ov); }
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(15,23,42,.55);z-index:100;display:flex;align-items:center;justify-content:center;padding:16px";
+  ov.innerHTML = `<div style="background:#fff;border-radius:16px;max-width:540px;width:100%;max-height:82vh;overflow:auto;padding:22px;box-shadow:var(--shadow-strong)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <h2 style="margin:0;color:var(--azul)">${escapeHtml(titulo)}</h2>
+      <button class="btn btn-secondary" onclick="fecharModal()">Fechar</button>
+    </div>${htmlConteudo}</div>`;
+  ov.onclick = e => { if (e.target === ov) fecharModal(); };
+}
+function fecharModal() { const ov = document.getElementById("modalOverlay"); if (ov) ov.remove(); }
+
+async function mostrarAvisosLogin() {
+  try {
+    const r = await api("listarAvisos", { perfil: (STATE.user && STATE.user.perfil) || "" });
+    const avisos = r.avisos || [];
+    if (!avisos.length) return;
+    const html = avisos.map(a => `
+      <div class="msg ${normalize(a.Prioridade) === "URGENTE" || normalize(a.Prioridade) === "CRITICA" ? "err" : "info"}" style="text-align:left">
+        <strong>${escapeHtml(a.Titulo || "Aviso")}</strong><br>${escapeHtml(a.Mensagem || "")}
+        <div class="muted" style="font-size:11px;margin-top:4px">${escapeHtml(a.Data || "")} · ${escapeHtml(a.CriadoPor || "")}</div>
+      </div>`).join("");
+    mostrarModal("📢 Avisos", html);
+  } catch (e) {}
+}
+
+async function renderAvisos() {
+  setMain(`
+    <div class="page-title"><div><h2>📢 Avisos e Lembretes</h2><p>Aparecem no login e no Dashboard de sócios e diretoria.</p></div></div>
+    <div class="card">
+      <h3>Novo aviso</h3>
+      <div class="grid g2">
+        <div class="form-row"><label>Título *</label><input id="avsTitulo" type="text"></div>
+        <div class="form-row"><label>Público</label>
+          <select id="avsPublico"><option>Todos</option><option>Sócios</option><option>Diretoria</option><option>Sócios e Diretoria</option><option>Liderança</option><option>RH</option></select>
+        </div>
+        <div class="form-row"><label>Prioridade</label>
+          <select id="avsPrioridade"><option>Normal</option><option>Urgente</option></select>
+        </div>
+        <div class="form-row"><label>Expira em (opcional)</label><input id="avsExpira" type="date"></div>
+      </div>
+      <div class="form-row"><label>Mensagem *</label><textarea id="avsMsg"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="salvarAviso()">Publicar aviso</button></div>
+    </div>
+    <div class="card"><h3>Avisos ativos</h3><div id="tabelaAvisos"><div class="loading">Carregando...</div></div></div>
+  `);
+  await carregarAvisos();
+}
+
+async function salvarAviso() {
+  const dados = {
+    Titulo: el("#avsTitulo").value.trim(),
+    Mensagem: el("#avsMsg").value.trim(),
+    Publico: el("#avsPublico").value,
+    Prioridade: el("#avsPrioridade").value,
+    Expira: el("#avsExpira").value
+  };
+  if (!dados.Titulo || !dados.Mensagem) { toast("Preencha título e mensagem.", "err"); return; }
+  try { const r = await api("salvarAviso", dados); toast(r.msg, "ok"); await renderAvisos(); }
+  catch (e) { toast(e.message, "err"); }
+}
+
+async function carregarAvisos() {
+  try {
+    const r = await api("listarAvisos", { perfil: "" });
+    document.getElementById("tabelaAvisos").innerHTML = tabelaSimples(r.avisos || [], ["Data", "Titulo", "Mensagem", "Publico", "Prioridade", "CriadoPor"]);
+  } catch (e) { document.getElementById("tabelaAvisos").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
 
 /* ===================== AGENDA ===================== */
@@ -1069,7 +1200,7 @@ function filtrarVagas() {
 
   const cols = [
     ["ID", ["ID"]], ["VAGA", ["VAGA"]], ["UNIDADE", ["UNIDADE"]], ["SETOR", ["SETOR"]],
-    ["MOTIVO", ["MOTIVO"]], ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
+    ["MOTIVO", ["MOTIVO"]], ["URGÊNCIA", ["URGENCIA", "URGÊNCIA", "PRIORIDADE"]], ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
     ["DIAS EM ABERTO", ["DIAS EM ABERTO"]], ["CANDIDATO", ["CANDIDATO"]],
     ["STATUS", ["STATUS"]], ["SLA", ["SLA STATUS", "SLA"]]
   ];
@@ -1214,6 +1345,9 @@ function abrirVagaForm() {
             <option>Quadro Ideal</option><option>Substituição por Promoção</option>
           </select>
         </div>
+        <div class="form-row"><label>Urgência *</label>
+          <select id="avUrgencia"><option>Baixa</option><option selected>Normal</option><option>Alta</option><option>Crítica</option></select>
+        </div>
         <div class="form-row"><label>Colaborador substituído (se substituição)</label><input id="avSubstituido" type="text" list="dl-colaboradores" placeholder="Nome de quem saiu"></div>
         <div class="form-row"><label>Perfil do Solicitante *</label>
           <select id="avTipoSolic"><option value="">Selecione...</option><option>Liderança</option><option>Sócio Operador</option><option>RH</option><option>Diretor</option></select>
@@ -1236,6 +1370,7 @@ async function submitAbrirVaga() {
     vaga: el("#avVaga").value.trim(),
     setor: el("#avSetor").value,
     motivo: el("#avMotivo").value,
+    urgencia: el("#avUrgencia").value,
     substituido: el("#avSubstituido").value.trim(),
     tipoSolicitante: el("#avTipoSolic").value,
     solicitante: el("#avSolicitante").value.trim()
@@ -1499,7 +1634,7 @@ const MODULES = {
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
       { name: "Tema", label: "Tema", type: "text", required: true, col: "g2" },
       { name: "Tipo", label: "Tipo", type: "select", options: ["PRESENCIAL", "ONLINE", "PRÁTICO"] },
-      { name: "Ministrante", label: "Ministrante / Instrutor", type: "text", required: true },
+      { name: "Ministrante", label: "Ministrante / Instrutor", type: "datalist", list: "dl-ministrantes", required: true },
       { name: "HorasDadas", label: "Horas Dadas", type: "number" },
       { name: "HorasAssistidas", label: "Horas Assistidas (média)", type: "number" },
       { name: "ParticipantesManuais", label: "Participantes", type: "textarea", col: "g2" },
@@ -1744,14 +1879,31 @@ function selectTurnoHtml(padrao) {
   </select>`;
 }
 
+function selectEscalaHtml() {
+  return `<select class="escala-select" style="width:auto;min-width:95px">
+    <option value="6X1">6x1</option><option value="5X2">5x2</option><option value="12X36">12x36</option>
+  </select>`;
+}
+function selectFolgaHtml() {
+  const dias = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"];
+  return `<select class="folga-select" style="width:auto;min-width:120px">
+    <option value="GIRA">Folga: girar</option>
+    ${dias.map(d => `<option value="${d}">Folga: ${d}</option>`).join("")}
+  </select>`;
+}
+
 function linhasChecklistEscala(nomes) {
   if (!nomes.length) return `<div class="empty">Nenhum colaborador nesta unidade.</div>`;
   return nomes.map(n => `
-    <div class="check" style="justify-content:space-between;gap:12px">
-      <span style="display:flex;align-items:center;gap:8px;flex:1">
+    <div class="check" style="flex-wrap:wrap;gap:8px;border-bottom:1px solid var(--border);padding:8px 0">
+      <span style="display:flex;align-items:center;gap:8px;flex:1 1 100%;font-weight:700">
         <input type="checkbox" value="${escapeHtml(n)}"> ${escapeHtml(n)}
       </span>
-      ${selectTurnoHtml("INTERMEDIARIO")}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding-left:26px">
+        ${selectTurnoHtml("INTERMEDIARIO")}
+        ${selectEscalaHtml()}
+        ${selectFolgaHtml()}
+      </div>
     </div>`).join("");
 }
 
@@ -1776,7 +1928,7 @@ async function renderEscalas() {
       <h3>1. Período e tipo</h3>
       <div class="grid g2">
         <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades" onchange="filtrarColabsEscala()" placeholder="Filtra os colaboradores"></div>
-        <div class="form-row"><label>Tipo de Escala</label>
+        <div class="form-row"><label>Tipo padrão (opcional — dá pra definir por pessoa abaixo)</label>
           <select id="escTipo">
             <option value="6X1">6x1</option>
             <option value="5X2">5x2</option>
@@ -1925,21 +2077,28 @@ async function gerarEscala() {
   const fim = el("#escFim").value;
   if (!inicio || !fim) { toast("Informe início e fim da escala.", "err"); return; }
 
-  // Colaboradores marcados + o turno escolhido em cada linha.
+  // Colaboradores marcados + turno, escala e folga de cada um.
   const colaboradores = [];
   document.querySelectorAll("#escChecklist .check").forEach(row => {
     const cb = row.querySelector('input[type="checkbox"]');
-    const sel = row.querySelector("select");
+    const selTurno = row.querySelector(".turno-select");
+    const selEscala = row.querySelector(".escala-select");
+    const selFolga = row.querySelector(".folga-select");
     if (cb && cb.checked) {
-      colaboradores.push({ nome: cb.value, turno: sel ? sel.value : "INTERMEDIARIO" });
+      colaboradores.push({
+        nome: cb.value,
+        turno: selTurno ? selTurno.value : "INTERMEDIARIO",
+        escala: selEscala ? selEscala.value : "6X1",
+        folga: selFolga ? selFolga.value : "GIRA"
+      });
     }
   });
 
-  // Avulsos (um por linha), todos com o mesmo turno escolhido.
+  // Avulsos (um por linha), com o turno escolhido; escala 6x1 e folga girando.
   const turnoAvulsos = el("#escAvulsosTurno") ? el("#escAvulsosTurno").value : "INTERMEDIARIO";
   String(el("#escAvulsos").value || "").split(/\r?\n/).forEach(n => {
     n = n.trim();
-    if (n) colaboradores.push({ nome: n, turno: turnoAvulsos });
+    if (n) colaboradores.push({ nome: n, turno: turnoAvulsos, escala: "6X1", folga: "GIRA" });
   });
 
   if (!colaboradores.length) { toast("Selecione ao menos um colaborador.", "err"); return; }
@@ -2056,11 +2215,11 @@ async function carregarEspelhoPonto() {
 
 async function renderAssistente() {
   setMain(`
-    <div class="page-title"><div><h2>Assistente</h2><p>Pergunte sobre vagas, colaboradores, aniversariantes, estoque ou testes.</p></div></div>
+    <div class="page-title"><div><h2>🤖 EVA — Evol Virtual Assistant</h2><p>A colaboradora digital do Grupo Evol. Pergunte sobre salários, headcount, folha, vagas, SLA, aniversariantes, turnover, testes, feedbacks, treinamentos e experiência.</p></div></div>
     <div class="card">
-      <div id="chatArea" style="display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto;margin-bottom:14px;"></div>
+      <div id="chatArea" style="display:flex;flex-direction:column;gap:10px;max-height:440px;overflow:auto;margin-bottom:14px;"></div>
       <div class="actions">
-        <input id="chatInput" type="text" style="flex:1" placeholder="Ex: quantas vagas estão abertas?" onkeydown="if(event.key==='Enter') perguntarAssistente()">
+        <input id="chatInput" type="text" style="flex:1" placeholder="Ex: qual a folha da Aldeota? / salário de barman / quantas vagas no Sul?" onkeydown="if(event.key==='Enter') perguntarAssistente()">
         <button class="btn btn-primary" onclick="perguntarAssistente()">Perguntar</button>
       </div>
     </div>
@@ -2079,7 +2238,7 @@ async function perguntarAssistente() {
 
   try {
     const r = await api("assistenteIA", { pergunta: pergunta });
-    area.insertAdjacentHTML("beforeend", `<div class="msg ok">${escapeHtml(r.resposta)}</div>`);
+    area.insertAdjacentHTML("beforeend", `<div class="msg ok" style="white-space:pre-wrap">${escapeHtml(r.resposta)}</div>`);
   } catch (e) {
     area.insertAdjacentHTML("beforeend", `<div class="msg err">${escapeHtml(e.message)}</div>`);
   }

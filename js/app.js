@@ -226,7 +226,10 @@ function setDatalist(id, valores) {
 /* ===================== NAVEGAÇÃO / SIDEBAR ===================== */
 
 const GRUPOS_NAV = [
-  { titulo: "Visão Geral", itens: [{ key: "dashboard", label: "Dashboard" }] },
+  { titulo: "Visão Geral", itens: [
+    { key: "dashboard", label: "Dashboard" },
+    { key: "agenda", label: "Agenda" }
+  ] },
   { titulo: "Pessoas", itens: [
     { key: "colaboradores", label: "Colaboradores" },
     { key: "cargos", label: "Cargos e Salários" },
@@ -282,6 +285,7 @@ async function navegar(key) {
 
   try {
     if (key === "dashboard") return renderDashboard();
+    if (key === "agenda") return renderAgenda();
     if (key === "unidades") return renderUnidades();
     if (key === "lideranca") return renderLideranca();
     if (key === "vagas") return renderVagas();
@@ -906,6 +910,87 @@ async function salvarOcorrenciaDossie() {
   } catch (e) { toast(e.message, "err"); }
 }
 
+/* ===================== AGENDA ===================== */
+
+async function renderAgenda() {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const em14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  setMain(`
+    <div class="page-title"><div><h2>📅 Agenda</h2><p>Agendas dos líderes e sócios compartilhadas com a conta central.</p></div></div>
+
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row"><label>De</label><input id="agInicio" type="date" value="${hoje}"></div>
+        <div class="form-row"><label>Até</label><input id="agFim" type="date" value="${em14}"></div>
+        <div class="form-row"><label>Filtrar por agenda</label><select id="agFiltro" onchange="filtrarAgenda()"><option value="">Todas</option></select></div>
+      </div>
+      <div class="actions"><button class="btn btn-primary" onclick="carregarAgenda()">Atualizar</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Novo compromisso</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Agenda</label><select id="agCal"></select></div>
+        <div class="form-row"><label>Título</label><input id="agTitulo" type="text"></div>
+        <div class="form-row"><label>Data</label><input id="agData" type="date"></div>
+        <div class="form-row"><label>Início</label><input id="agHoraIni" type="time"></div>
+        <div class="form-row"><label>Fim</label><input id="agHoraFim" type="time"></div>
+        <div class="form-row"><label>Local</label><input id="agLocal" type="text"></div>
+      </div>
+      <div class="form-row"><label>Descrição</label><textarea id="agDesc"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="criarEventoAgenda()">Criar compromisso</button></div>
+    </div>
+
+    <div class="card"><h3>Compromissos</h3><div id="tabelaAgenda"><div class="loading">Carregando...</div></div></div>
+  `);
+  await carregarAgenda();
+}
+
+async function carregarAgenda() {
+  const inicio = el("#agInicio").value, fim = el("#agFim").value;
+  const cont = document.getElementById("tabelaAgenda");
+  cont.innerHTML = `<div class="loading">Carregando...</div>`;
+  let r;
+  try { r = await api("listarAgenda", { inicio: inicio, fim: fim }); }
+  catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
+
+  STATE.cache.agenda = r.eventos || [];
+  const cals = r.calendarios || [];
+  const selCal = document.getElementById("agCal");
+  if (selCal) selCal.innerHTML = cals.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome)}</option>`).join("");
+  const selFiltro = document.getElementById("agFiltro");
+  if (selFiltro) {
+    const nomes = [...new Set(cals.map(c => c.nome))];
+    selFiltro.innerHTML = `<option value="">Todas</option>` + nomes.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
+  }
+  filtrarAgenda();
+}
+
+function filtrarAgenda() {
+  const dados = STATE.cache.agenda || [];
+  const f = normalize(el("#agFiltro") ? el("#agFiltro").value : "");
+  const filtrados = f ? dados.filter(e => normalize(e.Agenda) === f) : dados;
+  document.getElementById("tabelaAgenda").innerHTML = tabelaSimples(filtrados, ["Agenda", "Titulo", "Inicio", "Fim", "Local"]);
+}
+
+async function criarEventoAgenda() {
+  const dados = {
+    calendarId: el("#agCal").value,
+    titulo: el("#agTitulo").value.trim(),
+    data: el("#agData").value,
+    horaInicio: el("#agHoraIni").value,
+    horaFim: el("#agHoraFim").value,
+    local: el("#agLocal").value.trim(),
+    descricao: el("#agDesc").value
+  };
+  if (!dados.titulo || !dados.data || !dados.horaInicio) { toast("Preencha título, data e horário de início.", "err"); return; }
+  try {
+    const r = await api("criarEventoAgenda", dados);
+    toast(r.msg, "ok");
+    await carregarAgenda();
+  } catch (e) { toast(e.message, "err"); }
+}
+
 /* ===================== RECRUTAMENTO / VAGAS ===================== */
 
 async function renderVagas() {
@@ -1082,6 +1167,19 @@ function solicitantesDaUnidade(unidade) {
   return [...new Set(base.concat(lider))].filter(Boolean).sort();
 }
 
+// Só os líderes (perfil Liderança + aba Lideranca) de uma unidade.
+function lideresDaUnidade(unidade) {
+  const u = normalize(unidade);
+  const daLista = SOLICITANTES.filter(s => normalize(s[2]) === "LIDERANCA" && (!u || normalize(s[1]) === u)).map(s => s[0]);
+  const daAba = (STATE.init.lideranca || []).filter(l => !u || normalize(l.Unidade) === u).map(l => l.Lider);
+  return [...new Set(daLista.concat(daAba))].filter(Boolean).sort();
+}
+
+function filtrarAvaliadores() {
+  const u = el("#tpUnidade") ? el("#tpUnidade").value : "";
+  setDatalist("dl-avaliadores", lideresDaUnidade(u));
+}
+
 function filtrarSolicitantes() {
   const u = el("#avUnidade") ? el("#avUnidade").value : "";
   setDatalist("dl-solicitantes", solicitantesDaUnidade(u));
@@ -1186,7 +1284,7 @@ async function renderTestePratico() {
 
     <div class="card">
       <div class="grid g3">
-        <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..."></div>
+        <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..." onchange="filtrarAvaliadores()"></div>
         <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" placeholder="Nome completo"></div>
         <div class="form-row"><label>Vaga pretendida (cargo)</label><input id="tpCargo" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR" onchange="autofillSalarioTeste(this.value)"></div>
         <div class="form-row"><label>Salário do cargo (R$)</label><input id="tpSalario" type="number" step="0.01" class="money" readonly value="0"></div>
@@ -1201,7 +1299,7 @@ async function renderTestePratico() {
           <select id="tpEscala"><option value="">Selecione a escala...</option><option>6X1</option><option>5X2</option><option>12X36</option><option>ROTATIVA</option></select></div>
         <div class="form-row"><label>Dia de folga *</label>
           <select id="tpFolga"><option value="">Selecione o dia...</option><option>Segunda</option><option>Terça</option><option>Quarta</option><option>Quinta</option><option>Sexta</option><option>Sábado</option><option>Domingo</option><option>Rotativa</option></select></div>
-        <div class="form-row"><label>Avaliador responsável *</label><input id="tpAvaliador" type="text" placeholder="Quem aplicou o teste"></div>
+        <div class="form-row"><label>Avaliador responsável *</label><input id="tpAvaliador" type="text" list="dl-avaliadores" placeholder="Líder que aplicou o teste"></div>
       </div>
 
       <h3 style="margin-top:10px">Critérios avaliados</h3>
@@ -1233,6 +1331,7 @@ async function renderTestePratico() {
       <div id="tabelaTestes"><div class="loading">Carregando...</div></div>
     </div>
   `);
+  setDatalist("dl-avaliadores", lideresDaUnidade(""));
   await carregarTestesTabela();
 }
 
@@ -1788,16 +1887,26 @@ function montarGradeEscala() {
     const p = String(d).split("-"); // yyyy-MM-dd
     return p.length === 3 ? p[2] + "/" + p[1] : d;
   }
+  const TURNO_HR = { ABERTURA: ["08:00", "16:20"], INTERMEDIARIO: ["11:00", "19:20"], FECHAMENTO: ["15:40", "00:00"] };
+  const TURNO_NOME = { ABERTURA: "Abertura", INTERMEDIARIO: "Intermediário", FECHAMENTO: "Fechamento" };
   function celula(e) {
     if (!e) return `<td style="text-align:center;color:#9ca3af">-</td>`;
-    if (normalize(e.Folga).indexOf("SIM") !== -1) return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
-    let txt = "";
-    const ent = fmtHoraCurta(e.HorarioEntrada), sai = fmtHoraCurta(e.HorarioSaida);
-    if (ent && sai) txt = ent + "–" + sai;
-    else if (ent) txt = ent;
-    else if (e.Turno) txt = ({ ABERTURA: "ABERT.", INTERMEDIARIO: "INTER.", FECHAMENTO: "FECH." }[normalize(e.Turno)] || e.Turno);
-    else txt = "TRAB.";
-    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800;white-space:nowrap">${escapeHtml(txt)}</td>`;
+    if (normalize(e.Folga).indexOf("SIM") !== -1)
+      return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
+    const tn = normalize(e.Turno);
+    let ent = fmtHoraCurta(e.HorarioEntrada), sai = fmtHoraCurta(e.HorarioSaida);
+    if ((!ent || !sai) && TURNO_HR[tn]) {
+      if (!ent) ent = fmtHoraCurta(TURNO_HR[tn][0]);
+      if (!sai) sai = fmtHoraCurta(TURNO_HR[tn][1]);
+    }
+    const nome = TURNO_NOME[tn] || "";
+    if (ent && sai) {
+      return `<td style="text-align:center;background:#fff7ed;white-space:nowrap">
+        <div style="color:#9a3412;font-weight:800">${escapeHtml(ent)}–${escapeHtml(sai)}</div>
+        ${nome ? `<div style="font-size:10px;color:#c2410c">${escapeHtml(nome)}</div>` : ""}
+      </td>`;
+    }
+    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800">${escapeHtml(nome || "Trabalha")}</td>`;
   }
 
   cont.innerHTML = `

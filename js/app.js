@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbyMerwMhK61wqTCPybSk2lu9z5_VIiuVNFQU-Bf8n_C_UauzQz6NOBGGBSPaJhLGF9H/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbxeV_YeJA8QTiUzLx6vqWa0lMoRzBhIxQl_7o5E89PDUrvg0CN7qPsh6mJ4EJw-aAQg/exec"
 };
 
 const STATE = {

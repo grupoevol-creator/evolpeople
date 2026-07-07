@@ -310,6 +310,22 @@ async function navegar(key) {
 
 /* ===================== DASHBOARD ===================== */
 
+function tabelaExperiencia(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Ninguém em período de experiência nesta seleção.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Fim da Experiência</th><th>Dias Restantes</th></tr></thead>
+    <tbody>${linhas.map(l => {
+      const badge = l.DiasRestantes <= 7 ? "bad" : (l.DiasRestantes <= 15 ? "warn" : "ok");
+      return `<tr>
+        <td style="font-weight:700">${escapeHtml(l.Nome)}</td>
+        <td>${escapeHtml(l.Unidade)}</td>
+        <td>${escapeHtml(l.Cargo)}</td>
+        <td>${escapeHtml(l.FimExperiencia)}</td>
+        <td><span class="badge ${badge}">${escapeHtml(l.DiasRestantes)} dias</span></td>
+      </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
+
 function tabelaPorUnidade(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhuma unidade.</div>`;
   return `<div class="table-wrap"><table>
@@ -401,8 +417,10 @@ async function renderDashboard(unidade) {
       <div class="kpi" style="border-left-color:var(--laranja)"><small>Folha Atual (ativos)</small><strong>${fmtMoeda(k.folhaTotal)}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Candidatos em Teste (vagas)</small><strong>${k.candidatosEmTeste || 0}</strong></div>
       <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
       <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong></div>
       <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Treinamentos no Mês</small><strong>${k.treinamentosMes || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Horas de Treinamento (mês)</small><strong>${k.horasTreinMes || 0}h</strong></div>
@@ -422,6 +440,11 @@ async function renderDashboard(unidade) {
         <h3>🔄 Turnover e Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(editável em Indicadores Mensais)</span></h3>
         ${tabelaIndicadores(dash.indicadores)}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>🧪 Colaboradores em Período de Experiência ${sel ? `<span class="badge info">${escapeHtml(sel)}</span>` : ""}</h3>
+      ${tabelaExperiencia(dash.emExperiencia || [])}
     </div>
 
     <div class="card">
@@ -1208,19 +1231,37 @@ function filtrarVagas() {
   if (!filtradas.length) { el("#tabelaVagas").innerHTML = `<div class="empty">Nenhuma vaga encontrada.</div>`; return; }
   el("#tabelaVagas").innerHTML = `
     <div class="table-wrap"><table>
-      <thead><tr>${cols.map(c => `<th>${escapeHtml(c[0])}</th>`).join("")}<th>Alterar Status</th></tr></thead>
+      <thead><tr>${cols.map(c => `<th>${escapeHtml(c[0])}</th>`).join("")}<th>Candidato / Status</th></tr></thead>
       <tbody>
         ${filtradas.map(v => {
           const id = vagaGet(v, ["ID"]);
           const st = normalize(vagaGet(v, ["STATUS"]));
+          const candAtual = vagaGet(v, ["CANDIDATO"]);
           const opts = ["SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
-          const selHtml = `<select onchange="mudarStatusVagaUI('${escapeHtml(id)}', this.value)" style="min-width:130px">
-            ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
-          </select>`;
-          return `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}<td>${id ? selHtml : ""}</td></tr>`;
+          const acao = `
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:150px">
+              <input type="text" id="cand_${escapeHtml(id)}" value="${escapeHtml(candAtual)}" placeholder="Nome do candidato" style="padding:5px">
+              <div style="display:flex;gap:4px">
+                <select id="stv_${escapeHtml(id)}" style="flex:1">
+                  ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
+                </select>
+                <button class="btn btn-primary" style="padding:5px 8px;min-height:auto" onclick="salvarVagaLinha('${escapeHtml(id)}')">Salvar</button>
+              </div>
+            </div>`;
+          return `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}<td>${id ? acao : ""}</td></tr>`;
         }).join("")}
       </tbody>
     </table></div>`;
+}
+
+async function salvarVagaLinha(id) {
+  const cand = document.getElementById("cand_" + id);
+  const stv = document.getElementById("stv_" + id);
+  try {
+    const r = await api("mudarStatusVaga", { id: id, status: stv ? stv.value : "", candidato: cand ? cand.value.trim() : "" });
+    toast(r.msg, "ok");
+    await renderVagas();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 async function mudarStatusVagaUI(id, status) {

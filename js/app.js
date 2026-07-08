@@ -273,7 +273,8 @@ const GRUPOS_NAV = [
     { key: "cargos", label: "Cargos e Salários" },
     { key: "unidades", label: "Unidades" },
     { key: "lideranca", label: "Liderança" },
-    { key: "dossie", label: "Dossiê" }
+    { key: "dossie", label: "Dossiê" },
+    { key: "documentos", label: "Documentos" }
   ]},
   { titulo: "Recrutamento", itens: [
     { key: "vagas", label: "Recrutamento (Vagas)" },
@@ -331,6 +332,7 @@ async function navegar(key) {
     if (key === "unidades") return renderUnidades();
     if (key === "headcount") return renderHeadcount();
     if (key === "emteste") return renderEmTeste();
+    if (key === "documentos") return renderDocumentos();
     if (key === "lideranca") return renderLideranca();
     if (key === "vagas") return renderVagas();
     if (key === "testes") return renderTestePratico();
@@ -855,6 +857,7 @@ async function renderDashboard(unidade) {
       <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
       <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
       <div class="kpi" style="border-left-color:var(--warn)"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Integrados no Mês</small><strong>${k.integradosMes || 0}</strong></div>
       <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Treinamentos no Mês</small><strong>${k.treinamentosMes || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Horas de Treinamento (mês)</small><strong>${k.horasTreinMes || 0}h</strong></div>
@@ -2111,6 +2114,13 @@ const MODULES = {
       { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
       { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
       { name: "ValeTransporteDia", label: "Vale Transporte por Dia (R$)", type: "money", readonly: true, computed: true },
+      { name: "Integrado", label: "Colaborador foi integrado?", type: "select", options: ["Não", "Sim"] },
+      { name: "DataIntegracao", label: "Data da integração", type: "date" },
+      { name: "PastaCompleta", label: "Pasta completa?", type: "select", options: ["Não", "Sim"] },
+      { name: "PagamentoTeste", label: "Pagamento do teste prático (data)", type: "date" },
+      { name: "ContaItau", label: "Tem conta Itaú?", type: "select", options: ["Não", "Sim"] },
+      { name: "Somapay", label: "Tem Somapay?", type: "select", options: ["Não", "Sim"] },
+      { name: "LinkDocumentacao", label: "Link da documentação (Google Drive)", type: "text", col: "g2" },
       { name: "Status", label: "Status", type: "select", options: ["ATIVO", "AFASTADO", "DEMITIDO"], default: "ATIVO" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
@@ -2667,10 +2677,119 @@ async function gerarEscala() {
 
 /* ===================== PONTO ===================== */
 
+/* ===================== DOCUMENTOS (upload) ===================== */
+
+async function renderDocumentos() {
+  setMain(`<div class="loading">Carregando...</div>`);
+  const nomes = (STATE.init.colaboradores || []).map(c => c.Nome).filter(Boolean).sort();
+  setMain(`
+    <div class="page-title">
+      <div><h2>Documentos</h2><p>Envie a documentação de cada colaborador. Os arquivos vão para uma pasta no Google Drive, por pessoa.</p></div>
+    </div>
+    <div class="card">
+      <h3>Enviar documento</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Unidade</label><input id="docUni" type="text" list="dl-unidades" autocomplete="off"></div>
+        <div class="form-row"><label>Colaborador *</label><input id="docColab" type="text" list="dl-colaboradores" autocomplete="off" onchange="docListar(this.value,false)"></div>
+        <div class="form-row"><label>Arquivo (PDF ou foto) *</label><input id="docFile" type="file" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx"></div>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="docUpload()">Enviar</button>
+        <button class="btn btn-secondary" onclick="docListar(document.getElementById('docColab').value, true)">Atualizar lista</button>
+      </div>
+      <div id="docStatus" style="margin-top:8px"></div>
+    </div>
+    <div class="card"><h3>Documentos do colaborador</h3><div id="docLista"><div class="empty">Escolha um colaborador.</div></div></div>
+  `);
+}
+
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(",")[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+async function docUpload() {
+  const nome = el("#docColab").value.trim();
+  const f = el("#docFile").files[0];
+  if (!nome || !f) { toast("Escolha o colaborador e o arquivo.", "err"); return; }
+  if (f.size > 15 * 1024 * 1024) { toast("Arquivo muito grande (máx. 15 MB).", "err"); return; }
+  el("#docStatus").innerHTML = `<div class="loading">Enviando ${escapeHtml(f.name)}...</div>`;
+  try {
+    const b64 = await fileToBase64(f);
+    const dados = { Colaborador: nome, cpf: "", nomeArquivo: f.name, tipo: f.type || "application/octet-stream", base64: b64 };
+    const body = "acao=uploadDocumento&dados=" + encodeURIComponent(JSON.stringify(dados));
+    // POST no-cors: o servidor recebe e salva, mas a resposta é opaca — então
+    // re-listamos os documentos em seguida pra confirmar.
+    await fetch(CONFIG.API_URL, {
+      method: "POST", mode: "no-cors",
+      headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+      body: body
+    });
+    el("#docFile").value = "";
+    setTimeout(() => docListar(nome, true), 3000);
+  } catch (e) {
+    el("#docStatus").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function docListar(nome, aviso) {
+  nome = (nome || "").trim();
+  if (!nome) { el("#docLista").innerHTML = `<div class="empty">Escolha um colaborador.</div>`; return; }
+  try {
+    const r = await api("listarDocumentos");
+    const meus = (r.documentos || []).filter(x => normalize(x.Colaborador) === normalize(nome));
+    el("#docLista").innerHTML = meus.length
+      ? (meus[0].PastaUrl ? `<div style="margin-bottom:8px"><a href="${escapeHtml(meus[0].PastaUrl)}" target="_blank" rel="noopener" style="font-weight:600">📁 Abrir pasta no Drive ↗</a></div>` : "")
+        + meus.map(x => `<div style="padding:4px 0">📎 <a href="${escapeHtml(x.Url)}" target="_blank" rel="noopener">${escapeHtml(x.Arquivo)}</a> <span class="muted">(${escapeHtml(x.Data)})</span></div>`).join("")
+      : `<div class="empty">Nenhum documento ainda para ${escapeHtml(nome)}.</div>`;
+    if (aviso) {
+      el("#docStatus").innerHTML = meus.length
+        ? `<div class="msg ok">Pronto! Se o arquivo recém-enviado não apareceu, clique em "Atualizar lista" daqui a alguns segundos.</div>`
+        : `<div class="msg err">Ainda não apareceu. Aguarde uns segundos e clique em "Atualizar lista". Se continuar vazio, me avise.</div>`;
+    }
+  } catch (e) {
+    el("#docLista").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function gerarPonto() {
+  const unidade = el("#cfUnidade").value.trim();
+  const mes = el("#cfMes").value;
+  const ano = el("#cfAno").value;
+  if (!unidade) { toast("Escolha a unidade.", "err"); return; }
+  el("#cfResultado").innerHTML = `<div class="loading">Gerando o arquivo... pode levar alguns segundos.</div>`;
+  try {
+    const r = await api("gerarControleFrequencia", { unidade, mes, ano });
+    el("#cfResultado").innerHTML = `<div class="msg ok">${escapeHtml(r.msg || "Gerado.")}<br>
+      <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="font-weight:600">Abrir o Controle de Frequência ↗</a></div>`;
+    if (r.url) window.open(r.url, "_blank");
+  } catch (e) {
+    el("#cfResultado").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
 async function renderPonto() {
   const nomesColab = STATE.init.colaboradores.map(c => c.Nome);
   setMain(`
     <div class="page-title"><div><h2>Ponto</h2><p>Registro de entrada, saída e intervalos.</p></div></div>
+
+    <div class="card">
+      <h3>🖨️ Gerar Controle de Frequência (para imprimir)</h3>
+      <p class="muted">Gera o modelo de ponto por unidade, uma aba por colaborador, com FOLGA nos dias certos (a partir da escala do mês).</p>
+      <div class="grid g3">
+        <div class="form-row"><label>Unidade</label><input id="cfUnidade" type="text" list="dl-unidades" autocomplete="off"></div>
+        <div class="form-row"><label>Mês</label>
+          <select id="cfMes">${["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m,i)=>`<option value="${i+1}" ${i===new Date().getMonth()?"selected":""}>${m}</option>`).join("")}</select>
+        </div>
+        <div class="form-row"><label>Ano</label><input id="cfAno" type="number" value="${new Date().getFullYear()}"></div>
+      </div>
+      <div class="actions"><button class="btn btn-primary" onclick="gerarPonto()">Gerar Controle de Frequência</button></div>
+      <div id="cfResultado" style="margin-top:10px"></div>
+    </div>
 
     <div class="card">
       <h3>Bater Ponto</h3>

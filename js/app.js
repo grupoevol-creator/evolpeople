@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbxrF0hVfW8CE2enD0VUMeCYbRTr4Hy-VOHDmkvdCPIHQnfyYVQX56cEX-heM6yVBbGs/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbxeV_YeJA8QTiUzLx6vqWa0lMoRzBhIxQl_7o5E89PDUrvg0CN7qPsh6mJ4EJw-aAQg/exec"
 };
 
 const STATE = {
@@ -341,6 +341,7 @@ async function navegar(key) {
     if (key === "escalas") return renderEscalas();
     if (key === "ponto") return renderPonto();
     if (key === "absenteismo") return renderAbsenteismo();
+    if (key === "treinamentos") return renderTreinamentos();
     if (key === "assistente") return renderAssistente();
     if (MODULES[key]) return renderModulo(key);
     setMain(`<div class="empty">Página não encontrada.</div>`);
@@ -614,6 +615,108 @@ async function abCarregarTabela() {
       tabelaComBadge(linhas, ["Mes", "Ano", "Colaborador", "Unidade", "Atestados", "FaltasInjustificadas", "FaltasJustificadas", "PercentualAbsenteismo"]);
   } catch (e) {
     document.getElementById("abTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+/* ===================== TREINAMENTOS ===================== */
+
+const TRN = { unidade: "", nomes: [], sel: {} };
+
+async function renderTreinamentos() {
+  setMain(`<div class="loading">Carregando...</div>`);
+  TRN.unidade = ""; TRN.nomes = []; TRN.sel = {};
+  setDatalist("dl-gestores", todosGestores());
+  setMain(`
+    <div class="page-title"><div><h2>Treinamentos</h2><p>Escolha a unidade, o líder e o tipo, e marque os colaboradores participantes daquela unidade.</p></div></div>
+
+    <div class="card">
+      <h3>Novo treinamento</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Unidade *</label><input id="trnUni" list="dl-unidades" placeholder="Unidade" onchange="trnMudarUnidade(this.value)"></div>
+        <div class="form-row"><label>Líder responsável</label><input id="trnLider" list="dl-gestores" placeholder="Todos os gestores / diretoria"></div>
+        <div class="form-row"><label>Tipo *</label>
+          <select id="trnTipo"><option value="">Selecione...</option><option>Prático</option><option>Gestão</option><option>Operacional</option><option>Teórico</option></select></div>
+        <div class="form-row"><label>Tema *</label><input id="trnTema" placeholder="Tema do treinamento"></div>
+        <div class="form-row"><label>Data</label><input id="trnData" type="date"></div>
+        <div class="form-row"><label>Ministrante / Instrutor</label><input id="trnMinistrante" list="dl-ministrantes"></div>
+        <div class="form-row"><label>Horas</label><input id="trnHoras" type="number" min="0" step="0.5" placeholder="Ex.: 2"></div>
+      </div>
+      <div class="form-row"><label>Participantes (colaboradores da unidade)</label>
+        <div id="trnParticipantes"><div class="muted">Escolha a unidade para listar os colaboradores.</div></div>
+      </div>
+      <div class="form-row"><label>Observações</label><textarea id="trnObs"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="trnSalvar()">Salvar treinamento</button></div>
+    </div>
+
+    <div class="card"><h3>Treinamentos registrados</h3><div id="trnTabela"><div class="loading">Carregando...</div></div></div>
+  `);
+  await trnCarregarTabela();
+}
+
+function trnMudarUnidade(u) {
+  TRN.unidade = u; TRN.sel = {};
+  trnRenderParticipantes();
+}
+
+function trnRenderParticipantes() {
+  const alvo = document.getElementById("trnParticipantes");
+  if (!alvo) return;
+  const u = normalize(TRN.unidade);
+  TRN.nomes = (STATE.init.colaboradores || [])
+    .filter(c => u && normalize(c.Unidade) === u)
+    .map(c => c.Nome).filter(Boolean).sort();
+  if (!u) { alvo.innerHTML = `<div class="muted">Escolha a unidade para listar os colaboradores.</div>`; return; }
+  if (!TRN.nomes.length) { alvo.innerHTML = `<div class="muted">Nenhum colaborador nesta unidade.</div>`; return; }
+  alvo.innerHTML = `
+    <div style="margin-bottom:6px"><button class="btn btn-secondary" onclick="trnMarcarTodos(true)">Marcar todos</button>
+      <button class="btn btn-secondary" onclick="trnMarcarTodos(false)">Limpar</button></div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px 18px">
+      ${TRN.nomes.map((n, i) => `<label style="display:flex;gap:6px;align-items:center;min-width:230px">
+        <input type="checkbox" ${TRN.sel[i] ? "checked" : ""} onchange="trnToggle(${i}, this.checked)"> ${escapeHtml(n)}</label>`).join("")}
+    </div>`;
+}
+
+function trnToggle(i, on) { if (on) TRN.sel[i] = true; else delete TRN.sel[i]; }
+function trnMarcarTodos(on) {
+  TRN.sel = {};
+  if (on) TRN.nomes.forEach((_, i) => TRN.sel[i] = true);
+  trnRenderParticipantes();
+}
+
+async function trnSalvar() {
+  const uni = el("#trnUni").value.trim();
+  const tema = el("#trnTema").value.trim();
+  const tipo = el("#trnTipo").value;
+  if (!uni || !tema || !tipo) { toast("Preencha Unidade, Tema e Tipo.", "err"); return; }
+  const participantes = Object.keys(TRN.sel).map(i => TRN.nomes[i]).filter(Boolean);
+  const horas = el("#trnHoras").value || 0;
+  const dados = {
+    Data: el("#trnData").value,
+    Unidade: uni,
+    Tema: tema,
+    Tipo: tipo,
+    LiderResponsavel: el("#trnLider").value.trim(),
+    Ministrante: el("#trnMinistrante").value.trim(),
+    HorasDadas: horas,
+    HorasAssistidas: horas,
+    ParticipantesManuais: participantes.join(", "),
+    Observacoes: el("#trnObs").value.trim()
+  };
+  try {
+    const r = await api("salvarTreinamento", dados);
+    toast(r.msg || "Treinamento salvo.", "ok");
+    await renderTreinamentos();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function trnCarregarTabela() {
+  try {
+    const r = await api("listarTreinamentos");
+    const linhas = r.treinamentos || [];
+    document.getElementById("trnTabela").innerHTML =
+      tabelaComBadge(linhas, ["Data", "Unidade", "Tema", "Tipo", "LiderResponsavel", "HorasDadas"]);
+  } catch (e) {
+    document.getElementById("trnTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
 
@@ -1945,17 +2048,37 @@ function filtrarLideranca() {
 
 /* ===================== UNIDADES (somente leitura) ===================== */
 
-function renderUnidades() {
+async function renderUnidades() {
+  setMain(`<div class="loading">Carregando unidades...</div>`);
+  let info = [];
+  try { const r = await api("listarUnidadesInfo"); info = r.unidades || []; } catch (e) {}
+  const enderecoDe = {};
+  info.forEach(u => { if (u.Unidade) enderecoDe[normalize(u.Unidade)] = u.Endereco || ""; });
+  const unis = STATE.init.unidades || [];
+
   setMain(`
     <div class="page-title">
-      <div><h2>Unidades</h2><p>Unidades são criadas automaticamente ao serem usadas em Colaboradores, Vagas, etc.</p></div>
+      <div><h2>Unidades</h2><p>As unidades são criadas automaticamente. Aqui você define o <b>endereço</b> de cada uma (usado no cabeçalho do ponto).</p></div>
     </div>
     <div class="card">
-      ${STATE.init.unidades.length
-        ? `<div class="grid g4">${STATE.init.unidades.map(u => `<div class="badge">${escapeHtml(u)}</div>`).join("")}</div>`
+      ${unis.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Unidade</th><th>Endereço</th><th></th></tr></thead>
+        <tbody>${unis.map((u, i) => `<tr>
+          <td style="font-weight:600">${escapeHtml(u)}</td>
+          <td><input id="endUni_${i}" type="text" value="${escapeHtml(enderecoDe[normalize(u)] || "")}" placeholder="Rua, número, bairro, cidade" style="width:100%"></td>
+          <td><button class="btn btn-primary" onclick="salvarEnderecoUni('${escapeHtml(u).replace(/'/g, "\\'")}', ${i})">Salvar</button></td>
+        </tr>`).join("")}</tbody></table></div>`
         : `<div class="empty">Nenhuma unidade cadastrada ainda.</div>`}
     </div>
   `);
+}
+
+async function salvarEnderecoUni(unidade, i) {
+  const endereco = el("#endUni_" + i) ? el("#endUni_" + i).value.trim() : "";
+  try {
+    const r = await api("salvarEnderecoUnidade", { Unidade: unidade, Endereco: endereco });
+    toast(r.msg || "Endereço salvo.", "ok");
+  } catch (e) { toast(e.message, "err"); }
 }
 
 /* ===================== MÓDULOS GENÉRICOS (CRUD) ===================== */
@@ -1974,6 +2097,7 @@ const MODULES = {
     fields: [
       { name: "Nome", label: "Nome", type: "text", required: true, col: "g2" },
       { name: "CPF", label: "CPF", type: "text" },
+      { name: "CTPS", label: "CTPS", type: "text" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "calcularVT()" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
       { name: "SalarioBase", label: "Salário Base", type: "money" },

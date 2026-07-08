@@ -2534,6 +2534,7 @@ async function renderEscalas() {
 
       <div class="actions">
         <button class="btn btn-primary" onclick="gerarEscala()">Gerar Escala</button>
+        <button class="btn btn-secondary" onclick="excluirEscala()">Excluir escala desta unidade</button>
       </div>
     </div>
 
@@ -2619,6 +2620,20 @@ function montarGradeEscala() {
         ${colabs.map(nome => `<tr><td style="font-weight:800;white-space:nowrap">${escapeHtml(nome)}</td>${datas.map(d => celula(mapa[nome + "|" + d])).join("")}</tr>`).join("")}
       </tbody>
     </table></div>`;
+}
+
+async function excluirEscala() {
+  const unidade = el("#escUnidade") ? el("#escUnidade").value.trim() : "";
+  const inicio = el("#escInicio") ? el("#escInicio").value : "";
+  const fim = el("#escFim") ? el("#escFim").value : "";
+  if (!unidade) { toast("Escolha a unidade (campo Unidade lá em cima).", "err"); return; }
+  const escopo = (inicio && fim) ? `do período ${inicio} a ${fim}` : "TODA a escala";
+  if (!confirm(`Excluir ${escopo} da unidade ${unidade}? Isso não pode ser desfeito.`)) return;
+  try {
+    const r = await api("excluirEscala", { unidade, inicio, fim });
+    toast(r.msg || "Escala excluída.", "ok");
+    if (typeof montarGradeEscala === "function") montarGradeEscala();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 async function gerarEscala() {

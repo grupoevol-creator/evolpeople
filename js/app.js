@@ -11,7 +11,7 @@
 
 const CONFIG = {
   // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbx-3F__UwUtlOrypRwltvfxDhuGNuiQDc4ufs7ZWzpNxP0YMmhRTN8I4owLj3yE5oqx/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbxeV_YeJA8QTiUzLx6vqWa0lMoRzBhIxQl_7o5E89PDUrvg0CN7qPsh6mJ4EJw-aAQg/exec"
 };
 
 const STATE = {
@@ -207,8 +207,42 @@ function atualizarDatalists() {
   setDatalist("dl-unidades", STATE.init.unidades);
   setDatalist("dl-cargos", STATE.init.cargos.map(c => c.Cargo));
   setDatalist("dl-colaboradores", STATE.init.colaboradores.map(c => c.Nome));
+  setDatalist("dl-gestores", todosGestores());
   setDatalist("dl-bairros", BAIRROS_FORTALEZA.concat(MUNICIPIOS_RMF));
   setDatalist("dl-ministrantes", [...new Set(SOLICITANTES.map(s => s[0]))].sort());
+  ativarFiltroColabPorUnidade();
+}
+
+// Filtra o datalist de colaboradores para mostrar só os da unidade escolhida.
+// Se a unidade estiver vazia, mostra todos.
+function filtrarColabPorUnidade(unidade) {
+  const u = normalize(unidade || "");
+  const todos = STATE.init.colaboradores || [];
+  const nomes = (u ? todos.filter(c => normalize(c.Unidade) === u) : todos)
+    .map(c => c.Nome).filter(Boolean).sort();
+  setDatalist("dl-colaboradores", nomes);
+}
+
+// Liga (uma vez) o comportamento: ao mudar qualquer campo de Unidade,
+// o datalist de colaboradores passa a mostrar só os daquela unidade.
+function ativarFiltroColabPorUnidade() {
+  if (window.__filtroColabUni) return;
+  window.__filtroColabUni = true;
+  document.addEventListener("change", function (e) {
+    const t = e.target;
+    if (t && t.getAttribute && t.getAttribute("list") === "dl-unidades") {
+      filtrarColabPorUnidade(t.value);
+    }
+  });
+}
+
+// Todos os gestores + diretoria (Liderança, Sócio Operador, Diretor, RH),
+// de todas as unidades, mais os líderes cadastrados na aba Liderança.
+function todosGestores() {
+  const tiposOK = ["LIDERANCA", "SOCIO OPERADOR", "DIRETOR", "DIRETORIA", "SOCIO", "RH", "GESTOR"];
+  const daLista = SOLICITANTES.filter(s => tiposOK.indexOf(normalize(s[2])) !== -1).map(s => s[0]);
+  const daAba = (STATE.init.lideranca || []).map(l => l.Lider);
+  return [...new Set(daLista.concat(daAba))].filter(Boolean).sort();
 }
 
 function setDatalist(id, valores) {
@@ -288,6 +322,7 @@ function montarSidebar() {
 async function navegar(key) {
   STATE.pagina = key;
   document.querySelectorAll(".nav").forEach(b => b.classList.toggle("active", b.dataset.nav === key));
+  if (typeof filtrarColabPorUnidade === "function") filtrarColabPorUnidade(""); // começa com todos até escolher a unidade
 
   try {
     if (key === "dashboard") return renderDashboard();
@@ -305,6 +340,7 @@ async function navegar(key) {
     if (key === "universidade") return renderUniversidade();
     if (key === "escalas") return renderEscalas();
     if (key === "ponto") return renderPonto();
+    if (key === "absenteismo") return renderAbsenteismo();
     if (key === "assistente") return renderAssistente();
     if (MODULES[key]) return renderModulo(key);
     setMain(`<div class="empty">Página não encontrada.</div>`);
@@ -315,7 +351,7 @@ async function navegar(key) {
 
 /* ===================== HEADCOUNT ===================== */
 
-const HC = { todos: [], unidade: "", sel: -1 };
+const HC = { todos: [], unidade: "", sel: -1, busca: "" };
 
 function hcData_(s) {
   if (!s) return "—";
@@ -356,11 +392,45 @@ async function renderHeadcount() {
   hcRender();
 }
 
+function hcFiltrados() {
+  const q = normalize(HC.busca);
+  let base;
+  if (HC.unidade) base = HC.todos.filter(c => normalize(c.Unidade) === normalize(HC.unidade));
+  else if (q) base = HC.todos;   // busca por nome em todas as unidades
+  else base = [];
+  return q ? base.filter(c => normalize(c.Nome).indexOf(q) !== -1) : base;
+}
+
+// Monta a "casca" fixa (título + busca + filtro) uma vez, e um contêiner dinâmico.
 function hcRender() {
   const unis = [...new Set(HC.todos.map(c => String(c.Unidade || "").trim()).filter(Boolean))].sort();
-  const daUni = HC.unidade
-    ? HC.todos.filter(c => normalize(c.Unidade) === normalize(HC.unidade))
-    : [];
+  setMain(`
+    <div class="page-title">
+      <div><h2>Headcount</h2><p>Busque por nome e/ou filtre por unidade, marque o colaborador e veja os detalhes.</p></div>
+      <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
+        <div style="min-width:220px">
+          <label>Buscar por nome</label>
+          <input id="hcBusca" type="text" placeholder="Digite o nome" value="${escapeHtml(HC.busca)}" oninput="hcBuscar(this.value)">
+        </div>
+        <div style="min-width:220px">
+          <label>Unidade</label>
+          <select id="hcUni" onchange="hcMudarUnidade(this.value)">
+            <option value="">Todas as unidades</option>
+            ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(HC.unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+          </select>
+        </div>
+      </div>
+    </div>
+    <div id="hcDinamico"></div>
+  `);
+  hcRenderLista();
+}
+
+// Atualiza só a parte dinâmica (KPI + detalhe + lista) sem recriar a busca,
+// pra não perder o foco enquanto você digita.
+function hcRenderLista() {
+  const daUni = hcFiltrados();
+  const q = normalize(HC.busca);
 
   let detalhe = "";
   if (HC.sel >= 0 && daUni[HC.sel]) {
@@ -375,6 +445,7 @@ function hcRender() {
       <div class="grid g2">
         <div><small class="muted">Nome completo</small><div><b>${escapeHtml(nome)}</b></div></div>
         <div><small class="muted">Líder</small><div><b>${escapeHtml(lider)}</b></div></div>
+        <div><small class="muted">Unidade</small><div>${escapeHtml(c.Unidade || "—")}</div></div>
         <div><small class="muted">Cargo</small><div>${escapeHtml(cargo)}</div></div>
         <div><small class="muted">Função</small><div>${escapeHtml(funcao)}</div></div>
         <div><small class="muted">Admissão</small><div>${hcData_(c.DataAdmissao)}</div></div>
@@ -385,39 +456,34 @@ function hcRender() {
     </div>`;
   }
 
-  const lista = !HC.unidade
-    ? `<div class="empty">Escolha uma unidade acima para ver os colaboradores.</div>`
+  const semFiltro = !HC.unidade && !q;
+  const lista = semFiltro
+    ? `<div class="empty">Escolha uma unidade ou digite um nome para ver os colaboradores.</div>`
     : (daUni.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>#</th><th>Nome</th><th>Cargo / Função</th><th>Líder</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Nome</th><th>Unidade</th><th>Cargo / Função</th><th>Líder</th><th></th></tr></thead>
           <tbody>${daUni.map((c, i) => `<tr${i === HC.sel ? ' style="background:rgba(255,140,0,.08)"' : ""}>
             <td>${i + 1}</td>
             <td style="font-weight:600">${escapeHtml(c.Nome || "—")}</td>
+            <td>${escapeHtml(c.Unidade || "—")}</td>
             <td>${escapeHtml(c.Cargo || c.Funcao || "—")}</td>
             <td>${escapeHtml(c.Lider || "—")}</td>
             <td><button class="btn btn-secondary" onclick="hcSelecionar(${i})">Ver detalhes</button></td>
           </tr>`).join("")}</tbody></table></div>`
-      : `<div class="empty">Nenhum colaborador ativo nesta unidade.</div>`);
+      : `<div class="empty">Nenhum colaborador encontrado.</div>`);
 
-  setMain(`
-    <div class="page-title">
-      <div><h2>Headcount</h2><p>Filtre a unidade, marque o colaborador e veja os detalhes.</p></div>
-      <div style="min-width:230px">
-        <label>Unidade</label>
-        <select onchange="hcMudarUnidade(this.value)">
-          <option value="">Selecione a unidade</option>
-          ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(HC.unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
-        </select>
-      </div>
-    </div>
-    ${HC.unidade ? `<div class="grid g4"><div class="kpi"><small>Colaboradores ativos — ${escapeHtml(HC.unidade)}</small><strong>${daUni.length}</strong></div></div>` : ""}
-    ${detalhe}
-    <div class="card"><h3>Colaboradores da unidade</h3>${lista}</div>
-  `);
+  const titulo = HC.unidade ? "Colaboradores da unidade" : (q ? "Resultado da busca" : "Colaboradores");
+  const kpi = (HC.unidade || q)
+    ? `<div class="grid g4"><div class="kpi"><small>${HC.unidade ? "Ativos — " + escapeHtml(HC.unidade) : "Encontrados"}</small><strong>${daUni.length}</strong></div></div>`
+    : "";
+
+  const alvo = document.getElementById("hcDinamico");
+  if (alvo) alvo.innerHTML = `${kpi}${detalhe}<div class="card"><h3>${titulo}</h3>${lista}</div>`;
 }
 
-function hcMudarUnidade(u) { HC.unidade = u; HC.sel = -1; hcRender(); }
-function hcSelecionar(i) { HC.sel = i; hcRender(); }
+function hcBuscar(v) { HC.busca = v; HC.sel = -1; hcRenderLista(); }
+function hcMudarUnidade(u) { HC.unidade = u; HC.sel = -1; hcRenderLista(); }
+function hcSelecionar(i) { HC.sel = i; hcRenderLista(); }
 
 /* ===================== QUEM ESTÁ TESTANDO ===================== */
 
@@ -468,6 +534,88 @@ function etRender() {
 }
 
 function etMudarUnidade(u) { ET.unidade = u; etRender(); }
+
+/* ===================== ABSENTEÍSMO (lançamento) ===================== */
+
+const AB = { mapaUni: {} };
+
+async function renderAbsenteismo() {
+  setMain(`<div class="loading">Carregando...</div>`);
+  let cols = [];
+  try { const r = await api("listarHeadcount"); cols = r.headcount || []; } catch (e) {}
+  AB.mapaUni = {};
+  cols.forEach(c => { if (c.Nome) AB.mapaUni[normalize(c.Nome)] = c.Unidade || ""; });
+  const nomes = cols.map(c => c.Nome).filter(Boolean).sort();
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Absenteísmo</h2><p>Lance atestados e faltas por colaborador. Cada lançamento já vai para o dossiê e entra no cálculo do absenteísmo.</p></div>
+    </div>
+
+    <div class="card">
+      <h3>Novo lançamento</h3>
+      <div class="grid g3">
+        <div class="form-row"><label>Colaborador *</label><input id="abColab" list="dl-colaboradores" placeholder="Nome do colaborador" onchange="abPreencherUnidade()"></div>
+        <div class="form-row"><label>Unidade</label><input id="abUnidade" list="dl-unidades" placeholder="Unidade"></div>
+        <div class="form-row"><label>Data *</label><input id="abData" type="date"></div>
+        <div class="form-row"><label>Tipo *</label>
+          <select id="abTipo"><option value="">Selecione...</option><option>Atestado</option><option>Falta Injustificada</option><option>Falta Justificada</option></select></div>
+        <div class="form-row"><label>Dias</label><input id="abDias" type="number" min="1" step="1" value="1"></div>
+        <div class="form-row"><label>Motivo / CID</label><input id="abMotivo" placeholder="Ex.: gripe (CID J11)"></div>
+        <div class="form-row"><label>Dias previstos no mês <span class="muted">(opcional — p/ calcular %)</span></label><input id="abDiasPrev" type="number" min="0" step="1" placeholder="Ex.: 26"></div>
+      </div>
+      <div class="form-row"><label>Observações</label><textarea id="abObs"></textarea></div>
+      <div class="actions"><button class="btn btn-primary" onclick="abSalvar()">Lançar</button></div>
+    </div>
+
+    <div class="card">
+      <h3>Lançamentos (acumulado do mês por colaborador)</h3>
+      <div id="abTabela"><div class="loading">Carregando...</div></div>
+    </div>
+  `);
+  setDatalist("dl-colaboradores", (STATE.init.colaboradores || []).map(c => c.Nome));
+  await abCarregarTabela();
+}
+
+function abPreencherUnidade() {
+  const nome = el("#abColab").value.trim();
+  const uni = AB.mapaUni[normalize(nome)];
+  const campo = el("#abUnidade");
+  if (uni && campo && !campo.value) campo.value = uni;
+}
+
+async function abSalvar() {
+  const colab = el("#abColab").value.trim();
+  const data = el("#abData").value;
+  const tipo = el("#abTipo").value;
+  if (!colab || !data || !tipo) { toast("Preencha Colaborador, Data e Tipo.", "err"); return; }
+  const dados = {
+    Colaborador: colab,
+    Unidade: el("#abUnidade").value.trim(),
+    Data: data,
+    Tipo: tipo,
+    Dias: el("#abDias").value || 1,
+    Motivo: el("#abMotivo").value.trim(),
+    DiasEscala: el("#abDiasPrev").value || 0,
+    Observacoes: el("#abObs").value.trim()
+  };
+  try {
+    const r = await api("registrarAbsenteismo", dados);
+    toast(r.msg || "Lançado.", "ok");
+    await renderAbsenteismo();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function abCarregarTabela() {
+  try {
+    const r = await api("listarAbsenteismo");
+    const linhas = r.absenteismo || [];
+    document.getElementById("abTabela").innerHTML =
+      tabelaComBadge(linhas, ["Mes", "Ano", "Colaborador", "Unidade", "Atestados", "FaltasInjustificadas", "FaltasJustificadas", "PercentualAbsenteismo"]);
+  } catch (e) {
+    document.getElementById("abTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
 
 /* ===================== DASHBOARD ===================== */
 
@@ -1068,13 +1216,13 @@ async function renderExperiencia() {
 
     <div class="card"><h3>Avaliações Registradas</h3><div id="tabelaExp"><div class="loading">Carregando...</div></div></div>
   `);
-  setDatalist("dl-gestores", lideresDaUnidade(""));
+  setDatalist("dl-gestores", todosGestores());
   await carregarExpTabela();
 }
 
 function filtrarGestoresExp() {
-  const u = el("#exUnidade") ? el("#exUnidade").value : "";
-  setDatalist("dl-gestores", lideresDaUnidade(u));
+  // Gestor mostra TODOS os gestores + diretoria (não filtra por unidade).
+  setDatalist("dl-gestores", todosGestores());
 }
 
 async function salvarExperiencia() {

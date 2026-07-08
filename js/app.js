@@ -347,9 +347,9 @@ function hcCampo_(obj, nomes) {
 
 async function renderHeadcount() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
-  const r = await api("listarColaboradores", {});
-  HC.todos = (r.colaboradores || []).filter(c => {
-    const st = normalize(hcCampo_(c, ["Status", "Situacao"]));
+  const r = await api("listarHeadcount", {});
+  HC.todos = (r.headcount || []).filter(c => {
+    const st = normalize(c.Status);
     return st.indexOf("DEMIT") === -1 && st.indexOf("DESLIG") === -1 && st !== "INATIVO";
   });
   HC.sel = -1;
@@ -357,19 +357,19 @@ async function renderHeadcount() {
 }
 
 function hcRender() {
-  const unis = [...new Set(HC.todos.map(c => String(hcCampo_(c, ["Unidade", "Operacao", "Loja"]) || "").trim()).filter(Boolean))].sort();
+  const unis = [...new Set(HC.todos.map(c => String(c.Unidade || "").trim()).filter(Boolean))].sort();
   const daUni = HC.unidade
-    ? HC.todos.filter(c => normalize(hcCampo_(c, ["Unidade", "Operacao", "Loja"])) === normalize(HC.unidade))
+    ? HC.todos.filter(c => normalize(c.Unidade) === normalize(HC.unidade))
     : [];
 
   let detalhe = "";
   if (HC.sel >= 0 && daUni[HC.sel]) {
     const c = daUni[HC.sel];
-    const nome = hcCampo_(c, ["Nome", "Nome Completo"]);
-    const cargo = hcCampo_(c, ["Cargo"]) || "—";
-    const funcao = hcCampo_(c, ["Funcao", "Função"]) || "—";
-    const lider = hcCampo_(c, ["Lider", "Líder", "Gestor"]) || "—";
-    const salario = Number(hcCampo_(c, ["SalarioTotal", "SalarioBase"])) || 0;
+    const nome = c.Nome || "—";
+    const cargo = c.Cargo || c.Funcao || "—";
+    const funcao = c.Funcao || c.Cargo || "—";
+    const lider = c.Lider || "—";
+    const salario = Number(c.Salario) || 0;
     detalhe = `<div class="card" style="border-left:5px solid var(--laranja)">
       <h3>👤 ${escapeHtml(nome)}</h3>
       <div class="grid g2">
@@ -377,10 +377,10 @@ function hcRender() {
         <div><small class="muted">Líder</small><div><b>${escapeHtml(lider)}</b></div></div>
         <div><small class="muted">Cargo</small><div>${escapeHtml(cargo)}</div></div>
         <div><small class="muted">Função</small><div>${escapeHtml(funcao)}</div></div>
-        <div><small class="muted">Admissão</small><div>${hcData_(hcCampo_(c, ["DataAdmissao", "Admissao"]))}</div></div>
-        <div><small class="muted">Aniversário</small><div>${hcAniversario_(hcCampo_(c, ["DataNascimento", "Nascimento", "Aniversario"]))}</div></div>
+        <div><small class="muted">Admissão</small><div>${hcData_(c.DataAdmissao)}</div></div>
+        <div><small class="muted">Aniversário</small><div>${hcAniversario_(c.DataNascimento)}</div></div>
         <div><small class="muted">Salário</small><div><b>${fmtMoeda(salario)}</b></div></div>
-        <div><small class="muted">Período de experiência</small><div>${escapeHtml(hcExperiencia_(hcCampo_(c, ["FimExperiencia", "Fim da Experiencia"])))}</div></div>
+        <div><small class="muted">Período de experiência</small><div>${escapeHtml(hcExperiencia_(c.FimExperiencia))}</div></div>
       </div>
     </div>`;
   }
@@ -389,12 +389,12 @@ function hcRender() {
     ? `<div class="empty">Escolha uma unidade acima para ver os colaboradores.</div>`
     : (daUni.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>#</th><th>Nome</th><th>Cargo</th><th>Líder</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Nome</th><th>Cargo / Função</th><th>Líder</th><th></th></tr></thead>
           <tbody>${daUni.map((c, i) => `<tr${i === HC.sel ? ' style="background:rgba(255,140,0,.08)"' : ""}>
             <td>${i + 1}</td>
-            <td style="font-weight:600">${escapeHtml(hcCampo_(c, ["Nome", "Nome Completo"]))}</td>
-            <td>${escapeHtml(hcCampo_(c, ["Cargo"]) || "—")}</td>
-            <td>${escapeHtml(hcCampo_(c, ["Lider", "Líder", "Gestor"]) || "—")}</td>
+            <td style="font-weight:600">${escapeHtml(c.Nome || "—")}</td>
+            <td>${escapeHtml(c.Cargo || c.Funcao || "—")}</td>
+            <td>${escapeHtml(c.Lider || "—")}</td>
             <td><button class="btn btn-secondary" onclick="hcSelecionar(${i})">Ver detalhes</button></td>
           </tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">Nenhum colaborador ativo nesta unidade.</div>`);
@@ -1656,7 +1656,9 @@ async function renderTestePratico() {
           <select id="tpSetor"><option value="">Selecione...</option>${SETORES.map(s => `<option>${s}</option>`).join("")}</select></div>
         <div class="form-row"><label>Vincular à vaga (Recrutamento)</label>
           <select id="tpVagaId"><option value="">Nenhuma / avulso</option>${vagaOpts}</select></div>
-        <div class="form-row"><label>Data do teste *</label><input id="tpData" type="date"></div>
+        <div class="form-row"><label>Teste — Dia 1 *</label><input id="tpData" type="date"></div>
+        <div class="form-row"><label>Teste — Dia 2</label><input id="tpData2" type="date"></div>
+        <div class="form-row"><label>Teste — Dia 3</label><input id="tpData3" type="date"></div>
         <div class="form-row"><label>Etapa do processo seletivo</label>
           <select id="tpEtapa"><option value="">Selecione...</option>${etapas.map(s => `<option>${s}</option>`).join("")}</select></div>
         <div class="form-row"><label>Escala *</label>
@@ -1720,6 +1722,8 @@ async function salvarTestePratico() {
     Setor: el("#tpSetor").value,
     VagaId: el("#tpVagaId").value,
     DataTeste: data,
+    DataTeste2: el("#tpData2").value,
+    DataTeste3: el("#tpData3").value,
     Etapa: el("#tpEtapa").value,
     Escala: el("#tpEscala").value,
     Folga: el("#tpFolga").value,
@@ -2064,8 +2068,22 @@ async function renderModulo(key) {
 async function carregarTabelaModulo(key) {
   const cfg = MODULES[key];
   try {
-    const r = await api(cfg.listAction);
-    const linhas = r[cfg.listKey] || [];
+    let linhas;
+    if (key === "colaboradores") {
+      // Usa os dados já traduzidos (Função, salário resolvido) em vez das colunas cruas.
+      const r = await api("listarHeadcount");
+      linhas = (r.headcount || []).map(c => ({
+        Nome: c.Nome,
+        CPF: c.CPF,
+        Unidade: c.Unidade,
+        Cargo: c.Cargo || c.Funcao,
+        SalarioTotal: c.Salario,
+        Status: c.Status
+      }));
+    } else {
+      const r = await api(cfg.listAction);
+      linhas = r[cfg.listKey] || [];
+    }
     STATE.cache[key] = linhas;
     document.getElementById("tabelaModulo").innerHTML = tabelaComBadge(linhas, cfg.columns);
   } catch (e) {

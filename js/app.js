@@ -234,7 +234,8 @@ const GRUPOS_NAV = [
     { key: "avisos", label: "Avisos" }
   ] },
   { titulo: "Pessoas", itens: [
-    { key: "colaboradores", label: "Colaboradores" },
+    { key: "colaboradores", label: "Cadastro de Colaboradores" },
+    { key: "headcount", label: "Headcount" },
     { key: "cargos", label: "Cargos e Salários" },
     { key: "unidades", label: "Unidades" },
     { key: "lideranca", label: "Liderança" },
@@ -242,7 +243,8 @@ const GRUPOS_NAV = [
   ]},
   { titulo: "Recrutamento", itens: [
     { key: "vagas", label: "Recrutamento (Vagas)" },
-    { key: "testes", label: "Teste Prático" }
+    { key: "testes", label: "Teste Prático" },
+    { key: "emteste", label: "Quem está testando" }
   ]},
   { titulo: "Gestão de Pessoas", itens: [
     { key: "escalas", label: "Escalas" },
@@ -258,6 +260,7 @@ const GRUPOS_NAV = [
   { titulo: "Operações", itens: [
     { key: "fardamento", label: "Fardamento / Estoque" },
     { key: "indicadores", label: "Indicadores Mensais" },
+    { key: "absenteismo", label: "Absenteísmo" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
   { titulo: "Assistente", itens: [{ key: "assistente", label: "EVA (Assistente)" }] }
@@ -291,6 +294,8 @@ async function navegar(key) {
     if (key === "agenda") return renderAgenda();
     if (key === "avisos") return renderAvisos();
     if (key === "unidades") return renderUnidades();
+    if (key === "headcount") return renderHeadcount();
+    if (key === "emteste") return renderEmTeste();
     if (key === "lideranca") return renderLideranca();
     if (key === "vagas") return renderVagas();
     if (key === "testes") return renderTestePratico();
@@ -308,7 +313,185 @@ async function navegar(key) {
   }
 }
 
+/* ===================== HEADCOUNT ===================== */
+
+const HC = { todos: [], unidade: "", sel: -1 };
+
+function hcData_(s) {
+  if (!s) return "—";
+  const p = String(s).split("-");
+  if (p.length === 3) return p[2].slice(0, 2) + "/" + p[1] + "/" + p[0];
+  return String(s);
+}
+function hcAniversario_(s) {
+  if (!s) return "—";
+  const p = String(s).split("-");
+  if (p.length === 3) return p[2].slice(0, 2) + "/" + p[1];
+  return String(s);
+}
+function hcExperiencia_(fim) {
+  if (!fim) return "Sem data cadastrada";
+  const d = new Date(fim);
+  if (isNaN(d.getTime())) return escapeHtml(fim);
+  const hoje = new Date();
+  const dias = Math.ceil((d.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24));
+  if (dias >= 0) return "Em experiência — faltam " + dias + " dia(s) (até " + hcData_(fim) + ")";
+  return "Efetivado (experiência encerrou em " + hcData_(fim) + ")";
+}
+function hcCampo_(obj, nomes) {
+  for (let i = 0; i < nomes.length; i++) {
+    if (obj[nomes[i]] !== undefined && String(obj[nomes[i]]).trim() !== "") return obj[nomes[i]];
+  }
+  return "";
+}
+
+async function renderHeadcount() {
+  setMain(`<div class="loading">Carregando colaboradores...</div>`);
+  const r = await api("listarColaboradores", {});
+  HC.todos = (r.colaboradores || []).filter(c => {
+    const st = normalize(hcCampo_(c, ["Status", "Situacao"]));
+    return st.indexOf("DEMIT") === -1 && st.indexOf("DESLIG") === -1 && st !== "INATIVO";
+  });
+  HC.sel = -1;
+  hcRender();
+}
+
+function hcRender() {
+  const unis = [...new Set(HC.todos.map(c => String(hcCampo_(c, ["Unidade", "Operacao", "Loja"]) || "").trim()).filter(Boolean))].sort();
+  const daUni = HC.unidade
+    ? HC.todos.filter(c => normalize(hcCampo_(c, ["Unidade", "Operacao", "Loja"])) === normalize(HC.unidade))
+    : [];
+
+  let detalhe = "";
+  if (HC.sel >= 0 && daUni[HC.sel]) {
+    const c = daUni[HC.sel];
+    const nome = hcCampo_(c, ["Nome", "Nome Completo"]);
+    const cargo = hcCampo_(c, ["Cargo"]) || "—";
+    const funcao = hcCampo_(c, ["Funcao", "Função"]) || "—";
+    const lider = hcCampo_(c, ["Lider", "Líder", "Gestor"]) || "—";
+    const salario = Number(hcCampo_(c, ["SalarioTotal", "SalarioBase"])) || 0;
+    detalhe = `<div class="card" style="border-left:5px solid var(--laranja)">
+      <h3>👤 ${escapeHtml(nome)}</h3>
+      <div class="grid g2">
+        <div><small class="muted">Nome completo</small><div><b>${escapeHtml(nome)}</b></div></div>
+        <div><small class="muted">Líder</small><div><b>${escapeHtml(lider)}</b></div></div>
+        <div><small class="muted">Cargo</small><div>${escapeHtml(cargo)}</div></div>
+        <div><small class="muted">Função</small><div>${escapeHtml(funcao)}</div></div>
+        <div><small class="muted">Admissão</small><div>${hcData_(hcCampo_(c, ["DataAdmissao", "Admissao"]))}</div></div>
+        <div><small class="muted">Aniversário</small><div>${hcAniversario_(hcCampo_(c, ["DataNascimento", "Nascimento", "Aniversario"]))}</div></div>
+        <div><small class="muted">Salário</small><div><b>${fmtMoeda(salario)}</b></div></div>
+        <div><small class="muted">Período de experiência</small><div>${escapeHtml(hcExperiencia_(hcCampo_(c, ["FimExperiencia", "Fim da Experiencia"])))}</div></div>
+      </div>
+    </div>`;
+  }
+
+  const lista = !HC.unidade
+    ? `<div class="empty">Escolha uma unidade acima para ver os colaboradores.</div>`
+    : (daUni.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Nome</th><th>Cargo</th><th>Líder</th><th></th></tr></thead>
+          <tbody>${daUni.map((c, i) => `<tr${i === HC.sel ? ' style="background:rgba(255,140,0,.08)"' : ""}>
+            <td>${i + 1}</td>
+            <td style="font-weight:600">${escapeHtml(hcCampo_(c, ["Nome", "Nome Completo"]))}</td>
+            <td>${escapeHtml(hcCampo_(c, ["Cargo"]) || "—")}</td>
+            <td>${escapeHtml(hcCampo_(c, ["Lider", "Líder", "Gestor"]) || "—")}</td>
+            <td><button class="btn btn-secondary" onclick="hcSelecionar(${i})">Ver detalhes</button></td>
+          </tr>`).join("")}</tbody></table></div>`
+      : `<div class="empty">Nenhum colaborador ativo nesta unidade.</div>`);
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Headcount</h2><p>Filtre a unidade, marque o colaborador e veja os detalhes.</p></div>
+      <div style="min-width:230px">
+        <label>Unidade</label>
+        <select onchange="hcMudarUnidade(this.value)">
+          <option value="">Selecione a unidade</option>
+          ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(HC.unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    ${HC.unidade ? `<div class="grid g4"><div class="kpi"><small>Colaboradores ativos — ${escapeHtml(HC.unidade)}</small><strong>${daUni.length}</strong></div></div>` : ""}
+    ${detalhe}
+    <div class="card"><h3>Colaboradores da unidade</h3>${lista}</div>
+  `);
+}
+
+function hcMudarUnidade(u) { HC.unidade = u; HC.sel = -1; hcRender(); }
+function hcSelecionar(i) { HC.sel = i; hcRender(); }
+
+/* ===================== QUEM ESTÁ TESTANDO ===================== */
+
+const ET = { todos: [], unidade: "" };
+
+async function renderEmTeste() {
+  setMain(`<div class="loading">Carregando testes...</div>`);
+  const r = await api("listarTestes", {});
+  // "Testando" = registros sem resultado final (ainda em andamento).
+  ET.todos = (r.testes || []).filter(t => {
+    const res = normalize(hcCampo_(t, ["Resultado"]));
+    return res === "" || res === "EM ANDAMENTO" || res === "EM TESTE" || res === "TESTANDO";
+  });
+  etRender();
+}
+
+function etRender() {
+  const unis = [...new Set(ET.todos.map(t => String(hcCampo_(t, ["Unidade"]) || "").trim()).filter(Boolean))].sort();
+  const linhas = ET.unidade
+    ? ET.todos.filter(t => normalize(hcCampo_(t, ["Unidade"])) === normalize(ET.unidade))
+    : ET.todos;
+
+  const tabela = linhas.length
+    ? `<div class="table-wrap"><table>
+        <thead><tr><th>Nome</th><th>Unidade</th><th>Cargo</th><th>Telefone</th></tr></thead>
+        <tbody>${linhas.map(t => `<tr>
+          <td style="font-weight:600">${escapeHtml(hcCampo_(t, ["Candidato", "Nome"]))}</td>
+          <td>${escapeHtml(hcCampo_(t, ["Unidade"]) || "—")}</td>
+          <td>${escapeHtml(hcCampo_(t, ["Cargo"]) || "—")}</td>
+          <td>${escapeHtml(hcCampo_(t, ["Telefone", "Fone", "Celular"]) || "—")}</td>
+        </tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty">Ninguém em teste no momento.</div>`;
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Quem está testando</h2><p>Candidatos com teste em andamento.</p></div>
+      <div style="min-width:230px">
+        <label>Filtrar por Unidade</label>
+        <select onchange="etMudarUnidade(this.value)">
+          <option value="">Todas as unidades</option>
+          ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(ET.unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="grid g4"><div class="kpi"><small>Em teste${ET.unidade ? " — " + escapeHtml(ET.unidade) : ""}</small><strong>${linhas.length}</strong></div></div>
+    <div class="card"><h3>🧪 Em teste</h3>${tabela}</div>
+  `);
+}
+
+function etMudarUnidade(u) { ET.unidade = u; etRender(); }
+
 /* ===================== DASHBOARD ===================== */
+
+function tabelaTurnover(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Unidade</th><th>Ativos</th><th>Admissões (mês)</th><th>Desligamentos (mês)</th><th>Turnover</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Unidade)}</td><td>${escapeHtml(l.Ativos)}</td>
+      <td>${escapeHtml(l.Admissoes)}</td><td>${escapeHtml(l.Desligamentos)}</td>
+      <td><span class="badge ${l.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(l.Turnover)}%</span></td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
+function tabelaAbsenteismo(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum absenteísmo lançado ainda. Registre em "Absenteísmo".</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Unidade</th><th>Absenteísmo</th><th>Atestados</th><th>Faltas Injustificadas</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Unidade)}</td>
+      <td><span class="badge ${l.Absenteismo >= 5 ? "bad" : (l.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(l.Absenteismo)}%</span></td>
+      <td>${escapeHtml(l.Atestados)}</td><td>${escapeHtml(l.FaltasInjustificadas)}</td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
 
 function tabelaExperiencia(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Ninguém em período de experiência nesta seleção.</div>`;
@@ -437,9 +620,14 @@ async function renderDashboard(unidade) {
         ${tabelaSlaMes(dash.slaPorMes)}
       </div>
       <div class="card">
-        <h3>🔄 Turnover e Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(editável em Indicadores Mensais)</span></h3>
-        ${tabelaIndicadores(dash.indicadores)}
+        <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático — admissões/desligamentos do mês)</span></h3>
+        ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>🩺 Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático — do que você lança em Absenteísmo)</span></h3>
+      ${tabelaAbsenteismo(dash.absenteismoAuto || [])}
     </div>
 
     <div class="card">
@@ -1647,7 +1835,7 @@ const MODULES = {
       { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
       { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
       { name: "ValeTransporteDia", label: "Vale Transporte por Dia (R$)", type: "money", readonly: true, computed: true },
-      { name: "Status", label: "Status", type: "select", options: ["ATIVO", "INATIVO", "DESLIGADO"], default: "ATIVO" },
+      { name: "Status", label: "Status", type: "select", options: ["ATIVO", "AFASTADO", "DEMITIDO"], default: "ATIVO" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
@@ -1711,6 +1899,26 @@ const MODULES = {
       { name: "TurnoverPercentual", label: "Turnover (%)", type: "number", step: 0.01 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
       { name: "Faturamento", label: "Faturamento do mês (R$)", type: "money" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  absenteismo: {
+    label: "Absenteísmo",
+    listAction: "listarAbsenteismo", listKey: "absenteismo",
+    saveAction: "salvarAbsenteismo",
+    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Atestados", "TotalFaltas", "PercentualAbsenteismo"],
+    fields: [
+      { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
+      { name: "Ano", label: "Ano", type: "number", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Setor", label: "Setor", type: "text" },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
+      { name: "DiasEscala", label: "Dias de Escala no mês", type: "number" },
+      { name: "FaltasInjustificadas", label: "Faltas Injustificadas", type: "number" },
+      { name: "FaltasJustificadas", label: "Faltas Justificadas", type: "number" },
+      { name: "Atestados", label: "Atestados (dias)", type: "number" },
+      { name: "CID", label: "CID (do atestado)", type: "text" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },

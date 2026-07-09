@@ -53,7 +53,10 @@ function apiCall(acao, dados) {
     }, 45000);
 
     const payload = Object.assign({}, dados || {});
-    if (STATE.user) payload.__user = STATE.user;
+    if (STATE.user) {
+      payload.__user = { nome: STATE.user.nome, perfil: STATE.user.perfil }; // informativo
+      payload.__token = STATE.user.token || "";                               // autenticação real
+    }
 
     const url = CONFIG.API_URL +
       "?acao=" + encodeURIComponent(acao) +
@@ -70,6 +73,15 @@ async function api(acao, dados) {
   try {
     const res = await apiCall(acao, dados);
     if (!res || res.ok === false) {
+      if (res && res.erro === "NAO_AUTORIZADO") {
+        limparSessao();
+        STATE.user = null;
+        const app = document.getElementById("appScreen");
+        const login = document.getElementById("loginScreen");
+        if (app) app.style.display = "none";
+        if (login) login.style.display = "flex";
+        throw new Error(res.mensagem || "Sessão expirada. Faça login de novo.");
+      }
       throw new Error((res && res.erro) || "Erro desconhecido ao chamar " + acao + ".");
     }
     return res;
@@ -194,13 +206,20 @@ async function iniciarApp() {
 }
 
 async function carregarInit() {
-  const r = await api("getInit");
-  STATE.init.unidades = r.unidades || [];
-  STATE.init.cargos = r.cargos || [];
-  STATE.init.colaboradores = r.colaboradores || [];
-  STATE.init.salarios = r.salarios || [];
-  STATE.init.lideranca = r.lideranca || [];
-  atualizarDatalists();
+  try {
+    const r = await api("getInit");
+    STATE.init.unidades = r.unidades || [];
+    STATE.init.cargos = r.cargos || [];
+    STATE.init.colaboradores = r.colaboradores || [];
+    STATE.init.salarios = r.salarios || [];
+    STATE.init.lideranca = r.lideranca || [];
+    atualizarDatalists();
+  } catch (e) {
+    // Não trava o app: mantém listas vazias e segue. As telas mostram o próprio erro.
+    STATE.init.unidades = STATE.init.unidades || [];
+    STATE.init.colaboradores = STATE.init.colaboradores || [];
+    if (typeof toast === "function") toast("Não consegui carregar os dados iniciais. Verifique se o Code.gs está publicado.", "err");
+  }
 }
 
 function atualizarDatalists() {
@@ -386,13 +405,19 @@ function hcCampo_(obj, nomes) {
 
 async function renderHeadcount() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
-  const r = await api("listarHeadcount", {});
-  HC.todos = (r.headcount || []).filter(c => {
-    const st = normalize(c.Status);
-    return st.indexOf("DEMIT") === -1 && st.indexOf("DESLIG") === -1 && st !== "INATIVO";
-  });
-  HC.sel = -1;
-  hcRender();
+  try {
+    const r = await api("listarHeadcount", {});
+    HC.todos = (r.headcount || []).filter(c => {
+      const st = normalize(c.Status);
+      return st.indexOf("DEMIT") === -1 && st.indexOf("DESLIG") === -1 && st !== "INATIVO";
+    });
+    HC.sel = -1;
+    hcRender();
+  } catch (e) {
+    setMain(`<div class="page-title"><div><h2>Headcount</h2></div></div>
+      <div class="card"><div class="msg err">Não consegui carregar: ${escapeHtml(e.message)}</div>
+      <p class="muted">Se aparecer "Ação desconhecida", o servidor (Code.gs) ainda está numa versão antiga — publique a Nova versão no Apps Script.</p></div>`);
+  }
 }
 
 function hcFiltrados() {
@@ -494,13 +519,18 @@ const ET = { todos: [], unidade: "" };
 
 async function renderEmTeste() {
   setMain(`<div class="loading">Carregando testes...</div>`);
-  const r = await api("listarTestes", {});
-  // "Testando" = registros sem resultado final (ainda em andamento).
-  ET.todos = (r.testes || []).filter(t => {
-    const res = normalize(hcCampo_(t, ["Resultado"]));
-    return res === "" || res === "EM ANDAMENTO" || res === "EM TESTE" || res === "TESTANDO";
-  });
-  etRender();
+  try {
+    const r = await api("listarTestes", {});
+    // "Testando" = registros sem resultado final (ainda em andamento).
+    ET.todos = (r.testes || []).filter(t => {
+      const res = normalize(hcCampo_(t, ["Resultado"]));
+      return res === "" || res === "EM ANDAMENTO" || res === "EM TESTE" || res === "TESTANDO";
+    });
+    etRender();
+  } catch (e) {
+    setMain(`<div class="page-title"><div><h2>Quem está testando</h2></div></div>
+      <div class="card"><div class="msg err">Não consegui carregar: ${escapeHtml(e.message)}</div></div>`);
+  }
 }
 
 function etRender() {
@@ -809,9 +839,17 @@ function tabelaIndicadores(linhas) {
 
 async function renderDashboard(unidade) {
   setMain(`<div class="loading">Carregando dashboard...</div>`);
-  const r = await api("dashboard", unidade ? { unidade: unidade } : {});
-  const dash = r.dashboard;
-  const k = dash.kpis;
+  let r;
+  try {
+    r = await api("dashboard", unidade ? { unidade: unidade } : {});
+  } catch (e) {
+    setMain(`<div class="page-title"><div><h2>Dashboard</h2></div></div>
+      <div class="card"><div class="msg err">Não consegui carregar o dashboard: ${escapeHtml(e.message)}</div>
+      <p class="muted">Se aparecer "Ação desconhecida" ou demorar muito, publique a Nova versão do Code.gs no Apps Script.</p></div>`);
+    return;
+  }
+  const dash = r.dashboard || {};
+  const k = dash.kpis || {};
   const unis = dash.unidades || [];
   const sel = dash.filtroUnidade || "";
 
@@ -2804,29 +2842,6 @@ async function renderPonto() {
       </div>
       <div class="actions"><button class="btn btn-primary" onclick="gerarPonto()">Gerar Controle de Frequência</button></div>
       <div id="cfResultado" style="margin-top:10px"></div>
-    </div>
-
-    <div class="card">
-      <h3>Bater Ponto</h3>
-      <div class="grid g3">
-        <div class="form-row"><label>Colaborador</label>
-          <input id="pontoColaborador" type="text" list="dl-colaboradores" autocomplete="off">
-        </div>
-        <div class="form-row"><label>Unidade</label>
-          <input id="pontoUnidade" type="text" list="dl-unidades" autocomplete="off">
-        </div>
-        <div class="form-row"><label>Tipo de Batida</label>
-          <select id="pontoTipo">
-            <option value="ENTRADA">Entrada</option>
-            <option value="INÍCIO INTERVALO">Início do Intervalo</option>
-            <option value="FIM INTERVALO">Fim do Intervalo</option>
-            <option value="SAÍDA">Saída</option>
-          </select>
-        </div>
-      </div>
-      <div class="actions">
-        <button class="btn btn-primary" onclick="baterPonto()">Registrar Ponto</button>
-      </div>
     </div>
 
     <div class="card">

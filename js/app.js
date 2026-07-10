@@ -1547,81 +1547,213 @@ async function carregarAvisos() {
 /* ===================== AGENDA ===================== */
 
 async function renderAgenda() {
-  const hoje = new Date().toISOString().slice(0, 10);
-  const em14 = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+  const hoje = new Date();
+  if (!STATE.ag) STATE.ag = { ano: hoje.getFullYear(), mes: hoje.getMonth(), eventos: [] };
   setMain(`
-    <div class="page-title"><div><h2>📅 Agenda</h2><p>Agendas dos líderes e sócios compartilhadas com a conta central.</p></div></div>
-
-    <div class="card">
-      <div class="grid g3">
-        <div class="form-row"><label>De</label><input id="agInicio" type="date" value="${hoje}"></div>
-        <div class="form-row"><label>Até</label><input id="agFim" type="date" value="${em14}"></div>
-        <div class="form-row"><label>Filtrar por agenda</label><select id="agFiltro" onchange="filtrarAgenda()"><option value="">Todas</option></select></div>
-      </div>
-      <div class="actions"><button class="btn btn-primary" onclick="carregarAgenda()">Atualizar</button></div>
-    </div>
-
-    <div class="card">
-      <h3>Novo compromisso</h3>
-      <div class="grid g3">
-        <div class="form-row"><label>Agenda</label><select id="agCal"></select></div>
-        <div class="form-row"><label>Título</label><input id="agTitulo" type="text"></div>
-        <div class="form-row"><label>Data</label><input id="agData" type="date"></div>
-        <div class="form-row"><label>Início</label><input id="agHoraIni" type="time"></div>
-        <div class="form-row"><label>Fim</label><input id="agHoraFim" type="time"></div>
-        <div class="form-row"><label>Local</label><input id="agLocal" type="text"></div>
-      </div>
-      <div class="form-row"><label>Descrição</label><textarea id="agDesc"></textarea></div>
-      <div class="actions"><button class="btn btn-primary" onclick="criarEventoAgenda()">Criar compromisso</button></div>
-    </div>
-
-    <div class="card"><h3>Compromissos</h3><div id="tabelaAgenda"><div class="loading">Carregando...</div></div></div>
+    <div class="page-title"><div><h2>📅 Agenda</h2><p>Calendário da equipe — compromissos, reuniões, integrações e aniversários.</p></div></div>
+    <div class="card" id="agWrap"><div class="loading">Carregando agenda...</div></div>
   `);
-  await carregarAgenda();
+  await agCarregar();
 }
 
-async function carregarAgenda() {
-  const inicio = el("#agInicio").value, fim = el("#agFim").value;
-  const cont = document.getElementById("tabelaAgenda");
-  cont.innerHTML = `<div class="loading">Carregando...</div>`;
-  let r;
-  try { r = await api("listarAgenda", { inicio: inicio, fim: fim }); }
-  catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
-
-  STATE.cache.agenda = r.eventos || [];
-  const cals = r.calendarios || [];
-  const selCal = document.getElementById("agCal");
-  if (selCal) selCal.innerHTML = cals.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.nome)}</option>`).join("");
-  const selFiltro = document.getElementById("agFiltro");
-  if (selFiltro) {
-    const nomes = [...new Set(cals.map(c => c.nome))];
-    selFiltro.innerHTML = `<option value="">Todas</option>` + nomes.map(n => `<option value="${escapeHtml(n)}">${escapeHtml(n)}</option>`).join("");
-  }
-  filtrarAgenda();
-}
-
-function filtrarAgenda() {
-  const dados = STATE.cache.agenda || [];
-  const f = normalize(el("#agFiltro") ? el("#agFiltro").value : "");
-  const filtrados = f ? dados.filter(e => normalize(e.Agenda) === f) : dados;
-  document.getElementById("tabelaAgenda").innerHTML = tabelaSimples(filtrados, ["Agenda", "Titulo", "Inicio", "Fim", "Local"]);
-}
-
-async function criarEventoAgenda() {
-  const dados = {
-    calendarId: el("#agCal").value,
-    titulo: el("#agTitulo").value.trim(),
-    data: el("#agData").value,
-    horaInicio: el("#agHoraIni").value,
-    horaFim: el("#agHoraFim").value,
-    local: el("#agLocal").value.trim(),
-    descricao: el("#agDesc").value
-  };
-  if (!dados.titulo || !dados.data || !dados.horaInicio) { toast("Preencha título, data e horário de início.", "err"); return; }
+async function agCarregar() {
   try {
-    const r = await api("criarEventoAgenda", dados);
-    toast(r.msg, "ok");
-    await carregarAgenda();
+    const r = await api("listarEventosAgenda", {});
+    STATE.ag.eventos = r.eventos || [];
+  } catch (e) {
+    STATE.ag.eventos = [];
+    const w = document.getElementById("agWrap");
+    if (w) { w.innerHTML = `<div class="msg err">Não consegui carregar: ${escapeHtml(e.message)}</div>`; return; }
+  }
+  agRender();
+}
+
+function agNorm(s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
+
+const AG_CORES = {
+  "REUNIAO": "#2563eb", "ANIVERSARIO": "#db2777", "INTEGRACAO": "#059669",
+  "TREINAMENTO": "#d97706", "ENTREVISTA": "#7c3aed", "FERIAS": "#0891b2", "OUTRO": "#64748b"
+};
+const AG_TIPOS = ["Reunião", "Aniversário", "Integração", "Treinamento", "Entrevista", "Férias", "Outro"];
+
+function agCorTipo(tipo) { return AG_CORES[agNorm(tipo)] || AG_CORES["OUTRO"]; }
+
+// Data de um evento -> "YYYY-MM-DD" (aceita ISO ou dd/MM/yyyy)
+function agDataISO(v) {
+  v = String(v || "").trim();
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (m) return `${m[3]}-${("0" + m[2]).slice(-2)}-${("0" + m[1]).slice(-2)}`;
+  return "";
+}
+
+// Aniversários do mês exibido (derivados dos colaboradores)
+function agAniversarios(ano, mes) {
+  const out = [];
+  (STATE.init.colaboradores || []).forEach(c => {
+    const raw = c.Nascimento || c.Aniversario || c["Dt_Nascimento"] || c.DataNascimento || "";
+    const s = String(raw).trim(); if (!s) return;
+    let dd, mm;
+    let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})/);
+    if (m) { dd = +m[1]; mm = +m[2]; } else { return; }
+    if (mm - 1 !== mes) return;
+    out.push({ dia: dd, tipo: "Aniversário", titulo: "🎂 " + (c.Nome || ""), aniversario: true });
+  });
+  return out;
+}
+
+function agRender() {
+  const { ano, mes } = STATE.ag;
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const primeiro = new Date(ano, mes, 1);
+  const diaSemInicio = primeiro.getDay(); // 0=Dom
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const hoje = new Date(); const hojeISO = `${hoje.getFullYear()}-${("0" + (hoje.getMonth() + 1)).slice(-2)}-${("0" + hoje.getDate()).slice(-2)}`;
+
+  // eventos por dia (ISO)
+  const porDia = {};
+  (STATE.ag.eventos || []).forEach(ev => {
+    const iso = agDataISO(ev.Data); if (!iso) return;
+    (porDia[iso] = porDia[iso] || []).push(ev);
+  });
+  // aniversários
+  const aniv = agAniversarios(ano, mes);
+
+  const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  let celulas = "";
+  // espaços antes do dia 1
+  for (let i = 0; i < diaSemInicio; i++) celulas += `<div class="ag-cel ag-vazia"></div>`;
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const iso = `${ano}-${("0" + (mes + 1)).slice(-2)}-${("0" + dia).slice(-2)}`;
+    const evs = (porDia[iso] || []).slice().sort((a, b) => String(a.HoraInicio || "").localeCompare(String(b.HoraInicio || "")));
+    const anivDia = aniv.filter(a => a.dia === dia);
+    const isHoje = iso === hojeISO;
+    let chips = "";
+    anivDia.forEach(a => {
+      chips += `<div class="ag-chip" style="background:${agCorTipo("Aniversario")}" title="${escapeHtml(a.titulo)}">${escapeHtml(a.titulo)}</div>`;
+    });
+    evs.forEach(ev => {
+      const hora = ev.HoraInicio ? escapeHtml(ev.HoraInicio) + " " : "";
+      chips += `<div class="ag-chip" style="background:${agCorTipo(ev.Tipo)}" title="${escapeHtml((ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${escapeHtml(ev.Titulo || "")}</div>`;
+    });
+    celulas += `
+      <div class="ag-cel ${isHoje ? "ag-hoje" : ""}" onclick="agNovoEvento('${iso}')">
+        <div class="ag-num">${dia}</div>
+        <div class="ag-chips">${chips}</div>
+      </div>`;
+  }
+
+  document.getElementById("agWrap").innerHTML = `
+    <style>
+      .ag-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
+      .ag-top h3{margin:0;color:var(--azul,#1a2b4a)}
+      .ag-nav button{margin-left:6px}
+      .ag-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#e2e8f0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
+      .ag-head{background:#1a2b4a;color:#fff;text-align:center;padding:8px 4px;font-weight:700;font-size:12px}
+      .ag-cel{background:#fff;min-height:96px;padding:4px;cursor:pointer;transition:background .1s}
+      .ag-cel:hover{background:#f1f5f9}
+      .ag-vazia{background:#f8fafc;cursor:default}
+      .ag-hoje{background:#fff7ed;box-shadow:inset 0 0 0 2px #f59e0b}
+      .ag-num{font-size:12px;font-weight:700;color:#334155;margin-bottom:2px}
+      .ag-chips{display:flex;flex-direction:column;gap:2px}
+      .ag-chip{color:#fff;font-size:11px;line-height:1.25;padding:2px 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+      .ag-legenda{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:#475569}
+      .ag-legenda span{display:inline-flex;align-items:center;gap:5px}
+      .ag-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+      .ag-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
+      .ag-modal{background:#fff;border-radius:12px;max-width:460px;width:100%;padding:18px;max-height:90vh;overflow:auto}
+    </style>
+    <div class="ag-top">
+      <h3>${meses[mes]} de ${ano}</h3>
+      <div class="ag-nav">
+        <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
+        <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
+        <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
+        <button class="btn btn-primary" onclick="agNovoEvento('')">+ Novo evento</button>
+      </div>
+    </div>
+    <div class="ag-grid">
+      ${semana.map(s => `<div class="ag-head">${s}</div>`).join("")}
+      ${celulas}
+    </div>
+    <div class="ag-legenda">
+      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${t}</span>`).join("")}
+    </div>
+  `;
+}
+
+function agMes(delta) {
+  STATE.ag.mes += delta;
+  if (STATE.ag.mes < 0) { STATE.ag.mes = 11; STATE.ag.ano--; }
+  if (STATE.ag.mes > 11) { STATE.ag.mes = 0; STATE.ag.ano++; }
+  agRender();
+}
+function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
+
+function agModal(html) {
+  agFecharModal();
+  const bg = document.createElement("div");
+  bg.className = "ag-modal-bg"; bg.id = "agModalBg";
+  bg.onclick = (e) => { if (e.target === bg) agFecharModal(); };
+  bg.innerHTML = `<div class="ag-modal">${html}</div>`;
+  document.body.appendChild(bg);
+}
+function agFecharModal() { const b = document.getElementById("agModalBg"); if (b) b.remove(); }
+
+function agFormEvento(ev) {
+  ev = ev || {};
+  const iso = agDataISO(ev.Data) || "";
+  return `
+    <h3 style="margin-top:0;color:var(--azul,#1a2b4a)">${ev.Id ? "Editar evento" : "Novo evento"}</h3>
+    <input type="hidden" id="evId" value="${escapeHtml(ev.Id || "")}">
+    <div class="form-row"><label>Título *</label><input id="evTitulo" type="text" value="${escapeHtml(ev.Titulo || "")}"></div>
+    <div class="grid g2">
+      <div class="form-row"><label>Data *</label><input id="evData" type="date" value="${iso}"></div>
+      <div class="form-row"><label>Tipo</label><select id="evTipo">${AG_TIPOS.map(t => `<option ${agNorm(t) === agNorm(ev.Tipo) ? "selected" : ""}>${t}</option>`).join("")}</select></div>
+      <div class="form-row"><label>Início</label><input id="evIni" type="time" value="${escapeHtml(ev.HoraInicio || "")}"></div>
+      <div class="form-row"><label>Fim</label><input id="evFim" type="time" value="${escapeHtml(ev.HoraFim || "")}"></div>
+    </div>
+    <div class="form-row"><label>Local</label><input id="evLocal" type="text" value="${escapeHtml(ev.Local || "")}"></div>
+    <div class="form-row"><label>Descrição</label><textarea id="evDesc">${escapeHtml(ev.Descricao || "")}</textarea></div>
+    <div class="actions" style="justify-content:space-between">
+      <div>${ev.Id ? `<button class="btn btn-secondary" onclick="agExcluirEvento('${escapeHtml(ev.Id)}')">Excluir</button>` : ""}</div>
+      <div>
+        <button class="btn btn-secondary" onclick="agFecharModal()">Cancelar</button>
+        <button class="btn btn-primary" onclick="agSalvarEvento()">Salvar</button>
+      </div>
+    </div>
+  `;
+}
+
+function agNovoEvento(iso) { agModal(agFormEvento({ Data: iso || "" })); }
+function agAbrirEvento(id) {
+  const ev = (STATE.ag.eventos || []).find(e => String(e.Id) === String(id));
+  if (ev) agModal(agFormEvento(ev));
+}
+
+async function agSalvarEvento() {
+  const dados = {
+    id: el("#evId").value, titulo: el("#evTitulo").value.trim(), data: el("#evData").value,
+    tipo: el("#evTipo").value, horaInicio: el("#evIni").value, horaFim: el("#evFim").value,
+    local: el("#evLocal").value.trim(), descricao: el("#evDesc").value
+  };
+  if (!dados.titulo || !dados.data) { toast("Informe título e data.", "err"); return; }
+  try {
+    await api("salvarEventoAgenda", dados);
+    agFecharModal();
+    toast("Evento salvo.", "ok");
+    await agCarregar();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function agExcluirEvento(id) {
+  if (!confirm("Excluir este evento?")) return;
+  try {
+    await api("excluirEventoAgenda", { id });
+    agFecharModal();
+    toast("Evento excluído.", "ok");
+    await agCarregar();
   } catch (e) { toast(e.message, "err"); }
 }
 
@@ -1703,7 +1835,8 @@ function filtrarVagas() {
 
   const cols = [
     ["ID", ["ID"]], ["VAGA", ["VAGA"]], ["UNIDADE", ["UNIDADE"]], ["SETOR", ["SETOR"]],
-    ["MOTIVO", ["MOTIVO"]], ["URGÊNCIA", ["URGENCIA", "URGÊNCIA", "PRIORIDADE"]], ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
+    ["MOTIVO", ["MOTIVO"]], ["SUBSTITUÍDO", ["COLAB SUBSTITUIDO", "COLABORADOR SUBSTITUIDO", "SUBSTITUIDO"]],
+    ["URGÊNCIA", ["URGENCIA", "URGÊNCIA", "PRIORIDADE"]], ["GESTOR", ["GESTOR"]], ["ABERTURA", ["DATA ABERTURA", "ABERTURA", "ABERTA"]],
     ["DIAS EM ABERTO", ["DIAS EM ABERTO"]], ["CANDIDATO", ["CANDIDATO"]],
     ["STATUS", ["STATUS"]], ["SLA", ["SLA STATUS", "SLA"]]
   ];
@@ -2631,7 +2764,8 @@ function montarGradeEscala() {
   const TURNO_NOME = { ABERTURA: "Abertura", INTERMEDIARIO: "Intermediário", FECHAMENTO: "Fechamento" };
   function celula(e) {
     if (!e) return `<td style="text-align:center;color:#9ca3af">-</td>`;
-    if (normalize(e.Folga).indexOf("SIM") !== -1)
+    const folgaVal = (function () { for (const k in e) { if (normalize(k) === "FOLGA") return e[k]; } return e.Folga || ""; })();
+    if (normalize(folgaVal).indexOf("SIM") !== -1)
       return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
     const tn = normalize(e.Turno);
     let ent = fmtHoraCurta(e.HorarioEntrada), sai = fmtHoraCurta(e.HorarioSaida);

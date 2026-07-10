@@ -1037,8 +1037,12 @@ function calcularVT() {
 /* ===================== LIDERANÇA AUTOMÁTICA ===================== */
 
 function liderDe(nomeColaborador) {
-  const lista = STATE.init.lideranca || [];
   const alvo = normalize(nomeColaborador);
+  // 1) organograma que já vem em cada colaborador (getInit -> liderDiretoDe_)
+  const col = (STATE.init.colaboradores || []).find(c => normalize(c.Nome) === alvo);
+  if (col && col.Lider) return col.Lider;
+  // 2) aba "lideranca" (se um dia for preenchida)
+  const lista = STATE.init.lideranca || [];
   const achou = lista.find(l => normalize(l.Liderado) === alvo);
   return achou ? achou.Lider : "";
 }
@@ -1550,7 +1554,7 @@ async function renderAgenda() {
   const hoje = new Date();
   if (!STATE.ag) STATE.ag = { ano: hoje.getFullYear(), mes: hoje.getMonth(), eventos: [] };
   setMain(`
-    <div class="page-title"><div><h2>📅 Agenda</h2><p>Calendário da equipe — compromissos, reuniões, integrações e aniversários.</p></div></div>
+    <div class="page-title"><div><h2>📅 Agenda</h2><p>Calendário da equipe — filtre por responsável (líder/sócio) para ver a agenda de quem quiser.</p></div></div>
     <div class="card" id="agWrap"><div class="loading">Carregando agenda...</div></div>
   `);
   await agCarregar();
@@ -1611,9 +1615,11 @@ function agRender() {
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
   const hoje = new Date(); const hojeISO = `${hoje.getFullYear()}-${("0" + (hoje.getMonth() + 1)).slice(-2)}-${("0" + hoje.getDate()).slice(-2)}`;
 
-  // eventos por dia (ISO)
+  // eventos por dia (ISO), aplicando o filtro por responsável
+  const filtro = STATE.ag.filtro || "";
   const porDia = {};
   (STATE.ag.eventos || []).forEach(ev => {
+    if (filtro && agNorm(ev.Responsavel) !== agNorm(filtro)) return;
     const iso = agDataISO(ev.Data); if (!iso) return;
     (porDia[iso] = porDia[iso] || []).push(ev);
   });
@@ -1666,7 +1672,11 @@ function agRender() {
     </style>
     <div class="ag-top">
       <h3>${meses[mes]} de ${ano}</h3>
-      <div class="ag-nav">
+      <div class="ag-nav" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <select id="agFiltro" onchange="agSetFiltro(this.value)" title="Filtrar por responsável" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+          <option value="">👥 Todas as agendas</option>
+          ${agResponsaveis().map(r => `<option ${agNorm(r) === agNorm(filtro) ? "selected" : ""}>${escapeHtml(r)}</option>`).join("")}
+        </select>
         <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
         <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
         <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
@@ -1690,6 +1700,17 @@ function agMes(delta) {
   agRender();
 }
 function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
+
+// Lista de responsáveis para o filtro: líderes/sócios do organograma + quem já é dono de eventos.
+function agResponsaveis() {
+  const set = {};
+  (STATE.ag.eventos || []).forEach(ev => { const r = String(ev.Responsavel || "").trim(); if (r) set[r] = true; });
+  (STATE.init.colaboradores || []).forEach(c => {
+    String(c.Lider || "").split(/\s+e\s+/i).forEach(x => { const n = x.trim(); if (n) set[n] = true; });
+  });
+  return Object.keys(set).sort((a, b) => a.localeCompare(b, "pt"));
+}
+function agSetFiltro(v) { STATE.ag.filtro = v || ""; agRender(); }
 
 function agModal(html) {
   agFecharModal();
@@ -1715,6 +1736,10 @@ function agFormEvento(ev) {
       <div class="form-row"><label>Fim</label><input id="evFim" type="time" value="${escapeHtml(ev.HoraFim || "")}"></div>
     </div>
     <div class="form-row"><label>Local</label><input id="evLocal" type="text" value="${escapeHtml(ev.Local || "")}"></div>
+    <div class="form-row"><label>Responsável (líder / sócio)</label>
+      <input id="evResp" type="text" list="dl-ag-resp" placeholder="De quem é este compromisso" value="${escapeHtml(ev.Responsavel || "")}">
+      <datalist id="dl-ag-resp">${agResponsaveis().map(r => `<option value="${escapeHtml(r)}"></option>`).join("")}</datalist>
+    </div>
     <div class="form-row"><label>Descrição</label><textarea id="evDesc">${escapeHtml(ev.Descricao || "")}</textarea></div>
     <div class="actions" style="justify-content:space-between">
       <div>${ev.Id ? `<button class="btn btn-secondary" onclick="agExcluirEvento('${escapeHtml(ev.Id)}')">Excluir</button>` : ""}</div>
@@ -1736,7 +1761,8 @@ async function agSalvarEvento() {
   const dados = {
     id: el("#evId").value, titulo: el("#evTitulo").value.trim(), data: el("#evData").value,
     tipo: el("#evTipo").value, horaInicio: el("#evIni").value, horaFim: el("#evFim").value,
-    local: el("#evLocal").value.trim(), descricao: el("#evDesc").value
+    local: el("#evLocal").value.trim(), descricao: el("#evDesc").value,
+    responsavel: (el("#evResp") ? el("#evResp").value.trim() : "")
   };
   if (!dados.titulo || !dados.data) { toast("Informe título e data.", "err"); return; }
   try {
@@ -2494,6 +2520,7 @@ function validarCampos(fields) {
 
 async function renderModulo(key) {
   const cfg = MODULES[key];
+  STATE.editModulo = null;
   setMain(`
     <div class="page-title">
       <div><h2>${escapeHtml(cfg.label)}</h2>${cfg.note ? `<p>${escapeHtml(cfg.note)}</p>` : ""}</div>
@@ -2501,11 +2528,14 @@ async function renderModulo(key) {
 
     <div class="card">
       <h3>Novo Registro</h3>
+      <div id="editBanner" style="display:none;background:#fff7ed;border:1px solid #f59e0b;color:#9a3412;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:13px">
+        ✏️ Você está <b>editando</b> um registro existente. Altere e clique em <b>Atualizar registro</b>. Para criar um novo em vez de editar, clique em <b>Limpar</b>.
+      </div>
       <form id="formModulo" class="grid g2" onsubmit="return false;">
         ${cfg.fields.map(campoHtml).join("")}
       </form>
       <div class="actions">
-        <button class="btn btn-primary" onclick="salvarModulo('${key}')">Salvar</button>
+        <button class="btn btn-primary" id="btnSalvarModulo" onclick="salvarModulo('${key}')">Salvar</button>
         <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
       </div>
     </div>
@@ -2538,10 +2568,75 @@ async function carregarTabelaModulo(key) {
       linhas = r[cfg.listKey] || [];
     }
     STATE.cache[key] = linhas;
-    document.getElementById("tabelaModulo").innerHTML = tabelaComBadge(linhas, cfg.columns);
+    document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
   } catch (e) {
     document.getElementById("tabelaModulo").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Módulos que NÃO recebem editar/excluir genérico (têm fluxo próprio ou lista traduzida)
+function moduloEditavel(key) { return ["colaboradores", "ajustes"].indexOf(key) === -1; }
+
+// Tabela dos módulos com coluna de Ações (Editar/Excluir)
+function tabelaModuloHtml(key, linhas, colunas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
+  const editavel = moduloEditavel(key);
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}${editavel ? '<th style="width:1%">Ações</th>' : ""}</tr></thead>
+        <tbody>
+          ${linhas.map((l, i) => `<tr>
+            ${colunas.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}
+            ${editavel ? `<td style="white-space:nowrap;text-align:right">
+              <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px" title="Editar" onclick="editarRegistroModulo('${key}',${i})">✏️</button>
+              <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px;color:#b91c1c" title="Excluir" onclick="excluirRegistroModulo('${key}',${i})">🗑️</button>
+            </td>` : ""}
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// dd/mm/aaaa (ou ISO) -> aaaa-mm-dd para preencher <input type=date>
+function dataParaInput(v) {
+  v = String(v || "").trim(); if (!v) return "";
+  let m = v.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+  m = v.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) return `${m[3]}-${("0" + m[2]).slice(-2)}-${("0" + m[1]).slice(-2)}`;
+  return v;
+}
+
+async function excluirRegistroModulo(key, i) {
+  const cfg = MODULES[key];
+  const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
+  if (!confirm("Excluir este registro? Esta ação não pode ser desfeita.")) return;
+  const confereCol = cfg.columns[0];
+  try {
+    await api("excluirRegistroModulo", { sheetKey: cfg.listKey, index: i, confereCol: confereCol, confereVal: linha[confereCol] });
+    toast("Registro excluído.", "ok");
+    await carregarTabelaModulo(key);
+  } catch (e) { toast(e.message, "err"); }
+}
+
+function editarRegistroModulo(key, i) {
+  const cfg = MODULES[key];
+  const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
+  STATE.editModulo = { key: key, index: i };
+  cfg.fields.forEach(f => {
+    const elx = document.getElementById("campo_" + f.name);
+    if (!elx) return;
+    let v = linha[f.name]; if (v == null) v = "";
+    if (f.type === "date") v = dataParaInput(v);
+    elx.value = v;
+  });
+  const btn = document.getElementById("btnSalvarModulo");
+  if (btn) btn.textContent = "Atualizar registro";
+  const banner = document.getElementById("editBanner");
+  if (banner) banner.style.display = "block";
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  toast("Editando — altere os campos e clique em Atualizar.", "info");
 }
 
 function tabelaComBadge(linhas, colunas) {
@@ -2579,10 +2674,18 @@ async function salvarModulo(key) {
   const cfg = MODULES[key];
   if (!validarCampos(cfg.fields)) return;
   const dados = coletarCampos(cfg.fields);
+  const edit = STATE.editModulo && STATE.editModulo.key === key ? STATE.editModulo : null;
   try {
-    const r = await api(cfg.saveAction, dados);
-    toast(r.msg || "Salvo com sucesso.", "ok");
-    if (r.resultado) toast("Resultado da avaliação: " + r.resultado, "info");
+    let r;
+    if (edit) {
+      r = await api("atualizarRegistroModulo", { sheetKey: cfg.listKey, index: edit.index, dados: dados });
+      STATE.editModulo = null;
+      toast(r.msg || "Registro atualizado.", "ok");
+    } else {
+      r = await api(cfg.saveAction, dados);
+      toast(r.msg || "Salvo com sucesso.", "ok");
+      if (r.resultado) toast("Resultado da avaliação: " + r.resultado, "info");
+    }
     await carregarInit(); // atualiza datalists (nova unidade, etc.)
     await renderModulo(key);
   } catch (e) {

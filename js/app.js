@@ -1266,9 +1266,16 @@ async function renderDashboard(unidade) {
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
       <div class="kpi"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong></div>
       <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
-      <div class="kpi" style="border-left-color:var(--laranja)"><small>Folha Líquida (ativos)</small><strong>${fmtMoeda(k.folhaTotal)}</strong>${k.folhaBruta ? `<span class="muted" style="font-size:11px;display:block">Bruto: ${fmtMoeda(k.folhaBruta)}</span>` : ""}</div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>Variável da Liderança (mês)</small><strong>${fmtMoeda(k.variavelMes || 0)}</strong></div>
-      <div class="kpi" style="border-left-color:var(--laranja)"><small>💰 FOLHA REAL (mês)</small><strong>${fmtMoeda(k.folhaReal || k.folhaTotal)}</strong><span class="muted" style="font-size:11px;display:block">Líquido + variável</span></div>
+      <div class="kpi" style="border-left-color:var(--laranja);min-width:280px">
+        <small>💰 FOLHA REAL (MÊS)</small>
+        <strong>${fmtMoeda(k.folhaReal || k.folhaTotal)}</strong>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.7;color:#64748b">
+          <div style="display:flex;justify-content:space-between"><span>Bruto</span><span>${fmtMoeda(k.folhaBruta || 0)}</span></div>
+          <div style="display:flex;justify-content:space-between;color:#b91c1c"><span>(−) INSS, VT e utensílios</span><span>− ${fmtMoeda((k.folhaBruta || 0) - (k.folhaTotal || 0))}</span></div>
+          <div style="display:flex;justify-content:space-between;font-weight:600;color:#334155"><span>= Líquido</span><span>${fmtMoeda(k.folhaTotal || 0)}</span></div>
+          <div style="display:flex;justify-content:space-between;color:#0369a1"><span>(+) Variável liderança</span><span>+ ${fmtMoeda(k.variavelMes || 0)}</span></div>
+        </div>
+      </div>
       <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Candidatos em Teste (vagas)</small><strong>${k.candidatosEmTeste || 0}</strong></div>
@@ -1289,11 +1296,65 @@ async function renderDashboard(unidade) {
       <div class="card">
         <h3>⏱️ SLA de Vagas por Mês <span class="muted" style="font-weight:400;font-size:12px">(tempo médio de fechamento)</span></h3>
         ${tabelaSlaMes(dash.slaPorMes)}
+
+        <h4 style="margin:16px 0 6px">📊 Média do GRUPO por mês <span class="muted" style="font-weight:400;font-size:12px">(todas as unidades juntas)</span></h4>
+        ${(dash.slaGrupoPorMes && dash.slaGrupoPorMes.length)
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Mês</th><th>Vagas fechadas</th><th>Tempo médio</th></tr></thead>
+              <tbody>${dash.slaGrupoPorMes.map(s => `<tr>
+                <td>${escapeHtml(s.Mes)}</td>
+                <td>${escapeHtml(s.Encerradas)}</td>
+                <td><span class="badge ${Number(s.SLADias) > 30 ? "bad" : (Number(s.SLADias) > 20 ? "warn" : "ok")}">${s.SLADias !== "" ? escapeHtml(s.SLADias) + " dias" : "—"}</span></td>
+              </tr>`).join("")}</tbody>
+            </table></div>`
+          : `<div class="empty">Nenhuma vaga encerrada ainda.</div>`}
+
+        <h4 style="margin:16px 0 6px">🏬 Por mês de cada unidade</h4>
+        ${(dash.slaPorMesUnidade && dash.slaPorMesUnidade.length)
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Mês</th><th>Unidade</th><th>Vagas fechadas</th><th>Tempo médio</th></tr></thead>
+              <tbody>${dash.slaPorMesUnidade.map(s => `<tr>
+                <td>${escapeHtml(s.Mes)}</td>
+                <td style="font-weight:600">${escapeHtml(s.Unidade)}</td>
+                <td>${escapeHtml(s.Encerradas)}</td>
+                <td><span class="badge ${Number(s.SLADias) > 30 ? "bad" : (Number(s.SLADias) > 20 ? "warn" : "ok")}">${s.SLADias !== "" ? escapeHtml(s.SLADias) + " dias" : "—"}</span></td>
+              </tr>`).join("")}</tbody>
+            </table></div>`
+          : `<div class="empty">Nenhuma vaga encerrada por unidade ainda.</div>`}
       </div>
       <div class="card">
         <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(mês atual — admissões/desligamentos automáticos)</span></h3>
         ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>🏢 Grupo Evol — Consolidado <span class="muted" style="font-weight:400;font-size:12px">(todas as unidades juntas, mês atual)</span></h3>
+      <div class="grid g4">
+        <div class="kpi"><small>Ativos no grupo</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Ativos) || 0}</strong></div>
+        <div class="kpi"><small>Admissões no mês</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Admissoes) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--warn)"><small>Desligamentos no mês</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Desligamentos) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--laranja)"><small>🔄 Turnover do GRUPO</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Turnover) || 0}%</strong></div>
+        <div class="kpi" style="border-left-color:var(--info)"><small>🩺 Absenteísmo do GRUPO</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Absenteismo) || 0}%</strong></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🏬 Turnover e Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(setor dentro de cada unidade)</span></h3>
+      ${(dash.porUnidadeSetor && dash.porUnidadeSetor.length)
+        ? `<div class="table-wrap"><table>
+            <thead><tr><th>Unidade</th><th>Setor</th><th>Ativos</th><th>Admissões</th><th>Desligamentos</th><th>Turnover</th><th>Absenteísmo</th></tr></thead>
+            <tbody>${dash.porUnidadeSetor.map(s => `<tr>
+              <td>${escapeHtml(s.Unidade)}</td>
+              <td style="font-weight:600">${escapeHtml(s.Setor)}</td>
+              <td>${escapeHtml(s.Ativos)}</td>
+              <td>${escapeHtml(s.Admissoes)}</td>
+              <td>${escapeHtml(s.Desligamentos)}</td>
+              <td><span class="badge ${s.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(s.Turnover)}%</span></td>
+              <td><span class="badge ${s.Absenteismo >= 5 ? "bad" : (s.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(s.Absenteismo)}%</span></td>
+            </tr>`).join("")}</tbody>
+          </table></div>`
+        : `<div class="empty">Sem dados por setor ainda. Preencha o Setor no cadastro dos colaboradores.</div>`}
     </div>
 
     <div class="card">

@@ -2430,13 +2430,15 @@ const MODULES = {
       { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
       { name: "ValeTransporteDia", label: "Vale Transporte por Dia (R$)", type: "money", readonly: true, computed: true },
       { name: "Integrado", label: "Colaborador foi integrado?", type: "select", options: ["Não", "Sim"] },
-      { name: "DataIntegracao", label: "Data da integração", type: "date" },
+      { name: "DataIntegracao", label: "Mês/data da integração", type: "date" },
       { name: "PastaCompleta", label: "Pasta completa?", type: "select", options: ["Não", "Sim"] },
       { name: "PagamentoTeste", label: "Pagamento do teste prático (data)", type: "date" },
       { name: "ContaItau", label: "Tem conta Itaú?", type: "select", options: ["Não", "Sim"] },
       { name: "Somapay", label: "Tem Somapay?", type: "select", options: ["Não", "Sim"] },
       { name: "LinkDocumentacao", label: "Link da documentação (Google Drive)", type: "text", col: "g2" },
-      { name: "Status", label: "Status", type: "select", options: ["ATIVO", "AFASTADO", "DEMITIDO"], default: "ATIVO" },
+      { name: "Status", label: "Situação atual", type: "select", options: ["ATIVO", "AFASTADO", "DESLIGADO"], default: "ATIVO" },
+      { name: "DataAfastamento", label: "Mês/data do afastamento (se afastado)", type: "date" },
+      { name: "DataDesligamento", label: "Mês/data do desligamento (se desligado)", type: "date" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },

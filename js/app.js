@@ -339,6 +339,7 @@ const GRUPOS_NAV = [
     { key: "fardamento", label: "Fardamento / Estoque" },
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "absenteismo", label: "Absenteísmo" },
+    { key: "desligamentos", label: "Entrevista de Desligamento" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
   { titulo: "Assistente", itens: [{ key: "assistente", label: "EVA (Assistente)" }] }
@@ -462,7 +463,7 @@ function hcRender() {
   const unis = [...new Set(HC.todos.map(c => String(c.Unidade || "").trim()).filter(Boolean))].sort();
   setMain(`
     <div class="page-title">
-      <div><h2>Headcount</h2><p>Busque por nome e/ou filtre por unidade, marque o colaborador e veja os detalhes.</p></div>
+      <div><h2>Headcount</h2><p>Busque por nome e/ou filtre por unidade, marque o colaborador e veja os detalhes. <span class="muted" style="font-size:12px">Atualizado em ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></p></div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
         <div style="min-width:220px">
           <label>Buscar por nome</label>
@@ -905,7 +906,7 @@ async function renderDashboard(unidade) {
 
   setMain(`
     <div class="page-title">
-      <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.</p></div>
+      <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.${dash.geradoEm ? ` <span class="muted" style="font-size:12px">Atualizado em ${escapeHtml(dash.geradoEm)}</span>` : ""}</p></div>
       <div style="min-width:230px">
         <label>Filtrar por Unidade</label>
         <select onchange="renderDashboard(this.value)">
@@ -966,6 +967,23 @@ async function renderDashboard(unidade) {
         <div class="kpi" style="flex:1;min-width:180px;border-left-color:var(--info)"><small>Absenteísmo médio (geral)</small><strong>${(dash.mediaAbsenteismo != null ? dash.mediaAbsenteismo : 0)}%</strong></div>
       </div>
       ${tabelaIndicadoresMensais(dash.indicadoresMensais || [])}
+    </div>
+
+    <div class="card">
+      <h3>🚪 Entrevistas de Desligamento</h3>
+      <div class="grid g4">
+        <div class="kpi"><small>Desligamentos no mês</small><strong>${(dash.desligamentos && dash.desligamentos.noMes) || 0}</strong></div>
+        <div class="kpi"><small>Voluntários (pediram)</small><strong>${(dash.desligamentos && dash.desligamentos.voluntarios) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--warn)"><small>Involuntários (empresa)</small><strong>${(dash.desligamentos && dash.desligamentos.involuntarios) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--info)"><small>Recontrataria</small><strong>${(dash.desligamentos && dash.desligamentos.recontratariaPct) || 0}%</strong></div>
+      </div>
+      ${(dash.desligamentos && dash.desligamentos.motivosTop && dash.desligamentos.motivosTop.length)
+        ? `<h4 style="margin:12px 0 6px">Motivos mais comuns</h4>
+           <div class="table-wrap"><table>
+             <thead><tr><th>Motivo</th><th>Qtd</th></tr></thead>
+             <tbody>${dash.desligamentos.motivosTop.map(m => `<tr><td>${escapeHtml(m.Motivo)}</td><td>${escapeHtml(m.Qtd)}</td></tr>`).join("")}</tbody>
+           </table></div>`
+        : `<div class="empty">Nenhuma entrevista de desligamento registrada ainda. Cadastre em "Entrevista de Desligamento".</div>`}
     </div>
 
     <div class="card">
@@ -2470,15 +2488,44 @@ const MODULES = {
     ]
   },
 
+  desligamentos: {
+    label: "Entrevista de Desligamento",
+    listAction: "listarDesligamentos", listKey: "desligamentos",
+    saveAction: "salvarDesligamento",
+    columns: ["Data", "Unidade", "Colaborador", "Cargo", "LiderDireto", "TipoDesligamento", "MotivoPrincipal", "Recontrataria", "PreenchidoPor"],
+    fields: [
+      { name: "Data", label: "Data da entrevista", type: "date", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Setor", label: "Setor", type: "text" },
+      { name: "Colaborador", label: "Nome do colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "LiderDireto", label: "Líder direto", type: "text", hint: "Deixe vazio para preencher automático pelo organograma" },
+      { name: "DataAdmissao", label: "Data de admissão", type: "date" },
+      { name: "DataDesligamento", label: "Data de desligamento", type: "date" },
+      { name: "TipoDesligamento", label: "Tipo de desligamento", type: "select", options: ["Voluntário (pediu demissão)", "Involuntário (empresa desligou)", "Término de contrato", "Justa causa"] },
+      { name: "MotivoPrincipal", label: "Motivo principal", type: "select", options: ["Salário / benefícios", "Clima / liderança", "Distância / transporte", "Outra oportunidade", "Motivos pessoais / saúde", "Desempenho", "Fim de contrato", "Outros"] },
+      { name: "MotivoDetalhe", label: "Detalhe do motivo", type: "textarea", col: "g2" },
+      { name: "Recontrataria", label: "A empresa recontrataria?", type: "select", options: ["Sim", "Não"] },
+      { name: "AvaliacaoEmpresa", label: "Nota para a empresa (1-5)", type: "select", options: ["1", "2", "3", "4", "5"] },
+      { name: "AvaliacaoLideranca", label: "Nota para a liderança (1-5)", type: "select", options: ["1", "2", "3", "4", "5"] },
+      { name: "PontosPositivos", label: "Pontos positivos (o que era bom)", type: "textarea", col: "g2" },
+      { name: "PontosMelhoria", label: "Pontos de melhoria (o que faria a pessoa ficar)", type: "textarea", col: "g2" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
   indicadores: {
-    label: "Indicadores Mensais",
     listAction: "listarIndicadoresMensais", listKey: "indicadores",
     saveAction: "salvarIndicadorMensal",
-    columns: ["Mes", "Ano", "Unidade", "Admissoes", "Desligamentos", "AbsenteismoPercentual", "Faturamento"],
+    columns: ["Mes", "Ano", "Unidade", "Ativos", "Admissoes", "Desligamentos", "AbsenteismoPercentual", "Faturamento"],
     fields: [
-      { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
+      { name: "Mes", label: "Mês", type: "select", required: true, options: [
+        { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
+        { v: 5, l: "Maio" }, { v: 6, l: "Junho" }, { v: 7, l: "Julho" }, { v: 8, l: "Agosto" },
+        { v: 9, l: "Setembro" }, { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" }
+      ] },
       { name: "Ano", label: "Ano", type: "number", required: true },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Ativos", label: "Ativos no mês", type: "number", min: 0 },
       { name: "Admissoes", label: "Admissões no mês", type: "number", min: 0 },
       { name: "Desligamentos", label: "Desligamentos no mês", type: "number", min: 0 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
@@ -2557,7 +2604,11 @@ function campoHtml(f) {
   } else if (f.type === "select") {
     inputHtml = `<select id="${idc}" ${req} ${onch}>
       <option value="">Selecione...</option>
-      ${f.options.map(o => `<option value="${escapeHtml(o)}" ${o === f.default ? "selected" : ""}>${escapeHtml(o)}</option>`).join("")}
+      ${f.options.map(o => {
+        const v = (o && typeof o === "object") ? o.v : o;
+        const l = (o && typeof o === "object") ? o.l : o;
+        return `<option value="${escapeHtml(v)}" ${String(v) === String(f.default) ? "selected" : ""}>${escapeHtml(l)}</option>`;
+      }).join("")}
     </select>`;
   } else if (f.type === "datalist") {
     inputHtml = `<input id="${idc}" type="text" list="${f.list}" value="${val}" autocomplete="off" ${req} ${readonly}

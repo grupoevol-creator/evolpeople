@@ -1730,15 +1730,18 @@ function agMes(delta) {
 function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
 
 // Lista para o filtro da agenda: TODOS os colaboradores + os líderes/sócios do organograma + donos de eventos.
+// Lista fixa de responsáveis para o filtro da agenda (definida pela RH).
+const AGENDA_RESPONSAVEIS = [
+  "Luiza Garzon", "Denayre Monte", "Jéssica Monalisa", "Aline Cardoso", "Alan Souza",
+  "Saulo Gomes", "João Ricardo", "Anália Gabriely", "Mariano Maia", "Daniel Jourdain",
+  "André Coelho", "Jeffany Alencar", "Victor Pinheiro", "Mary Diane", "Cleylson",
+  "Gustavo Freitas", "Victor Farias", "Lucas Nogueira"
+];
 function agResponsaveis() {
   const set = {};
+  AGENDA_RESPONSAVEIS.forEach(n => set[n] = true);
+  // inclui também donos de eventos já criados (caso não estejam na lista)
   (STATE.ag.eventos || []).forEach(ev => { const r = String(ev.Responsavel || "").trim(); if (r) set[r] = true; });
-  (STATE.init.colaboradores || []).forEach(c => {
-    // líderes: quem aparece como líder de alguém (organograma)
-    String(c.Lider || "").split(/\s+e\s+/i).forEach(x => { const n = x.trim(); if (n) set[n] = true; });
-    // + time administrativo/diretoria (unidade EVOL)
-    if (c.Nome && normalize(c.Unidade).indexOf("EVOL") !== -1) set[String(c.Nome).trim()] = true;
-  });
   return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
 }
 function agSetFiltro(v) { STATE.ag.filtro = v || ""; agRender(); }
@@ -1916,12 +1919,22 @@ function filtrarVagas() {
                   ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
                 </select>
                 <button class="btn btn-primary" style="padding:5px 8px;min-height:auto" onclick="salvarVagaLinha('${escapeHtml(id)}')">Salvar</button>
+                <button class="btn btn-secondary" style="padding:5px 8px;min-height:auto;color:#b91c1c" title="Excluir vaga" onclick="excluirVagaUI('${escapeHtml(id)}')">🗑️</button>
               </div>
             </div>`;
           return `<tr>${cols.map(c => `<td>${formatarVagaCelula(c[0], vagaGet(v, c[1]))}</td>`).join("")}<td>${id ? acao : ""}</td></tr>`;
         }).join("")}
       </tbody>
     </table></div>`;
+}
+
+async function excluirVagaUI(id) {
+  if (!confirm("Excluir esta vaga? Esta ação não pode ser desfeita.")) return;
+  try {
+    const r = await api("excluirVaga", { id: id });
+    toast(r.msg || "Vaga excluída.", "ok");
+    await renderVagas();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 async function salvarVagaLinha(id) {
@@ -2228,11 +2241,48 @@ async function salvarTestePratico() {
 async function carregarTestesTabela() {
   try {
     const r = await api("listarTestes");
-    document.getElementById("tabelaTestes").innerHTML =
-      tabelaComBadge(r.testes || [], ["DataTeste", "Candidato", "Unidade", "Cargo", "Escala", "Folga", "Nota", "Resultado"]);
+    STATE.testesCache = r.testes || [];
+    const cols = ["DataTeste", "Candidato", "Unidade", "Cargo", "Escala", "Folga", "Nota", "Resultado"];
+    if (!STATE.testesCache.length) {
+      document.getElementById("tabelaTestes").innerHTML = `<div class="empty">Nenhum teste registrado ainda.</div>`;
+      return;
+    }
+    document.getElementById("tabelaTestes").innerHTML = `
+      <div class="table-wrap"><table>
+        <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join("")}<th style="width:1%">Ações</th></tr></thead>
+        <tbody>
+          ${STATE.testesCache.map((t, i) => `<tr>
+            ${cols.map(c => `<td>${formatarCelula(c, t[c])}</td>`).join("")}
+            <td style="white-space:nowrap;text-align:right">
+              <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar que o candidato desistiu" onclick="marcarDesistenciaTeste(${i})">Desistiu</button>
+              <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px;color:#b91c1c" title="Excluir teste" onclick="excluirTeste(${i})">🗑️</button>
+            </td>
+          </tr>`).join("")}
+        </tbody>
+      </table></div>`;
   } catch (e) {
     document.getElementById("tabelaTestes").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
+}
+
+async function excluirTeste(i) {
+  const t = (STATE.testesCache || [])[i]; if (!t) return;
+  if (!confirm("Excluir este teste? Esta ação não pode ser desfeita.")) return;
+  try {
+    await api("excluirRegistroModulo", { sheetKey: "testes", index: i, confereCol: "Candidato", confereVal: t.Candidato });
+    toast("Teste excluído.", "ok");
+    await carregarTestesTabela();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function marcarDesistenciaTeste(i) {
+  const t = (STATE.testesCache || [])[i]; if (!t) return;
+  if (!confirm("Marcar que o candidato DESISTIU deste teste?")) return;
+  try {
+    await api("atualizarRegistroModulo", { sheetKey: "testes", index: i, dados: { Resultado: "DESISTIU" } });
+    toast("Marcado como desistência.", "ok");
+    await carregarTestesTabela();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 /* ===================== LIDERANÇA (somente leitura) ===================== */
@@ -3083,18 +3133,28 @@ async function docListar(nome, aviso) {
 
 async function gerarPonto() {
   const unidade = el("#cfUnidade").value.trim();
+  const colaborador = el("#cfColab") ? el("#cfColab").value.trim() : "";
   const mes = el("#cfMes").value;
   const ano = el("#cfAno").value;
   if (!unidade) { toast("Escolha a unidade.", "err"); return; }
   el("#cfResultado").innerHTML = `<div class="loading">Gerando o arquivo... pode levar alguns segundos.</div>`;
   try {
-    const r = await api("gerarControleFrequencia", { unidade, mes, ano });
+    const r = await api("gerarControleFrequencia", { unidade, colaborador, mes, ano });
     el("#cfResultado").innerHTML = `<div class="msg ok">${escapeHtml(r.msg || "Gerado.")}<br>
       <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="font-weight:600">Abrir o Controle de Frequência ↗</a></div>`;
     if (r.url) window.open(r.url, "_blank");
   } catch (e) {
     el("#cfResultado").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
+}
+
+// Filtra o datalist de colaboradores do Ponto pela unidade escolhida
+function cfFiltrarColab() {
+  const u = normalize(el("#cfUnidade") ? el("#cfUnidade").value : "");
+  const nomes = (STATE.init.colaboradores || [])
+    .filter(c => !u || normalize(c.Unidade) === u)
+    .map(c => c.Nome).filter(Boolean).sort();
+  setDatalist("dl-cf-colab", nomes);
 }
 
 async function renderPonto() {
@@ -3104,14 +3164,18 @@ async function renderPonto() {
 
     <div class="card">
       <h3>🖨️ Gerar Controle de Frequência (para imprimir)</h3>
-      <p class="muted">Gera o modelo de ponto por unidade, uma aba por colaborador, com FOLGA nos dias certos (a partir da escala do mês).</p>
-      <div class="grid g3">
-        <div class="form-row"><label>Unidade</label><input id="cfUnidade" type="text" list="dl-unidades" autocomplete="off"></div>
+      <p class="muted">Escolha a unidade. Deixe o colaborador em branco para gerar a unidade toda (uma aba por pessoa), ou escolha um colaborador para gerar só o dele. FOLGA vem da escala do mês.</p>
+      <div class="grid g2">
+        <div class="form-row"><label>Unidade</label><input id="cfUnidade" type="text" list="dl-unidades" autocomplete="off" oninput="cfFiltrarColab()" onchange="cfFiltrarColab()"></div>
+        <div class="form-row"><label>Colaborador <span class="muted">(opcional — vazio = unidade toda)</span></label><input id="cfColab" type="text" list="dl-cf-colab" autocomplete="off" placeholder="Escolha a unidade primeiro"></div>
+      </div>
+      <div class="grid g2">
         <div class="form-row"><label>Mês</label>
           <select id="cfMes">${["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m,i)=>`<option value="${i+1}" ${i===new Date().getMonth()?"selected":""}>${m}</option>`).join("")}</select>
         </div>
         <div class="form-row"><label>Ano</label><input id="cfAno" type="number" value="${new Date().getFullYear()}"></div>
       </div>
+      <datalist id="dl-cf-colab"></datalist>
       <div class="actions"><button class="btn btn-primary" onclick="gerarPonto()">Gerar Controle de Frequência</button></div>
       <div id="cfResultado" style="margin-top:10px"></div>
     </div>

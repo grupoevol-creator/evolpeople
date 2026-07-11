@@ -23,6 +23,34 @@ const STATE = {
 
 /* ===================== JSONP (chamada ao backend) ===================== */
 
+// Envia ARQUIVOS (base64) por POST de verdade — o api() normal usa URL (JSONP) e
+// estoura o limite de tamanho com PDF/imagem. Aqui conseguimos ler a resposta.
+async function apiUpload(acao, dados) {
+  const body = "acao=" + encodeURIComponent(acao) + "&dados=" + encodeURIComponent(JSON.stringify(dados));
+  try {
+    const resp = await fetch(CONFIG.API_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: body
+    });
+    const txt = await resp.text();
+    try { return JSON.parse(txt); }
+    catch (e) { return { ok: true, semResposta: true }; }
+  } catch (e) {
+    // Se o navegador bloquear a leitura da resposta, envia às cegas (o arquivo sobe do mesmo jeito)
+    try {
+      await fetch(CONFIG.API_URL, {
+        method: "POST", mode: "no-cors",
+        headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" },
+        body: body
+      });
+      return { ok: true, semResposta: true };
+    } catch (e2) {
+      throw new Error("Não consegui enviar o arquivo: " + e2.message);
+    }
+  }
+}
+
 function apiCall(acao, dados) {
   return new Promise((resolve, reject) => {
     if (!CONFIG.API_URL || CONFIG.API_URL.indexOf("COLE_AQUI") !== -1) {
@@ -321,7 +349,8 @@ const GRUPOS_NAV = [
   ]},
   { titulo: "Recrutamento", itens: [
     { key: "vagas", label: "Recrutamento (Vagas)" },
-    { key: "testes", label: "Teste Prático" },
+    { key: "testerh", label: "Agendar Teste (RH)" },
+    { key: "testes", label: "Teste Prático (parecer do líder)" },
     { key: "emteste", label: "Quem está testando" }
   ]},
   { titulo: "Gestão de Pessoas", itens: [
@@ -338,6 +367,9 @@ const GRUPOS_NAV = [
   { titulo: "Operações", itens: [
     { key: "fardamento", label: "Fardamento / Estoque" },
     { key: "entregas", label: "Entrega de Fardamento / EPI" },
+    { key: "variavel", label: "Variável da Liderança" },
+    { key: "utensilios", label: "Desconto de Utensílios" },
+    { key: "valetransporte", label: "Vale Transporte (quem recebe)" },
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "absenteismo", label: "Absenteísmo" },
     { key: "desligamentos", label: "Entrevista de Desligamento" },
@@ -381,6 +413,8 @@ async function navegar(key) {
     if (key === "lideranca") return renderLideranca();
     if (key === "vagas") return renderVagas();
     if (key === "testes") return renderTestePratico();
+    if (key === "testerh") return renderTesteRH();
+    if (key === "valetransporte") return renderValeTransporte();
     if (key === "experiencia") return renderExperiencia();
     if (key === "feedbacks") return renderFeedback();
     if (key === "dossie") return renderDossie();
@@ -547,16 +581,263 @@ function hcSelecionar(i) { HC.sel = i; hcRenderLista(); }
 
 const ET = { todos: [], unidade: "", curriculos: [] };
 
+/* ============ AGENDAR TESTE (RH) ============ */
+async function renderTesteRH() {
+  setMain(`
+    <div class="page-title"><div><h2>Agendar Teste (RH)</h2><p>O RH agenda o candidato que vai fazer o teste na casa. O líder dá o parecer depois, em "Teste Prático".</p></div></div>
+
+    <div class="card">
+      <h3>Novo candidato para teste</h3>
+      <div class="grid g3">
+        <div class="form-row g2"><label>Nome completo *</label><input id="trNome" type="text" placeholder="Nome completo do candidato"></div>
+        <div class="form-row"><label>Telefone</label><input id="trFone" type="text" placeholder="(85) 9 9999-9999"></div>
+        <div class="form-row"><label>Função *</label><input id="trFuncao" type="text" list="dl-cargos" placeholder="Ex.: Garçom"></div>
+        <div class="form-row"><label>Setor</label><input id="trSetor" type="text" placeholder="Ex.: Salão"></div>
+        <div class="form-row"><label>Unidade *</label><input id="trUni" type="text" list="dl-unidades" placeholder="Unidade do teste"></div>
+        <div class="form-row"><label>Líder direto</label><input id="trLider" type="text" list="dl-responsaveis" placeholder="Quem vai avaliar"></div>
+        <div class="form-row"><label>Data do teste</label><input id="trData" type="date"></div>
+        <div class="form-row"><label>Hora do teste</label><input id="trHora" type="time"></div>
+      </div>
+
+      <h4 style="margin:14px 0 6px">Passagem e fardamento</h4>
+      <div class="grid g3">
+        <div class="form-row"><label>Passagem — como será?</label>
+          <select id="trPassagem">
+            <option value="">Selecione...</option>
+            <option value="RH entregou">RH entregou a passagem</option>
+            <option value="Sangria no caixa">Sangria no caixa</option>
+            <option value="PIX">PIX</option>
+            <option value="Não precisa">Não precisa</option>
+          </select>
+        </div>
+        <div class="form-row"><label>Passagem entregue?</label>
+          <select id="trPassEnt"><option value="Não">Não</option><option value="Sim">Sim</option></select>
+        </div>
+        <div class="form-row"><label>Fardamento entregue?</label>
+          <select id="trFardEnt"><option value="Não">Não</option><option value="Sim">Sim</option></select>
+        </div>
+        <div class="form-row"><label>Alinhado com o sócio operador?</label>
+          <select id="trAlinhado"><option value="Não">Não</option><option value="Sim">Sim</option></select>
+        </div>
+        <div class="form-row"><label>Sócio operador</label><input id="trSocio" type="text" list="dl-responsaveis" placeholder="Quem foi alinhado"></div>
+        <div class="form-row"><label>Currículo (PDF ou imagem)</label><input id="trCurriculo" type="file" accept=".pdf,.doc,.docx,image/*"></div>
+      </div>
+
+      <div class="form-row g3"><label>Observações</label><textarea id="trObs" rows="2" placeholder="Alguma informação importante..."></textarea></div>
+      <div style="margin-top:10px"><button class="btn btn-primary" onclick="salvarTesteRH()">Agendar teste</button></div>
+      <p class="muted" style="font-size:12px;margin-top:6px">O candidato aparece na hora em "Quem está testando" (com currículo e telefone) e na lista de parecer do líder.</p>
+    </div>
+
+    <div class="card">
+      <h3>Testes agendados</h3>
+      <div id="tabelaTesteRH"><div class="empty">Carregando...</div></div>
+    </div>
+  `);
+  await carregarTabelaTesteRH();
+}
+
+async function carregarTabelaTesteRH() {
+  try {
+    const r = await api("listarTestesRH");
+    STATE.testesRHCache = r.testesRH || [];
+    const linhas = STATE.testesRHCache;
+    if (!linhas.length) {
+      document.getElementById("tabelaTesteRH").innerHTML = `<div class="empty">Nenhum teste agendado ainda.</div>`;
+      return;
+    }
+    document.getElementById("tabelaTesteRH").innerHTML = `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Data</th><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio</th><th>Status</th><th style="width:1%">Ações</th></tr></thead>
+        <tbody>${linhas.map((t, i) => `<tr>
+          <td>${formatarCelula("Data", t.DataTeste || t.Data)}</td>
+          <td>${escapeHtml(t.NomeCompleto || "")}</td>
+          <td>${escapeHtml(t.Funcao || "")}</td>
+          <td>${escapeHtml(t.Unidade || "")}</td>
+          <td>${escapeHtml(t.Telefone || "—")}</td>
+          <td>${t.CurriculoUrl ? `<a href="${escapeHtml(t.CurriculoUrl)}" target="_blank" rel="noopener">📄 Abrir</a>` : "—"}</td>
+          <td>${escapeHtml(t.Passagem || "—")}<br><span class="badge ${String(t.PassagemEntregue) === "Sim" ? "ok" : "warn"}">${String(t.PassagemEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
+          <td><span class="badge ${String(t.FardamentoEntregue) === "Sim" ? "ok" : "warn"}">${String(t.FardamentoEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
+          <td><span class="badge ${String(t.AlinhadoSocio) === "Sim" ? "ok" : "warn"}">${String(t.AlinhadoSocio) === "Sim" ? "Alinhado" : "Pendente"}</span>${t.Socio ? `<br>${escapeHtml(t.Socio)}` : ""}</td>
+          <td>${formatarCelula("Status", t.Status)}</td>
+          <td style="white-space:nowrap;text-align:right">
+            <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar passagem entregue" onclick="marcarTesteRH(${i},'PassagemEntregue')">🎫</button>
+            <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar fardamento entregue" onclick="marcarTesteRH(${i},'FardamentoEntregue')">👕</button>
+            <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px;color:#b91c1c" title="Excluir" onclick="excluirTesteRH(${i})">🗑️</button>
+          </td>
+        </tr>`).join("")}</tbody>
+      </table></div>`;
+  } catch (e) {
+    document.getElementById("tabelaTesteRH").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
+  }
+}
+
+async function salvarTesteRH() {
+  const nome = (el("#trNome").value || "").trim();
+  const funcao = (el("#trFuncao").value || "").trim();
+  const uni = (el("#trUni").value || "").trim();
+  if (!nome) return toast("Informe o nome completo do candidato.", "err");
+  if (!funcao) return toast("Informe a função.", "err");
+  if (!uni) return toast("Informe a unidade.", "err");
+
+  const dados = {
+    NomeCompleto: nome, Funcao: funcao, Unidade: uni,
+    Setor: (el("#trSetor").value || "").trim(),
+    LiderDireto: (el("#trLider").value || "").trim(),
+    Telefone: (el("#trFone").value || "").trim(),
+    DataTeste: el("#trData").value, HoraTeste: el("#trHora").value,
+    Passagem: el("#trPassagem").value, PassagemEntregue: el("#trPassEnt").value,
+    FardamentoEntregue: el("#trFardEnt").value,
+    AlinhadoSocio: el("#trAlinhado").value, Socio: (el("#trSocio").value || "").trim(),
+    Observacoes: (el("#trObs").value || "").trim(), Status: "EM TESTE"
+  };
+
+  try {
+    toggleLoading(true);
+    // 1) sobe o currículo (se houver) e pega o link
+    const inp = el("#trCurriculo");
+    if (inp && inp.files && inp.files[0]) {
+      const f = inp.files[0];
+      if (f.size > 15 * 1024 * 1024) { toast("Currículo muito grande (máx. 15 MB).", "err"); }
+      else {
+        const b64 = await fileToBase64(f);
+        const up = await apiUpload("uploadCurriculo", { Candidato: nome, candidato: nome, Unidade: uni, base64: b64, nomeArquivo: f.name, tipo: f.type || "application/pdf" });
+        if (up && up.url) { dados.CurriculoUrl = up.url; dados.CurriculoNome = f.name; }
+      }
+    }
+    // 2) salva o teste
+    const r = await api("salvarTesteRH", dados);
+    toast(r.msg || "Teste agendado.", "ok");
+    ["#trNome", "#trFone", "#trFuncao", "#trSetor", "#trUni", "#trLider", "#trData", "#trHora", "#trSocio", "#trObs"].forEach(s => { if (el(s)) el(s).value = ""; });
+    if (el("#trCurriculo")) el("#trCurriculo").value = "";
+    await carregarTabelaTesteRH();
+  } catch (e) {
+    toast(e.message, "err");
+  } finally {
+    toggleLoading(false);
+  }
+}
+
+async function marcarTesteRH(i, campo) {
+  const t = (STATE.testesRHCache || [])[i]; if (!t) return;
+  const novo = String(t[campo]) === "Sim" ? "Não" : "Sim";
+  const dados = {}; dados[campo] = novo;
+  try {
+    await api("atualizarTesteRH", { index: i, dados: dados });
+    toast((campo === "PassagemEntregue" ? "Passagem" : "Fardamento") + ": " + novo, "ok");
+    await carregarTabelaTesteRH();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+async function excluirTesteRH(i) {
+  const t = (STATE.testesRHCache || [])[i]; if (!t) return;
+  if (!confirm(`Excluir o teste de "${t.NomeCompleto}"?`)) return;
+  try {
+    await api("excluirRegistroModulo", { sheetKey: "testesRH", index: i, confereCol: "NomeCompleto", confereVal: t.NomeCompleto });
+    toast("Teste excluído.", "ok");
+    await carregarTabelaTesteRH();
+  } catch (e) { toast(e.message, "err"); }
+}
+
+/* ============ VALE TRANSPORTE (marcar em massa) ============ */
+const VT = { todos: [], unidade: "" };
+
+async function renderValeTransporte() {
+  setMain(`<div class="loading">Carregando colaboradores...</div>`);
+  try {
+    const r = await api("listarVT");
+    VT.todos = r.vt || [];
+    vtRender();
+  } catch (e) {
+    setMain(`<div class="page-title"><div><h2>Vale Transporte</h2></div></div>
+      <div class="card"><div class="msg err">${escapeHtml(e.message)}</div></div>`);
+  }
+}
+
+function vtRender() {
+  const unis = [...new Set(VT.todos.map(x => x.Unidade).filter(Boolean))].sort();
+  const linhas = VT.unidade ? VT.todos.filter(x => normalize(x.Unidade) === normalize(VT.unidade)) : VT.todos;
+  const comVT = VT.todos.filter(x => x.TemVT === "Sim");
+  const totalDesconto = comVT.reduce((s, x) => s + (Number(x.ValorVT) || 0), 0);
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>Vale Transporte</h2><p>Marque quem recebe VT. O desconto de 6% é calculado <strong>na hora</strong> e já entra na folha.</p></div>
+      <div style="min-width:230px">
+        <label>Filtrar por Unidade</label>
+        <select onchange="vtMudarUnidade(this.value)">
+          <option value="">Todas as unidades</option>
+          ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(VT.unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+        </select>
+      </div>
+    </div>
+
+    <div class="grid g4">
+      <div class="kpi"><small>Colaboradores${VT.unidade ? " — " + escapeHtml(VT.unidade) : ""}</small><strong>${linhas.length}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Recebem VT</small><strong id="vtQtd">${comVT.length}</strong></div>
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>Desconto total de VT (6%)</small><strong id="vtTotal">${fmtMoeda(totalDesconto)}</strong></div>
+    </div>
+
+    <div class="card">
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Clique no ✅ de cada pessoa — <strong>salva automaticamente</strong>, não precisa de botão.</p>
+      ${linhas.length ? `<div class="table-wrap"><table>
+        <thead><tr><th style="width:1%">Recebe VT?</th><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Salário</th><th>Desconto (6%)</th></tr></thead>
+        <tbody>${linhas.map((x, i) => {
+          const idx = VT.todos.indexOf(x);
+          return `<tr id="vtrow_${idx}">
+            <td style="text-align:center">
+              <input type="checkbox" ${x.TemVT === "Sim" ? "checked" : ""} onchange="vtAlternar(${idx}, this.checked)" style="width:20px;height:20px;cursor:pointer">
+            </td>
+            <td style="font-weight:600">${escapeHtml(x.Nome)}</td>
+            <td>${escapeHtml(x.Unidade || "—")}</td>
+            <td>${escapeHtml(x.Cargo || "—")}</td>
+            <td>${fmtMoeda(x.Bruto || 0)}</td>
+            <td id="vtval_${idx}" style="font-weight:600;color:${x.TemVT === "Sim" ? "#b91c1c" : "#94a3b8"}">${x.TemVT === "Sim" ? "− " + fmtMoeda(x.ValorVT || 0) : "—"}</td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table></div>` : `<div class="empty">Nenhum colaborador encontrado.</div>`}
+    </div>
+  `);
+}
+
+function vtMudarUnidade(u) { VT.unidade = u; vtRender(); }
+
+// Marca/desmarca UMA pessoa e salva na hora. O cálculo do VT muda automaticamente.
+async function vtAlternar(idx, marcado) {
+  const p = VT.todos[idx]; if (!p) return;
+  const antes = p.TemVT;
+  p.TemVT = marcado ? "Sim" : "Não";
+
+  // atualiza a tela na hora
+  const cel = document.getElementById("vtval_" + idx);
+  if (cel) {
+    cel.textContent = marcado ? "− " + fmtMoeda(p.ValorVT || 0) : "—";
+    cel.style.color = marcado ? "#b91c1c" : "#94a3b8";
+  }
+  const comVT = VT.todos.filter(x => x.TemVT === "Sim");
+  const total = comVT.reduce((s, x) => s + (Number(x.ValorVT) || 0), 0);
+  if (document.getElementById("vtQtd")) document.getElementById("vtQtd").textContent = comVT.length;
+  if (document.getElementById("vtTotal")) document.getElementById("vtTotal").textContent = fmtMoeda(total);
+
+  try {
+    await api("salvarVTemMassa", { marcacoes: [{ Nome: p.Nome, CPF: p.CPF || "", TemVT: p.TemVT }] });
+    toast(`${p.Nome}: VT ${marcado ? "ativado" : "removido"}.`, "ok");
+  } catch (e) {
+    p.TemVT = antes; // desfaz se falhou
+    toast("Não consegui salvar: " + e.message, "err");
+    vtRender();
+  }
+}
+
+/* ============ QUEM ESTÁ TESTANDO ============ */
 async function renderEmTeste() {
   setMain(`<div class="loading">Carregando testes...</div>`);
   try {
-    const r = await api("listarTestes", {});
-    // "Testando" = registros sem resultado final (ainda em andamento).
-    ET.todos = (r.testes || []).filter(t => {
-      const res = normalize(hcCampo_(t, ["Resultado"]));
-      return res === "" || res === "EM ANDAMENTO" || res === "EM TESTE" || res === "TESTANDO";
+    const r = await api("listarTestesRH", {});
+    // "Testando" = agendado pelo RH e ainda sem parecer final
+    ET.todos = (r.testesRH || []).filter(t => {
+      const s = normalize(t.Status);
+      return s === "" || s === "EM TESTE" || s === "EM ANDAMENTO" || s === "TESTANDO";
     });
-    try { const rc = await api("listarCurriculos", {}); ET.curriculos = rc.curriculos || []; } catch (e) { ET.curriculos = []; }
     etRender();
   } catch (e) {
     setMain(`<div class="page-title"><div><h2>Quem está testando</h2></div></div>
@@ -565,31 +846,31 @@ async function renderEmTeste() {
 }
 
 function etRender() {
-  const unis = [...new Set(ET.todos.map(t => String(hcCampo_(t, ["Unidade"]) || "").trim()).filter(Boolean))].sort();
+  const unis = [...new Set(ET.todos.map(t => String(t.Unidade || "").trim()).filter(Boolean))].sort();
   const linhas = ET.unidade
-    ? ET.todos.filter(t => normalize(hcCampo_(t, ["Unidade"])) === normalize(ET.unidade))
+    ? ET.todos.filter(t => normalize(t.Unidade) === normalize(ET.unidade))
     : ET.todos;
 
-  const curriculoDe = (nome) => {
-    const n = normalize(nome);
-    const c = (ET.curriculos || []).find(x => normalize(hcCampo_(x, ["Candidato", "Nome"])) === n);
-    return c ? (hcCampo_(c, ["Url"]) || "") : "";
-  };
-
+  const sim = (v) => String(v) === "Sim";
   const tabela = linhas.length
     ? `<div class="table-wrap"><table>
-        <thead><tr><th>Candidato</th><th>Unidade</th><th>Cargo</th><th>Telefone</th><th>Currículo</th></tr></thead>
-        <tbody>${linhas.map(t => {
-          const nome = hcCampo_(t, ["Candidato", "Nome"]);
-          const url = curriculoDe(nome);
-          return `<tr>
-          <td style="font-weight:600">${escapeHtml(nome)}</td>
-          <td>${escapeHtml(hcCampo_(t, ["Unidade"]) || "—")}</td>
-          <td>${escapeHtml(hcCampo_(t, ["Cargo"]) || "—")}</td>
-          <td>${escapeHtml(hcCampo_(t, ["Telefone", "Fone", "Celular"]) || "—")}</td>
-          <td>${url ? `<a class="btn btn-secondary" style="padding:4px 8px;font-size:12px" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ver / Baixar</a>` : "—"}</td>
-        </tr>`; }).join("")}</tbody></table></div>`
-    : `<div class="empty">Ninguém em teste no momento.</div>`;
+        <thead><tr><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio alinhado</th><th>Líder</th></tr></thead>
+        <tbody>${linhas.map(t => `<tr>
+          <td style="font-weight:600">${escapeHtml(t.NomeCompleto || "—")}</td>
+          <td>${escapeHtml(t.Funcao || "—")}</td>
+          <td>${escapeHtml(t.Unidade || "—")}</td>
+          <td>${escapeHtml(t.Telefone || "—")}</td>
+          <td>${t.CurriculoUrl ? `<a class="btn btn-secondary" style="padding:4px 8px;font-size:12px" href="${escapeHtml(t.CurriculoUrl)}" target="_blank" rel="noopener">Ver / Baixar</a>` : "—"}</td>
+          <td>${escapeHtml(t.Passagem || "—")}<br><span class="badge ${sim(t.PassagemEntregue) ? "ok" : "warn"}">${sim(t.PassagemEntregue) ? "Entregue" : "Pendente"}</span></td>
+          <td><span class="badge ${sim(t.FardamentoEntregue) ? "ok" : "warn"}">${sim(t.FardamentoEntregue) ? "Entregue" : "Pendente"}</span></td>
+          <td><span class="badge ${sim(t.AlinhadoSocio) ? "ok" : "warn"}">${sim(t.AlinhadoSocio) ? "Sim" : "Não"}</span>${t.Socio ? `<br><span class="muted" style="font-size:12px">${escapeHtml(t.Socio)}</span>` : ""}</td>
+          <td>${escapeHtml(t.LiderDireto || "—")}</td>
+        </tr>`).join("")}</tbody></table></div>`
+    : `<div class="empty">Ninguém em teste no momento. O RH agenda em "Agendar Teste (RH)".</div>`;
+
+  const pendPass = linhas.filter(t => !sim(t.PassagemEntregue) && normalize(t.Passagem) !== "NAO PRECISA").length;
+  const pendFard = linhas.filter(t => !sim(t.FardamentoEntregue)).length;
+  const sangria = linhas.filter(t => normalize(t.Passagem) === "SANGRIA NO CAIXA").length;
 
   setMain(`
     <div class="page-title">
@@ -602,7 +883,12 @@ function etRender() {
         </select>
       </div>
     </div>
-    <div class="grid g4"><div class="kpi"><small>Em teste${ET.unidade ? " — " + escapeHtml(ET.unidade) : ""}</small><strong>${linhas.length}</strong></div></div>
+    <div class="grid g4">
+      <div class="kpi"><small>Em teste${ET.unidade ? " — " + escapeHtml(ET.unidade) : ""}</small><strong>${linhas.length}</strong></div>
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Passagem pendente</small><strong>${pendPass}</strong></div>
+      <div class="kpi" style="border-left-color:var(--warn)"><small>Fardamento pendente</small><strong>${pendFard}</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Passagem via sangria</small><strong>${sangria}</strong></div>
+    </div>
     <div class="card"><h3>🧪 Em teste</h3>${tabela}</div>
   `);
 }
@@ -677,7 +963,7 @@ async function abSalvar() {
   try {
     const r = await api("registrarAbsenteismo", dados);
     toast(r.msg || "Lançado.", "ok");
-    // anexa o atestado (se houver) na pasta do colaborador -> aparece no dossiê
+    // anexa o atestado (se houver) -> vai pro Drive, pro dossiê e fica ligado ao lançamento
     const fa = el("#abAtestado");
     if (fa && fa.files && fa.files[0]) {
       const f = fa.files[0];
@@ -685,12 +971,21 @@ async function abSalvar() {
       else {
         try {
           toast("Enviando atestado...", "info");
+          toggleLoading(true);
           const b64 = await fileToBase64(f);
-          const doc = { Colaborador: colab, cpf: "", nomeArquivo: "Atestado " + data + " - " + f.name, tipo: f.type || "application/octet-stream", base64: b64 };
-          const body = "acao=uploadDocumento&dados=" + encodeURIComponent(JSON.stringify(doc));
-          await fetch(CONFIG.API_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: body });
-          toast("Atestado anexado ao dossiê.", "ok");
+          const dt = new Date(data + "T12:00:00");
+          const up = await apiUpload("uploadAtestado", {
+            Colaborador: colab, cpf: "",
+            Mes: dt.getMonth() + 1, Ano: dt.getFullYear(),
+            nomeArquivo: "Atestado " + data + " - " + f.name,
+            tipo: f.type || "application/pdf",
+            base64: b64
+          });
+          if (up && up.url) toast("Atestado anexado ao dossiê. ✅", "ok");
+          else toast("Atestado enviado. Confira no dossiê do colaborador.", "ok");
+          if (el("#abAtestado")) el("#abAtestado").value = "";
         } catch (e) { toast("Atestado não anexado: " + e.message, "err"); }
+        finally { toggleLoading(false); }
       }
     }
     await renderAbsenteismo();
@@ -701,8 +996,18 @@ async function abCarregarTabela() {
   try {
     const r = await api("listarAbsenteismo");
     const linhas = r.absenteismo || [];
-    document.getElementById("abTabela").innerHTML =
-      tabelaComBadge(linhas, ["Mes", "Ano", "Colaborador", "Unidade", "Atestados", "FaltasInjustificadas", "FaltasJustificadas", "PercentualAbsenteismo"]);
+    const cols = ["Mes", "Ano", "Colaborador", "Unidade", "Atestados", "FaltasInjustificadas", "FaltasJustificadas", "PercentualAbsenteismo"];
+    document.getElementById("abTabela").innerHTML = linhas.length
+      ? `<div class="table-wrap"><table>
+          <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join("")}<th>Atestado</th></tr></thead>
+          <tbody>${linhas.map(l => `<tr>
+            ${cols.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}
+            <td>${l.AtestadoUrl
+              ? String(l.AtestadoUrl).split("|").map((u, i) => `<a href="${escapeHtml(u.trim())}" target="_blank" rel="noopener" style="margin-right:6px">📄 Ver${i > 0 ? " " + (i + 1) : ""}</a>`).join("")
+              : "—"}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>`
+      : `<div class="empty">Nenhum lançamento ainda.</div>`;
   } catch (e) {
     document.getElementById("abTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
@@ -961,7 +1266,9 @@ async function renderDashboard(unidade) {
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
       <div class="kpi"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong></div>
       <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
-      <div class="kpi" style="border-left-color:var(--laranja)"><small>Folha Atual (ativos)</small><strong>${fmtMoeda(k.folhaTotal)}</strong></div>
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>Folha Líquida (ativos)</small><strong>${fmtMoeda(k.folhaTotal)}</strong>${k.folhaBruta ? `<span class="muted" style="font-size:11px;display:block">Bruto: ${fmtMoeda(k.folhaBruta)}</span>` : ""}</div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Variável da Liderança (mês)</small><strong>${fmtMoeda(k.variavelMes || 0)}</strong></div>
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>💰 FOLHA REAL (mês)</small><strong>${fmtMoeda(k.folhaReal || k.folhaTotal)}</strong><span class="muted" style="font-size:11px;display:block">Líquido + variável</span></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Candidatos em Teste (vagas)</small><strong>${k.candidatosEmTeste || 0}</strong></div>
@@ -990,6 +1297,38 @@ async function renderDashboard(unidade) {
     </div>
 
     <div class="card">
+      <h3>💵 Variável da Liderança <span class="muted" style="font-weight:400;font-size:12px">(entra na folha real)</span></h3>
+      <div class="grid g4">
+        <div class="kpi"><small>Variável no mês</small><strong>${fmtMoeda((dash.kpis && dash.kpis.variavelMes) || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:var(--info)"><small>Variável acumulada</small><strong>${fmtMoeda((dash.kpis && dash.kpis.variavelTotal) || 0)}</strong></div>
+      </div>
+      ${(dash.variavelPorUnidade && dash.variavelPorUnidade.length)
+        ? `<h4 style="margin:14px 0 6px">Por unidade</h4>
+           <div class="table-wrap"><table>
+             <thead><tr><th>Unidade</th><th>Líderes</th><th>Total pago</th></tr></thead>
+             <tbody>${dash.variavelPorUnidade.map(v => `<tr>
+               <td>${escapeHtml(v.Unidade)}</td><td>${escapeHtml(v.Lideres)}</td><td>${fmtMoeda(v.Total)}</td>
+             </tr>`).join("")}</tbody>
+           </table></div>`
+        : ""}
+      ${(dash.variavelLista && dash.variavelLista.length)
+        ? `<h4 style="margin:14px 0 6px">Lançamentos</h4>
+           <div class="table-wrap"><table>
+             <thead><tr><th>Período</th><th>Unidade</th><th>Quem recebeu</th><th>Cargo</th><th>Tipo</th><th>Valor</th><th>Pago?</th></tr></thead>
+             <tbody>${dash.variavelLista.map(v => `<tr>
+               <td>${escapeHtml(v.Periodo)}</td>
+               <td>${escapeHtml(v.Unidade)}</td>
+               <td style="font-weight:600">${escapeHtml(v.Colaborador)}</td>
+               <td>${escapeHtml(v.Cargo || "—")}</td>
+               <td>${escapeHtml(v.TipoVariavel || "—")}</td>
+               <td>${fmtMoeda(v.Valor)}</td>
+               <td><span class="badge ${String(v.Pago) === "Sim" ? "ok" : "warn"}">${escapeHtml(v.Pago || "—")}</span></td>
+             </tr>`).join("")}</tbody>
+           </table></div>`
+        : `<div class="empty">Nenhuma variável lançada. Cadastre em "Variável da Liderança".</div>`}
+    </div>
+
+    <div class="card">
       <h3>📊 Turnover e Absenteísmo por Mês <span class="muted" style="font-weight:400;font-size:12px">(do que você lança em Indicadores — turnover calculado)</span></h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
         <div class="kpi" style="flex:1;min-width:180px"><small>Turnover médio (geral)</small><strong>${(dash.mediaTurnover != null ? dash.mediaTurnover : 0)}%</strong></div>
@@ -1005,14 +1344,35 @@ async function renderDashboard(unidade) {
         <div class="kpi"><small>Voluntários (pediram)</small><strong>${(dash.desligamentos && dash.desligamentos.voluntarios) || 0}</strong></div>
         <div class="kpi" style="border-left-color:var(--warn)"><small>Involuntários (empresa)</small><strong>${(dash.desligamentos && dash.desligamentos.involuntarios) || 0}</strong></div>
         <div class="kpi" style="border-left-color:var(--info)"><small>Recontrataria</small><strong>${(dash.desligamentos && dash.desligamentos.recontratariaPct) || 0}%</strong></div>
+        <div class="kpi"><small>Fizeram a entrevista</small><strong>${(dash.desligamentos && dash.desligamentos.responderam) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--warn)"><small>Recusaram / não localizadas</small><strong>${(dash.desligamentos && dash.desligamentos.recusaram) || 0}</strong></div>
       </div>
+
+      ${(dash.desligamentos && dash.desligamentos.lista && dash.desligamentos.lista.length)
+        ? `<h4 style="margin:14px 0 6px">Pessoas desligadas</h4>
+           <div class="table-wrap"><table>
+             <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Líder</th><th>Data</th><th>Tipo</th><th>Motivo(s)</th><th>Fez entrevista?</th><th>Preenchido por</th></tr></thead>
+             <tbody>${dash.desligamentos.lista.map(x => `<tr>
+               <td style="font-weight:600">${escapeHtml(x.Colaborador || "—")}</td>
+               <td>${escapeHtml(x.Unidade || "—")}</td>
+               <td>${escapeHtml(x.Cargo || "—")}</td>
+               <td>${escapeHtml(x.LiderDireto || "—")}</td>
+               <td>${formatarCelula("Data", x.DataDesligamento)}</td>
+               <td>${escapeHtml(x.TipoDesligamento || "—")}</td>
+               <td>${escapeHtml(x.Motivo || "—")}</td>
+               <td><span class="badge ${normalize(x.QuisFazerEntrevista).indexOf("NAO") !== -1 ? "warn" : "ok"}">${escapeHtml(x.QuisFazerEntrevista || "Sim")}</span></td>
+               <td>${escapeHtml(x.PreenchidoPor || "—")}</td>
+             </tr>`).join("")}</tbody>
+           </table></div>`
+        : `<div class="empty">Nenhuma entrevista de desligamento registrada ainda. Cadastre em "Entrevista de Desligamento".</div>`}
+
       ${(dash.desligamentos && dash.desligamentos.motivosTop && dash.desligamentos.motivosTop.length)
-        ? `<h4 style="margin:12px 0 6px">Motivos mais comuns</h4>
+        ? `<h4 style="margin:14px 0 6px">Motivos mais comuns</h4>
            <div class="table-wrap"><table>
              <thead><tr><th>Motivo</th><th>Qtd</th></tr></thead>
              <tbody>${dash.desligamentos.motivosTop.map(m => `<tr><td>${escapeHtml(m.Motivo)}</td><td>${escapeHtml(m.Qtd)}</td></tr>`).join("")}</tbody>
            </table></div>`
-        : `<div class="empty">Nenhuma entrevista de desligamento registrada ainda. Cadastre em "Entrevista de Desligamento".</div>`}
+        : ""}
     </div>
 
     <div class="grid g2">
@@ -1660,6 +2020,7 @@ async function renderAvisos() {
     </div>
     <div class="card"><h3>Avisos ativos</h3><div id="tabelaAvisos"><div class="loading">Carregando...</div></div></div>
   `);
+  setDatalist("dl-lideres", todosOsLideres());
   setDatalist("dl-responsaveis", ["Luiza Garzon", "Denayre Monte", "Jéssica Monalisa", "Aline Cardoso", "Alan Souza", "Saulo Gomes", "João Ricardo", "Anália Gabriely", "Mariano Maia", "Daniel Jourdain", "André Coelho", "Jeffany Alencar", "Victor Pinheiro", "Mary Diane", "Cleylson", "Gustavo Freitas", "Victor Farias", "Lucas Nogueira"]);
   setDatalist("dl-colaboradores", (STATE.init.colaboradores || []).map(c => c.Nome).filter(Boolean));
   await carregarAvisos();
@@ -2136,6 +2497,19 @@ function solicitantesDaUnidade(unidade) {
 }
 
 // Só os líderes (perfil Liderança + aba Lideranca) de uma unidade.
+// Todos que são LIDERANÇA: quem aparece como líder de alguém no organograma + diretoria/sócios.
+function todosOsLideres() {
+  const set = {};
+  (STATE.init.colaboradores || []).forEach(c => {
+    // "Fulano e Beltrano" -> dois líderes
+    String(c.Lider || "").split(/\s+e\s+/i).forEach(x => { const n = x.trim(); if (n) set[n] = true; });
+  });
+  (STATE.init.lideranca || []).forEach(l => { if (l.Lider) set[String(l.Lider).trim()] = true; });
+  ["Gustavo Freitas", "Victor Farias", "Lucas Nogueira", "Luiza Garzon", "Saulo Gomes",
+   "Aline Cardoso", "João Ricardo", "Jeffany Alencar"].forEach(n => set[n] = true);
+  return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
+}
+
 function lideresDaUnidade(unidade) {
   const u = normalize(unidade);
   const daLista = SOLICITANTES.filter(s => normalize(s[2]) === "LIDERANCA" && (!u || normalize(s[1]) === u)).map(s => s[0]);
@@ -2257,7 +2631,7 @@ async function renderTestePratico() {
     <div class="card">
       <div class="grid g3">
         <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..." onchange="filtrarAvaliadores()"></div>
-        <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" placeholder="Nome completo"></div>
+        <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" list="dl-emteste" placeholder="Escolha quem está testando..." onchange="preencherDoTesteRH()"><datalist id="dl-emteste"></datalist></div>
         <div class="form-row"><label>Telefone do candidato</label><input id="tpTelefone" type="text" inputmode="tel" placeholder="(85) 90000-0000"></div>
         <div class="form-row"><label>Currículo (PDF/imagem)</label><input id="tpCurriculo" type="file" accept=".pdf,.doc,.docx,image/*"></div>
         <div class="form-row"><label>Vaga pretendida (cargo)</label><input id="tpCargo" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR" onchange="autofillSalarioTeste(this.value)"></div>
@@ -2308,7 +2682,33 @@ async function renderTestePratico() {
     </div>
   `);
   setDatalist("dl-avaliadores", lideresDaUnidade(""));
+  await carregarEmTesteParaParecer();
   await carregarTestesTabela();
+}
+
+// Puxa os candidatos agendados pelo RH (quem está testando) para o líder dar o parecer.
+async function carregarEmTesteParaParecer() {
+  try {
+    const r = await api("listarTestesRH");
+    STATE.emTesteRH = (r.testesRH || []).filter(t => {
+      const s = normalize(t.Status);
+      return s === "" || s === "EM TESTE" || s === "EM ANDAMENTO" || s === "TESTANDO";
+    });
+    setDatalist("dl-emteste", STATE.emTesteRH.map(t => t.NomeCompleto).filter(Boolean));
+  } catch (e) { STATE.emTesteRH = []; }
+}
+
+// Ao escolher o candidato, preenche unidade/cargo/telefone automaticamente.
+function preencherDoTesteRH() {
+  const nome = normalize((el("#tpCandidato") || {}).value || "");
+  const t = (STATE.emTesteRH || []).find(x => normalize(x.NomeCompleto) === nome);
+  if (!t) return;
+  if (el("#tpUnidade") && t.Unidade) el("#tpUnidade").value = t.Unidade;
+  if (el("#tpCargo") && t.Funcao) { el("#tpCargo").value = t.Funcao; autofillSalarioTeste(t.Funcao); }
+  if (el("#tpTelefone") && t.Telefone) el("#tpTelefone").value = t.Telefone;
+  if (el("#tpAvaliador") && t.LiderDireto) el("#tpAvaliador").value = t.LiderDireto;
+  if (typeof filtrarAvaliadores === "function") filtrarAvaliadores();
+  toast("Dados do candidato preenchidos automaticamente.", "info");
 }
 
 function autofillSalarioTeste(nomeCargo) {
@@ -2366,6 +2766,19 @@ async function salvarTestePratico() {
         } catch (e) { toast("Currículo não enviado: " + e.message, "err"); }
       }
     }
+    // Dado o parecer, o candidato sai de "Quem está testando"
+    try {
+      const nomeCand = normalize(candidato);
+      const idx = (STATE.emTesteRH || []).findIndex(x => normalize(x.NomeCompleto) === nomeCand);
+      if (idx !== -1) {
+        const lista = await api("listarTestesRH");
+        const real = (lista.testesRH || []).findIndex(x => normalize(x.NomeCompleto) === nomeCand);
+        if (real !== -1) {
+          const res = (r && r.resultado) ? String(r.resultado) : "AVALIADO";
+          await api("atualizarTesteRH", { index: real, dados: { Status: res } });
+        }
+      }
+    } catch (e) { /* não bloqueia o salvamento do parecer */ }
     await renderTestePratico();
   } catch (e) { toast(e.message, "err"); }
 }
@@ -2513,6 +2926,10 @@ const MODULES = {
       { name: "CTPS", label: "CTPS", type: "text" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "calcularVT()" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
+      { name: "Setor", label: "Setor", type: "text" },
+      { name: "Turno", label: "Turno", type: "text" },
+      { name: "Folga", label: "Folga", type: "text" },
+      { name: "Telefone", label: "Telefone / Celular", type: "text" },
       { name: "SalarioBase", label: "Salário Base", type: "money" },
       { name: "Complementar", label: "Complementar", type: "money" },
       { name: "SalarioTotal", label: "Salário Total", type: "money", readonly: true, computed: true },
@@ -2585,22 +3002,67 @@ const MODULES = {
     ]
   },
 
+  variavel: {
+    label: "Variável da Liderança",
+    listAction: "listarVariavel", listKey: "variavel",
+    saveAction: "salvarVariavel",
+    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Cargo", "TipoVariavel", "Valor", "Pago"],
+    fields: [
+      { name: "Mes", label: "Mês", type: "select", required: true, options: [
+        { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
+        { v: 5, l: "Maio" }, { v: 6, l: "Junho" }, { v: 7, l: "Julho" }, { v: 8, l: "Agosto" },
+        { v: 9, l: "Setembro" }, { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" }
+      ] },
+      { name: "Ano", label: "Ano", type: "number", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Colaborador", label: "Líder que recebeu", type: "datalist", list: "dl-lideres", required: true, col: "g2", hint: "Somente liderança" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "TipoVariavel", label: "Tipo de variável", type: "select", options: ["Bônus", "Premiação", "Comissão", "Participação em resultado", "Outro"] },
+      { name: "Valor", label: "Valor pago (R$)", type: "moneyBR", required: true },
+      { name: "Pago", label: "Já foi pago?", type: "select", options: ["Sim", "Não"], default: "Sim" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  utensilios: {
+    label: "Desconto de Utensílios",
+    listAction: "listarUtensilios", listKey: "utensilios",
+    saveAction: "salvarUtensilio",
+    columns: ["Unidade", "Cargo", "Mes", "Ano", "Percentual", "Ativo"],
+    fields: [
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", hint: "Deixe vazio = vale para todas as unidades" },
+      { name: "Cargo", label: "Cargo / Função", type: "datalist", list: "dl-cargos", hint: "Deixe vazio = vale para todos os cargos" },
+      { name: "Mes", label: "Mês", type: "select", options: [
+        { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
+        { v: 5, l: "Maio" }, { v: 6, l: "Junho" }, { v: 7, l: "Julho" }, { v: 8, l: "Agosto" },
+        { v: 9, l: "Setembro" }, { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" }
+      ] },
+      { name: "Ano", label: "Ano", type: "number" },
+      { name: "Percentual", label: "Percentual (%)", type: "number", step: 0.01, required: true, hint: "Ex.: 5 para 5%. Incide SÓ sobre o complementar." },
+      { name: "Ativo", label: "Ativo?", type: "select", options: ["Sim", "Não"], default: "Sim" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
   entregas: {
     label: "Entrega de Fardamento / EPI",
     listAction: "listarEntregas", listKey: "entregas",
     saveAction: "salvarEntrega",
-    columns: ["Data", "Colaborador", "Unidade", "Categoria", "Item", "Tamanho", "Quantidade", "EntreguePor"],
+    columns: ["Data", "Colaborador", "Unidade", "Tipo", "Item", "Tamanho", "Quantidade", "EntreguePor"],
     fields: [
       { name: "Data", label: "Data da entrega", type: "date", required: true },
       { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Categoria", label: "Categoria", type: "select", options: ["Fardamento", "EPI"], required: true },
-      { name: "Item", label: "Item", type: "text", required: true, col: "g2" },
-      { name: "Tamanho", label: "Tamanho / Numeração", type: "text" },
+      { name: "Tipo", label: "Tipo", type: "select", options: ["Fardamento", "EPI"], default: "Fardamento", required: true },
+      { name: "Item", label: "Item entregue", type: "text", required: true, hint: "Ex.: Camisa, Calça, Bota, Luva, Avental" },
+      { name: "Tamanho", label: "Tamanho", type: "text", hint: "Ex.: P, M, G, 42" },
       { name: "Quantidade", label: "Quantidade", type: "number", min: 1, default: 1 },
+      { name: "Motivo", label: "Motivo", type: "select", options: ["Admissão", "Troca / desgaste", "Extra", "Perda", "Devolução"] },
+      { name: "AssinouRecebimento", label: "Assinou o recebimento?", type: "select", options: ["Não", "Sim"] },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
+
   desligamentos: {
     label: "Entrevista de Desligamento",
     listAction: "listarDesligamentos", listKey: "desligamentos",
@@ -2616,7 +3078,8 @@ const MODULES = {
       { name: "DataAdmissao", label: "Data de admissão", type: "date" },
       { name: "DataDesligamento", label: "Data de desligamento", type: "date" },
       { name: "TipoDesligamento", label: "Tipo de desligamento", type: "select", options: ["Voluntário (pediu demissão)", "Involuntário (empresa desligou)", "Término de contrato", "Justa causa"] },
-      { name: "MotivoPrincipal", label: "Motivo principal", type: "select", options: ["Salário / benefícios", "Clima / liderança", "Distância / transporte", "Outra oportunidade", "Motivos pessoais / saúde", "Desempenho", "Fim de contrato", "Outros"] },
+      { name: "QuisFazerEntrevista", label: "A pessoa quis fazer a entrevista?", type: "select", options: ["Sim", "Não (recusou)", "Não localizada"], default: "Sim", required: true },
+      { name: "MotivoPrincipal", label: "Motivos (pode marcar mais de um)", type: "multicheck", col: "g2", options: ["Salário / benefícios", "Clima / liderança", "Distância / transporte", "Outra oportunidade", "Motivos pessoais / saúde", "Desempenho", "Fim de contrato", "Outros"] },
       { name: "MotivoDetalhe", label: "Detalhe do motivo", type: "textarea", col: "g2" },
       { name: "Recontrataria", label: "A empresa recontrataria?", type: "select", options: ["Sim", "Não"] },
       { name: "AvaliacaoEmpresa", label: "Nota para a empresa (1-5)", type: "select", options: ["1", "2", "3", "4", "5"] },
@@ -2714,6 +3177,12 @@ function campoHtml(f) {
   const onch = f.onchange ? `onchange="${f.onchange}"` : "";
   if (f.type === "textarea") {
     inputHtml = `<textarea id="${idc}" ${req} ${readonly}>${val}</textarea>`;
+  } else if (f.type === "multicheck") {
+    inputHtml = `<div id="${idc}" data-multicheck="1" style="display:flex;flex-wrap:wrap;gap:8px 16px;padding:8px 0">
+      ${f.options.map((o, ix) => `<label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer;margin:0">
+        <input type="checkbox" value="${escapeHtml(o)}" id="${idc}_${ix}" style="width:auto;margin:0"> ${escapeHtml(o)}
+      </label>`).join("")}
+    </div>`;
   } else if (f.type === "select") {
     inputHtml = `<select id="${idc}" ${req} ${onch}>
       <option value="">Selecione...</option>
@@ -2769,6 +3238,11 @@ function coletarCampos(fields) {
   fields.forEach(f => {
     const elCampo = document.getElementById("campo_" + f.name);
     if (!elCampo) return;
+    if (f.type === "multicheck") {
+      const marcados = [...elCampo.querySelectorAll("input[type=checkbox]")].filter(x => x.checked).map(x => x.value);
+      out[f.name] = marcados.join(", ");
+      return;
+    }
     out[f.name] = f.type === "moneyBR" ? parseMoedaBR(elCampo.value) : elCampo.value;
   });
   return out;
@@ -2847,21 +3321,53 @@ async function carregarTabelaModulo(key) {
 function moduloEditavel(key) { return ["ajustes"].indexOf(key) === -1; }
 
 // Mapeia nome do campo do formulário -> possíveis colunas na planilha (dados importados usam Funcionário, Dt_Admissao, etc.)
+// Mapeia campo do formulário -> possíveis colunas na planilha.
+// A planilha importada usa Funcionário, Operacao, Dt_Admissao, Salario_Fixo, Fone_Celular...
+const COLAB_MAP = {
+  Nome: ["Nome", "Funcionário", "Funcionario", "Colaborador"],
+  CPF: ["CPF"],
+  CTPS: ["CTPS", "RG"],
+  Cargo: ["Cargo", "Funcao", "Função"],
+  Setor: ["Setor"],
+  Unidade: ["Unidade", "Operacao", "Lotacao", "Empresa"],
+  SalarioBase: ["SalarioBase", "Salario_Fixo", "Salario Fixo"],
+  Complementar: ["Complementar", "Salario_Compl"],
+  SalarioTotal: ["SalarioTotal", "Salario Total", "Salario_Total"],
+  DataAdmissao: ["DataAdmissao", "Dt_Admissao"],
+  DataNascimento: ["DataNascimento", "Dt_Nascimento"],
+  FimExperiencia: ["FimExperiencia", "Dt_Contrato_Experiencia"],
+  Status: ["Status", "Situacao", "Situação"],
+  DataDesligamento: ["DataDesligamento", "Dt_Demissao", "DataDemissao"],
+  DataAfastamento: ["DataAfastamento"],
+  Integrado: ["Integrado"],
+  DataIntegracao: ["DataIntegracao"],
+  Lider: ["Lider", "Líder"],
+  Telefone: ["Telefone", "Fone_Celular", "Celular"],
+  Bairro: ["Bairro"],
+  CidadeResidencia: ["CidadeResidencia", "Naturalidade"],
+  Folga: ["Folga"],
+  Turno: ["Turno"],
+  QuerValeTransporte: ["QuerValeTransporte", "Vale_Transporte"],
+  ValeTransporteDia: ["ValeTransporteDia"],
+  PastaCompleta: ["PastaCompleta"], PagamentoTeste: ["PagamentoTeste"],
+  ContaItau: ["ContaItau"], Somapay: ["Somapay"], LinkDocumentacao: ["LinkDocumentacao"],
+  Observacoes: ["Observacoes", "Observações"]
+};
+
 function valorCampoColab(linha, fieldName) {
-  const MAP = {
-    Nome: ["Nome", "Funcionário", "Funcionario", "Colaborador"],
-    CPF: ["CPF"], Cargo: ["Cargo", "Funcao", "Função"],
-    Unidade: ["Unidade", "Operacao", "Lotacao"],
-    SalarioBase: ["SalarioBase", "Salario_Fixo", "Salario Fixo"],
-    Complementar: ["Complementar", "Salario_Compl"],
-    SalarioTotal: ["SalarioTotal", "Salario Total", "Salario_Total"],
-    DataAdmissao: ["DataAdmissao", "Dt_Admissao"], DataNascimento: ["DataNascimento", "Dt_Nascimento"],
-    Status: ["Status", "Situacao", "Situação"], DataDesligamento: ["DataDesligamento", "Dt_Demissao", "DataDemissao"],
-    DataAfastamento: ["DataAfastamento"], Integrado: ["Integrado"], DataIntegracao: ["DataIntegracao"],
-    Lider: ["Lider", "Líder"], FimExperiencia: ["FimExperiencia"], Observacoes: ["Observacoes", "Observações"]
-  };
-  const cols = MAP[fieldName] || [fieldName];
-  for (const c of cols) { if (linha[c] != null && String(linha[c]).trim() !== "") return linha[c]; }
+  const cols = COLAB_MAP[fieldName] || [fieldName];
+  for (const c of cols) {
+    if (linha[c] != null && String(linha[c]).trim() !== "") {
+      let v = linha[c];
+      // a planilha guarda VT como S/N — o formulário usa Sim/Não
+      if (fieldName === "QuerValeTransporte") {
+        const n = normalize(v);
+        if (n === "S" || n === "SIM") return "Sim";
+        if (n === "N" || n === "NAO") return "Não";
+      }
+      return v;
+    }
+  }
   return "";
 }
 
@@ -2899,10 +3405,20 @@ function dataParaInput(v) {
 async function excluirRegistroModulo(key, i) {
   const cfg = MODULES[key];
   const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
-  if (!confirm("Excluir este registro? Esta ação não pode ser desfeita.")) return;
-  const confereCol = cfg.columns[0];
+  if (key === "colaboradores") {
+    const nome = valorCampoColab(linha, "Nome") || "este colaborador";
+    if (!confirm(`ATENÇÃO: excluir "${nome}" apaga a linha da planilha e não pode ser desfeito.\n\nSe a pessoa saiu da empresa, o correto é EDITAR (✏️) e marcar a Situação como DESLIGADO — assim o turnover conta certo.\n\nQuer mesmo EXCLUIR?`)) return;
+  } else {
+    if (!confirm("Excluir este registro? Esta ação não pode ser desfeita.")) return;
+  }
+  let confereCol = cfg.columns[0], confereVal = linha[confereCol];
+  if (key === "colaboradores") {
+    // a planilha importada usa "Funcionário"; acha a coluna que realmente existe na linha
+    const cand = ["Funcionário", "Funcionario", "Nome", "Colaborador"];
+    for (const c of cand) { if (linha[c] != null && String(linha[c]).trim() !== "") { confereCol = c; confereVal = linha[c]; break; } }
+  }
   try {
-    await api("excluirRegistroModulo", { sheetKey: cfg.listKey, index: i, confereCol: confereCol, confereVal: linha[confereCol] });
+    await api("excluirRegistroModulo", { sheetKey: cfg.listKey, index: i, confereCol: confereCol, confereVal: confereVal });
     toast("Registro excluído.", "ok");
     await carregarTabelaModulo(key);
   } catch (e) { toast(e.message, "err"); }
@@ -2917,6 +3433,11 @@ function editarRegistroModulo(key, i) {
     if (!elx) return;
     let v = key === "colaboradores" ? valorCampoColab(linha, f.name) : linha[f.name];
     if (v == null) v = "";
+    if (f.type === "multicheck") {
+      const marcados = String(v).split(",").map(s => normalize(s.trim())).filter(Boolean);
+      elx.querySelectorAll("input[type=checkbox]").forEach(cb => { cb.checked = marcados.indexOf(normalize(cb.value)) !== -1; });
+      return;
+    }
     if (f.type === "date") v = dataParaInput(v);
     elx.value = v;
   });

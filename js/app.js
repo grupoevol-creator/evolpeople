@@ -337,6 +337,7 @@ const GRUPOS_NAV = [
   ]},
   { titulo: "Operações", itens: [
     { key: "fardamento", label: "Fardamento / Estoque" },
+    { key: "entregas", label: "Entrega de Fardamento / EPI" },
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "absenteismo", label: "Absenteísmo" },
     { key: "desligamentos", label: "Entrevista de Desligamento" },
@@ -544,7 +545,7 @@ function hcSelecionar(i) { HC.sel = i; hcRenderLista(); }
 
 /* ===================== QUEM ESTÁ TESTANDO ===================== */
 
-const ET = { todos: [], unidade: "" };
+const ET = { todos: [], unidade: "", curriculos: [] };
 
 async function renderEmTeste() {
   setMain(`<div class="loading">Carregando testes...</div>`);
@@ -555,6 +556,7 @@ async function renderEmTeste() {
       const res = normalize(hcCampo_(t, ["Resultado"]));
       return res === "" || res === "EM ANDAMENTO" || res === "EM TESTE" || res === "TESTANDO";
     });
+    try { const rc = await api("listarCurriculos", {}); ET.curriculos = rc.curriculos || []; } catch (e) { ET.curriculos = []; }
     etRender();
   } catch (e) {
     setMain(`<div class="page-title"><div><h2>Quem está testando</h2></div></div>
@@ -568,15 +570,25 @@ function etRender() {
     ? ET.todos.filter(t => normalize(hcCampo_(t, ["Unidade"])) === normalize(ET.unidade))
     : ET.todos;
 
+  const curriculoDe = (nome) => {
+    const n = normalize(nome);
+    const c = (ET.curriculos || []).find(x => normalize(hcCampo_(x, ["Candidato", "Nome"])) === n);
+    return c ? (hcCampo_(c, ["Url"]) || "") : "";
+  };
+
   const tabela = linhas.length
     ? `<div class="table-wrap"><table>
-        <thead><tr><th>Nome</th><th>Unidade</th><th>Cargo</th><th>Telefone</th></tr></thead>
-        <tbody>${linhas.map(t => `<tr>
-          <td style="font-weight:600">${escapeHtml(hcCampo_(t, ["Candidato", "Nome"]))}</td>
+        <thead><tr><th>Candidato</th><th>Unidade</th><th>Cargo</th><th>Telefone</th><th>Currículo</th></tr></thead>
+        <tbody>${linhas.map(t => {
+          const nome = hcCampo_(t, ["Candidato", "Nome"]);
+          const url = curriculoDe(nome);
+          return `<tr>
+          <td style="font-weight:600">${escapeHtml(nome)}</td>
           <td>${escapeHtml(hcCampo_(t, ["Unidade"]) || "—")}</td>
           <td>${escapeHtml(hcCampo_(t, ["Cargo"]) || "—")}</td>
           <td>${escapeHtml(hcCampo_(t, ["Telefone", "Fone", "Celular"]) || "—")}</td>
-        </tr>`).join("")}</tbody></table></div>`
+          <td>${url ? `<a class="btn btn-secondary" style="padding:4px 8px;font-size:12px" href="${escapeHtml(url)}" target="_blank" rel="noopener">Ver / Baixar</a>` : "—"}</td>
+        </tr>`; }).join("")}</tbody></table></div>`
     : `<div class="empty">Ninguém em teste no momento.</div>`;
 
   setMain(`
@@ -624,6 +636,7 @@ async function renderAbsenteismo() {
           <select id="abTipo"><option value="">Selecione...</option><option>Atestado</option><option>Falta Injustificada</option><option>Falta Justificada</option></select></div>
         <div class="form-row"><label>Dias</label><input id="abDias" type="number" min="1" step="1" value="1"></div>
         <div class="form-row"><label>Motivo / CID</label><input id="abMotivo" placeholder="Ex.: gripe (CID J11)"></div>
+        <div class="form-row"><label>Anexar atestado (PDF/imagem)</label><input id="abAtestado" type="file" accept=".pdf,image/*"></div>
         <div class="form-row"><label>Dias previstos no mês <span class="muted">(opcional — p/ calcular %)</span></label><input id="abDiasPrev" type="number" min="0" step="1" placeholder="Ex.: 26"></div>
       </div>
       <div class="form-row"><label>Observações</label><textarea id="abObs"></textarea></div>
@@ -664,6 +677,22 @@ async function abSalvar() {
   try {
     const r = await api("registrarAbsenteismo", dados);
     toast(r.msg || "Lançado.", "ok");
+    // anexa o atestado (se houver) na pasta do colaborador -> aparece no dossiê
+    const fa = el("#abAtestado");
+    if (fa && fa.files && fa.files[0]) {
+      const f = fa.files[0];
+      if (f.size > 15 * 1024 * 1024) { toast("Atestado muito grande (máx. 15 MB).", "err"); }
+      else {
+        try {
+          toast("Enviando atestado...", "info");
+          const b64 = await fileToBase64(f);
+          const doc = { Colaborador: colab, cpf: "", nomeArquivo: "Atestado " + data + " - " + f.name, tipo: f.type || "application/octet-stream", base64: b64 };
+          const body = "acao=uploadDocumento&dados=" + encodeURIComponent(JSON.stringify(doc));
+          await fetch(CONFIG.API_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: body });
+          toast("Atestado anexado ao dossiê.", "ok");
+        } catch (e) { toast("Atestado não anexado: " + e.message, "err"); }
+      }
+    }
     await renderAbsenteismo();
   } catch (e) { toast(e.message, "err"); }
 }
@@ -984,6 +1013,32 @@ async function renderDashboard(unidade) {
              <tbody>${dash.desligamentos.motivosTop.map(m => `<tr><td>${escapeHtml(m.Motivo)}</td><td>${escapeHtml(m.Qtd)}</td></tr>`).join("")}</tbody>
            </table></div>`
         : `<div class="empty">Nenhuma entrevista de desligamento registrada ainda. Cadastre em "Entrevista de Desligamento".</div>`}
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🔄 Turnover por Setor <span class="muted" style="font-weight:400;font-size:12px">(mês atual)</span></h3>
+        ${(dash.turnoverPorSetor && dash.turnoverPorSetor.length)
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Setor</th><th>Ativos</th><th>Adm.</th><th>Deslig.</th><th>Turnover</th></tr></thead>
+              <tbody>${dash.turnoverPorSetor.map(s => `<tr>
+                <td>${escapeHtml(s.Setor)}</td><td>${escapeHtml(s.Ativos)}</td>
+                <td>${escapeHtml(s.Admissoes)}</td><td>${escapeHtml(s.Desligamentos)}</td>
+                <td><span class="badge ${s.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(s.Turnover)}%</span></td>
+              </tr>`).join("")}</tbody></table></div>`
+          : `<div class="empty">Sem dados de setor.</div>`}
+      </div>
+      <div class="card">
+        <h3>🩺 Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(mês mais recente lançado)</span></h3>
+        ${(dash.absenteismoPorSetor && dash.absenteismoPorSetor.length)
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Setor</th><th>Absenteísmo</th></tr></thead>
+              <tbody>${dash.absenteismoPorSetor.map(s => `<tr>
+                <td>${escapeHtml(s.Setor)}</td>
+                <td><span class="badge ${s.Absenteismo >= 5 ? "bad" : (s.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(s.Absenteismo)}%</span></td>
+              </tr>`).join("")}</tbody></table></div>`
+          : `<div class="empty">Nenhum absenteísmo lançado ainda.</div>`}
+      </div>
     </div>
 
     <div class="card">
@@ -1522,6 +1577,17 @@ async function abrirDossie() {
     <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"])}</div>
     <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"])}</div>
     <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"])}</div>
+    <div class="card"><h3>👕 Fardamentos recebidos</h3>${tabelaComBadge(r.fardamentos || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"])}</div>
+    <div class="card"><h3>🦺 EPIs recebidos</h3>${tabelaComBadge(r.epis || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"])}</div>
+    <div class="card"><h3>📎 Atestados e documentos anexados</h3>${
+      (r.documentos && r.documentos.length)
+        ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Arquivo</th><th>Abrir</th></tr></thead>
+           <tbody>${r.documentos.map(d => `<tr>
+             <td>${escapeHtml(d.Data || "")}</td><td>${escapeHtml(d.Arquivo || "")}</td>
+             <td>${d.Url ? `<a class="btn btn-secondary" style="padding:4px 8px;font-size:12px" href="${escapeHtml(d.Url)}" target="_blank" rel="noopener">Ver / Baixar</a>` : "—"}</td>
+           </tr>`).join("")}</tbody></table></div>`
+        : `<div class="empty">Nenhum documento anexado.</div>`
+    }</div>
   `;
 }
 
@@ -1576,7 +1642,12 @@ async function renderAvisos() {
       <h3>Novo aviso</h3>
       <div class="grid g2">
         <div class="form-row"><label>Título *</label><input id="avsTitulo" type="text"></div>
-        <div class="form-row"><label>Público</label>
+        <div class="form-row"><label>Enviado por</label><input id="avsEnviadoPor" type="text" list="dl-responsaveis" placeholder="Quem está enviando"></div>
+        <div class="form-row"><label>Unidade destino</label>
+          <select id="avsUnidade"><option value="Todas">Todas as unidades</option>${(STATE.init.unidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}</select>
+        </div>
+        <div class="form-row"><label>Colaboradores (opcional)</label><input id="avsColaboradores" type="text" list="dl-colaboradores" placeholder="Vazio = todos da unidade. Separe por vírgula."></div>
+        <div class="form-row"><label>Perfil que vê</label>
           <select id="avsPublico"><option>Todos</option><option>Sócios</option><option>Diretoria</option><option>Sócios e Diretoria</option><option>Liderança</option><option>RH</option></select>
         </div>
         <div class="form-row"><label>Prioridade</label>
@@ -1589,6 +1660,8 @@ async function renderAvisos() {
     </div>
     <div class="card"><h3>Avisos ativos</h3><div id="tabelaAvisos"><div class="loading">Carregando...</div></div></div>
   `);
+  setDatalist("dl-responsaveis", ["Luiza Garzon", "Denayre Monte", "Jéssica Monalisa", "Aline Cardoso", "Alan Souza", "Saulo Gomes", "João Ricardo", "Anália Gabriely", "Mariano Maia", "Daniel Jourdain", "André Coelho", "Jeffany Alencar", "Victor Pinheiro", "Mary Diane", "Cleylson", "Gustavo Freitas", "Victor Farias", "Lucas Nogueira"]);
+  setDatalist("dl-colaboradores", (STATE.init.colaboradores || []).map(c => c.Nome).filter(Boolean));
   await carregarAvisos();
 }
 
@@ -1597,6 +1670,9 @@ async function salvarAviso() {
     Titulo: el("#avsTitulo").value.trim(),
     Mensagem: el("#avsMsg").value.trim(),
     Publico: el("#avsPublico").value,
+    UnidadeDestino: el("#avsUnidade") ? el("#avsUnidade").value : "Todas",
+    Colaboradores: el("#avsColaboradores") ? el("#avsColaboradores").value.trim() : "",
+    EnviadoPor: el("#avsEnviadoPor") ? el("#avsEnviadoPor").value.trim() : "",
     Prioridade: el("#avsPrioridade").value,
     Expira: el("#avsExpira").value
   };
@@ -1608,7 +1684,7 @@ async function salvarAviso() {
 async function carregarAvisos() {
   try {
     const r = await api("listarAvisos", { perfil: "" });
-    document.getElementById("tabelaAvisos").innerHTML = tabelaSimples(r.avisos || [], ["Data", "Titulo", "Mensagem", "Publico", "Prioridade", "CriadoPor"]);
+    document.getElementById("tabelaAvisos").innerHTML = tabelaSimples(r.avisos || [], ["Data", "Titulo", "Mensagem", "UnidadeDestino", "Colaboradores", "EnviadoPor", "Prioridade"]);
   } catch (e) { document.getElementById("tabelaAvisos").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
 
@@ -2182,6 +2258,8 @@ async function renderTestePratico() {
       <div class="grid g3">
         <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..." onchange="filtrarAvaliadores()"></div>
         <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" placeholder="Nome completo"></div>
+        <div class="form-row"><label>Telefone do candidato</label><input id="tpTelefone" type="text" inputmode="tel" placeholder="(85) 90000-0000"></div>
+        <div class="form-row"><label>Currículo (PDF/imagem)</label><input id="tpCurriculo" type="file" accept=".pdf,.doc,.docx,image/*"></div>
         <div class="form-row"><label>Vaga pretendida (cargo)</label><input id="tpCargo" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR" onchange="autofillSalarioTeste(this.value)"></div>
         <div class="form-row"><label>Salário do cargo (R$)</label><input id="tpSalario" type="number" step="0.01" class="money" readonly value="0"></div>
         <div class="form-row"><label>Setor</label>
@@ -2249,6 +2327,7 @@ async function salvarTestePratico() {
   const dados = {
     Unidade: el("#tpUnidade").value.trim(),
     Candidato: candidato,
+    Telefone: (el("#tpTelefone") ? el("#tpTelefone").value.trim() : ""),
     Cargo: el("#tpCargo").value.trim(),
     Salario: el("#tpSalario").value,
     Setor: el("#tpSetor").value,
@@ -2271,6 +2350,22 @@ async function salvarTestePratico() {
     const r = await api("salvarTeste", dados);
     toast(r.msg || "Teste salvo.", "ok");
     if (r.resultado) toast("Resultado: " + r.resultado, "info");
+    // envia currículo (se houver) vinculado ao candidato
+    const fc = el("#tpCurriculo");
+    if (fc && fc.files && fc.files[0]) {
+      const f = fc.files[0];
+      if (f.size > 15 * 1024 * 1024) { toast("Currículo muito grande (máx. 15 MB).", "err"); }
+      else {
+        try {
+          toast("Enviando currículo...", "info");
+          const b64 = await fileToBase64(f);
+          const cur = { Candidato: candidato, Unidade: dados.Unidade, nomeArquivo: f.name, tipo: f.type || "application/octet-stream", base64: b64 };
+          const body = "acao=uploadCurriculo&dados=" + encodeURIComponent(JSON.stringify(cur));
+          await fetch(CONFIG.API_URL, { method: "POST", mode: "no-cors", headers: { "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8" }, body: body });
+          toast("Currículo enviado.", "ok");
+        } catch (e) { toast("Currículo não enviado: " + e.message, "err"); }
+      }
+    }
     await renderTestePratico();
   } catch (e) { toast(e.message, "err"); }
 }
@@ -2490,6 +2585,22 @@ const MODULES = {
     ]
   },
 
+  entregas: {
+    label: "Entrega de Fardamento / EPI",
+    listAction: "listarEntregas", listKey: "entregas",
+    saveAction: "salvarEntrega",
+    columns: ["Data", "Colaborador", "Unidade", "Categoria", "Item", "Tamanho", "Quantidade", "EntreguePor"],
+    fields: [
+      { name: "Data", label: "Data da entrega", type: "date", required: true },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Categoria", label: "Categoria", type: "select", options: ["Fardamento", "EPI"], required: true },
+      { name: "Item", label: "Item", type: "text", required: true, col: "g2" },
+      { name: "Tamanho", label: "Tamanho / Numeração", type: "text" },
+      { name: "Quantidade", label: "Quantidade", type: "number", min: 1, default: 1 },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
   desligamentos: {
     label: "Entrevista de Desligamento",
     listAction: "listarDesligamentos", listKey: "desligamentos",
@@ -2733,7 +2844,26 @@ async function carregarTabelaModulo(key) {
 }
 
 // Módulos que NÃO recebem editar/excluir genérico (têm fluxo próprio ou lista traduzida)
-function moduloEditavel(key) { return ["colaboradores", "ajustes"].indexOf(key) === -1; }
+function moduloEditavel(key) { return ["ajustes"].indexOf(key) === -1; }
+
+// Mapeia nome do campo do formulário -> possíveis colunas na planilha (dados importados usam Funcionário, Dt_Admissao, etc.)
+function valorCampoColab(linha, fieldName) {
+  const MAP = {
+    Nome: ["Nome", "Funcionário", "Funcionario", "Colaborador"],
+    CPF: ["CPF"], Cargo: ["Cargo", "Funcao", "Função"],
+    Unidade: ["Unidade", "Operacao", "Lotacao"],
+    SalarioBase: ["SalarioBase", "Salario_Fixo", "Salario Fixo"],
+    Complementar: ["Complementar", "Salario_Compl"],
+    SalarioTotal: ["SalarioTotal", "Salario Total", "Salario_Total"],
+    DataAdmissao: ["DataAdmissao", "Dt_Admissao"], DataNascimento: ["DataNascimento", "Dt_Nascimento"],
+    Status: ["Status", "Situacao", "Situação"], DataDesligamento: ["DataDesligamento", "Dt_Demissao", "DataDemissao"],
+    DataAfastamento: ["DataAfastamento"], Integrado: ["Integrado"], DataIntegracao: ["DataIntegracao"],
+    Lider: ["Lider", "Líder"], FimExperiencia: ["FimExperiencia"], Observacoes: ["Observacoes", "Observações"]
+  };
+  const cols = MAP[fieldName] || [fieldName];
+  for (const c of cols) { if (linha[c] != null && String(linha[c]).trim() !== "") return linha[c]; }
+  return "";
+}
 
 // Tabela dos módulos com coluna de Ações (Editar/Excluir)
 function tabelaModuloHtml(key, linhas, colunas) {
@@ -2785,7 +2915,8 @@ function editarRegistroModulo(key, i) {
   cfg.fields.forEach(f => {
     const elx = document.getElementById("campo_" + f.name);
     if (!elx) return;
-    let v = linha[f.name]; if (v == null) v = "";
+    let v = key === "colaboradores" ? valorCampoColab(linha, f.name) : linha[f.name];
+    if (v == null) v = "";
     if (f.type === "date") v = dataParaInput(v);
     elx.value = v;
   });
@@ -2836,7 +2967,11 @@ async function salvarModulo(key) {
   try {
     let r;
     if (edit) {
-      r = await api("atualizarRegistroModulo", { sheetKey: cfg.listKey, index: edit.index, dados: dados });
+      if (key === "colaboradores") {
+        r = await api("atualizarColaborador", dados);
+      } else {
+        r = await api("atualizarRegistroModulo", { sheetKey: cfg.listKey, index: edit.index, dados: dados });
+      }
       STATE.editModulo = null;
       toast(r.msg || "Registro atualizado.", "ok");
     } else {

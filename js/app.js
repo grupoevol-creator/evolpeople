@@ -1604,9 +1604,10 @@ function agNorm(s) { return String(s || "").toUpperCase().normalize("NFD").repla
 
 const AG_CORES = {
   "REUNIAO": "#2563eb", "ANIVERSARIO": "#db2777", "INTEGRACAO": "#059669",
-  "TREINAMENTO": "#d97706", "ENTREVISTA": "#7c3aed", "FERIAS": "#0891b2", "OUTRO": "#64748b"
+  "TREINAMENTO": "#d97706", "ENTREVISTA": "#7c3aed", "FERIAS": "#0891b2",
+  "PLANTAO": "#dc2626", "OUTRO": "#64748b"
 };
-const AG_TIPOS = ["Reunião", "Aniversário", "Integração", "Treinamento", "Entrevista", "Férias", "Outro"];
+const AG_TIPOS = ["Reunião", "Plantão", "Aniversário", "Integração", "Treinamento", "Entrevista", "Férias", "Outro"];
 
 function agCorTipo(tipo) { return AG_CORES[agNorm(tipo)] || AG_CORES["OUTRO"]; }
 

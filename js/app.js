@@ -782,6 +782,21 @@ async function trnCarregarTabela() {
 
 /* ===================== DASHBOARD ===================== */
 
+function tabelaIndicadoresMensais(linhas) {
+  if (!linhas || !linhas.length) return `<div class="empty">Nenhum indicador lançado ainda. Vá em "Indicadores" e cadastre o mês, admissões e desligamentos por unidade.</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Período</th><th>Unidade</th><th>Ativos</th><th>Admissões</th><th>Desligamentos</th><th>Turnover</th><th>Absenteísmo</th></tr></thead>
+    <tbody>${linhas.map(l => `<tr>
+      <td>${escapeHtml(l.Periodo)}</td>
+      <td>${escapeHtml(l.Unidade)}</td>
+      <td>${escapeHtml(l.Ativos)}</td>
+      <td>${escapeHtml(l.Admissoes)}</td>
+      <td>${escapeHtml(l.Desligamentos)}</td>
+      <td><span class="badge ${l.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(l.Turnover)}%</span></td>
+      <td><span class="badge ${l.Absenteismo >= 5 ? "bad" : (l.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(l.Absenteismo)}%</span></td>
+    </tr>`).join("")}</tbody></table></div>`;
+}
+
 function tabelaTurnover(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
   return `<div class="table-wrap"><table>
@@ -920,7 +935,6 @@ async function renderDashboard(unidade) {
       <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
       <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Candidatos em Teste (vagas)</small><strong>${k.candidatosEmTeste || 0}</strong></div>
-      <div class="kpi"><small>Testes (7 dias)</small><strong>${k.testesSemana}</strong></div>
       <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
       <div class="kpi" style="border-left-color:var(--warn)"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Integrados no Mês</small><strong>${k.integradosMes || 0}</strong></div>
@@ -940,14 +954,18 @@ async function renderDashboard(unidade) {
         ${tabelaSlaMes(dash.slaPorMes)}
       </div>
       <div class="card">
-        <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático — admissões/desligamentos do mês)</span></h3>
+        <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(mês atual — admissões/desligamentos automáticos)</span></h3>
         ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
     </div>
 
     <div class="card">
-      <h3>🩺 Absenteísmo por Unidade <span class="muted" style="font-weight:400;font-size:12px">(automático — do que você lança em Absenteísmo)</span></h3>
-      ${tabelaAbsenteismo(dash.absenteismoAuto || [])}
+      <h3>📊 Turnover e Absenteísmo por Mês <span class="muted" style="font-weight:400;font-size:12px">(do que você lança em Indicadores — turnover calculado)</span></h3>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
+        <div class="kpi" style="flex:1;min-width:180px"><small>Turnover médio (geral)</small><strong>${(dash.mediaTurnover != null ? dash.mediaTurnover : 0)}%</strong></div>
+        <div class="kpi" style="flex:1;min-width:180px;border-left-color:var(--info)"><small>Absenteísmo médio (geral)</small><strong>${(dash.mediaAbsenteismo != null ? dash.mediaAbsenteismo : 0)}%</strong></div>
+      </div>
+      ${tabelaIndicadoresMensais(dash.indicadoresMensais || [])}
     </div>
 
     <div class="card">
@@ -2456,12 +2474,13 @@ const MODULES = {
     label: "Indicadores Mensais",
     listAction: "listarIndicadoresMensais", listKey: "indicadores",
     saveAction: "salvarIndicadorMensal",
-    columns: ["Mes", "Ano", "Unidade", "TurnoverPercentual", "AbsenteismoPercentual"],
+    columns: ["Mes", "Ano", "Unidade", "Admissoes", "Desligamentos", "AbsenteismoPercentual", "Faturamento"],
     fields: [
       { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
       { name: "Ano", label: "Ano", type: "number", required: true },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
-      { name: "TurnoverPercentual", label: "Turnover (%)", type: "number", step: 0.01 },
+      { name: "Admissoes", label: "Admissões no mês", type: "number", min: 0 },
+      { name: "Desligamentos", label: "Desligamentos no mês", type: "number", min: 0 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
       { name: "Faturamento", label: "Faturamento do mês (R$)", type: "moneyBR" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }

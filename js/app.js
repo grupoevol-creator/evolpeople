@@ -229,7 +229,12 @@ async function carregarInit() {
     const r = await api("getInit");
     STATE.init.unidades = r.unidades || [];
     STATE.init.cargos = r.cargos || [];
-    STATE.init.colaboradores = r.colaboradores || [];
+    STATE.init.colaboradores = (r.colaboradores || []).map(c => Object.assign({}, c, {
+      Nome: c.Nome || c["Funcionário"] || c.Funcionario || c.Colaborador || c.NOME || "",
+      Unidade: c.Unidade || c.Operacao || c["Operação"] || c.Lotacao || "",
+      Cargo: c.Cargo || c.Funcao || c["Função"] || c.CARGO || "",
+      Lider: c.Lider || c["Líder"] || ""
+    }));
     STATE.init.salarios = r.salarios || [];
     STATE.init.lideranca = r.lideranca || [];
     atualizarDatalists();
@@ -426,7 +431,11 @@ async function renderHeadcount() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
   try {
     const r = await api("listarHeadcount", {});
-    HC.todos = (r.headcount || []).filter(c => {
+    HC.todos = (r.headcount || []).map(c => Object.assign({}, c, {
+      Nome: c.Nome || c["Funcionário"] || c.Funcionario || c.Colaborador || c.NOME || "",
+      Unidade: c.Unidade || c.Operacao || c["Operação"] || c.Lotacao || "",
+      Cargo: c.Cargo || c.Funcao || c["Função"] || c.CARGO || ""
+    })).filter(c => {
       const st = normalize(c.Status);
       return st.indexOf("DEMIT") === -1 && st.indexOf("DESLIG") === -1 && st !== "INATIVO";
     });
@@ -1725,8 +1734,10 @@ function agResponsaveis() {
   const set = {};
   (STATE.ag.eventos || []).forEach(ev => { const r = String(ev.Responsavel || "").trim(); if (r) set[r] = true; });
   (STATE.init.colaboradores || []).forEach(c => {
-    if (c.Nome) set[String(c.Nome).trim()] = true;
+    // líderes: quem aparece como líder de alguém (organograma)
     String(c.Lider || "").split(/\s+e\s+/i).forEach(x => { const n = x.trim(); if (n) set[n] = true; });
+    // + time administrativo/diretoria (unidade EVOL)
+    if (c.Nome && normalize(c.Unidade).indexOf("EVOL") !== -1) set[String(c.Nome).trim()] = true;
   });
   return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
 }

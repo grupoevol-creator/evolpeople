@@ -116,6 +116,25 @@ function fmtMoeda(v) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+// Converte texto em formato brasileiro para número. Ex.: "1.490.688" -> 1490688 ; "1.490,50" -> 1490.5 ; "5828.95" -> 5828.95
+function parseMoedaBR(s) {
+  s = String(s == null ? "" : s).trim();
+  if (!s) return 0;
+  s = s.replace(/[^\d.,-]/g, "");
+  const temVirgula = s.indexOf(",") !== -1;
+  const temPonto = s.indexOf(".") !== -1;
+  if (temVirgula && temPonto) { s = s.replace(/\./g, "").replace(",", "."); }      // 1.490.688,50
+  else if (temVirgula) { s = s.replace(",", "."); }                                 // 1490,50
+  else if (temPonto) {
+    const partes = s.split(".");
+    const ultimo = partes[partes.length - 1];
+    if (partes.length > 2 || (partes.length === 2 && ultimo.length === 3)) s = s.replace(/\./g, ""); // milhar: 600.000 / 1.490.688
+    // caso contrário mantém decimal (ex.: 5828.95)
+  }
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 function normalize(s) {
   return String(s || "").trim().toUpperCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -1455,8 +1474,8 @@ async function abrirDossie() {
     </div>
 
     <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"])}</div>
-    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Nota", "Lider"])}</div>
-    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["Etapa", "Resultado", "DataAvaliacao"])}</div>
+    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"])}</div>
+    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"])}</div>
     <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"])}</div>
   `;
 }
@@ -1701,14 +1720,15 @@ function agMes(delta) {
 }
 function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
 
-// Lista de responsáveis para o filtro: líderes/sócios do organograma + quem já é dono de eventos.
+// Lista para o filtro da agenda: TODOS os colaboradores + os líderes/sócios do organograma + donos de eventos.
 function agResponsaveis() {
   const set = {};
   (STATE.ag.eventos || []).forEach(ev => { const r = String(ev.Responsavel || "").trim(); if (r) set[r] = true; });
   (STATE.init.colaboradores || []).forEach(c => {
+    if (c.Nome) set[String(c.Nome).trim()] = true;
     String(c.Lider || "").split(/\s+e\s+/i).forEach(x => { const n = x.trim(); if (n) set[n] = true; });
   });
-  return Object.keys(set).sort((a, b) => a.localeCompare(b, "pt"));
+  return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
 }
 function agSetFiltro(v) { STATE.ag.filtro = v || ""; agRender(); }
 
@@ -2381,7 +2401,7 @@ const MODULES = {
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
       { name: "TurnoverPercentual", label: "Turnover (%)", type: "number", step: 0.01 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
-      { name: "Faturamento", label: "Faturamento do mês (R$)", type: "money" },
+      { name: "Faturamento", label: "Faturamento do mês (R$)", type: "moneyBR" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
@@ -2461,6 +2481,9 @@ function campoHtml(f) {
   } else if (f.type === "datalist") {
     inputHtml = `<input id="${idc}" type="text" list="${f.list}" value="${val}" autocomplete="off" ${req} ${readonly}
       ${f.autofillSalario ? `onchange="autofillSalarioPorCargo(this.value); calcularVT();"` : onch}>`;
+  } else if (f.type === "moneyBR") {
+    inputHtml = `<input id="${idc}" type="text" inputmode="decimal" class="money" value="${val}" ${req} ${readonly}
+      placeholder="Ex: 1.490.688">`;
   } else if (f.type === "money" || f.type === "number") {
     inputHtml = `<input id="${idc}" type="number" step="${f.step || "0.01"}" min="${f.min !== undefined ? f.min : ""}"
       max="${f.max !== undefined ? f.max : ""}" value="${val}" ${req} ${readonly}
@@ -2500,7 +2523,8 @@ function coletarCampos(fields) {
   const out = {};
   fields.forEach(f => {
     const elCampo = document.getElementById("campo_" + f.name);
-    if (elCampo) out[f.name] = elCampo.value;
+    if (!elCampo) return;
+    out[f.name] = f.type === "moneyBR" ? parseMoedaBR(elCampo.value) : elCampo.value;
   });
   return out;
 }

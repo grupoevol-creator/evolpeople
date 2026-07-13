@@ -922,9 +922,13 @@ async function renderAbsenteismo() {
           <select id="abTipo"><option value="">Selecione...</option><option>Atestado</option><option>Falta Injustificada</option><option>Falta Justificada</option></select></div>
         <div class="form-row"><label>Dias</label><input id="abDias" type="number" min="1" step="1" value="1"></div>
         <div class="form-row"><label>Motivo / CID</label><input id="abMotivo" placeholder="Ex.: gripe (CID J11)"></div>
-        <div class="form-row"><label>Anexar atestado (PDF/imagem)</label><input id="abAtestado" type="file" accept=".pdf,image/*"></div>
+        <div class="form-row"><label>Início do atestado</label><input id="abInicio" type="date" onchange="abCalcDias()"></div>
+        <div class="form-row"><label>Fim do atestado</label><input id="abFim" type="date" onchange="abCalcDias()"></div>
+        <div class="form-row"><label>Anexar atestado (PDF/imagem)</label><input id="abAtestado" type="file" accept=".pdf,image/*" onchange="abLerAtestado()">
+          <span class="muted" style="font-size:11px">Ao anexar, tento ler as datas automaticamente.</span></div>
         <div class="form-row"><label>Dias previstos no mês <span class="muted">(opcional — p/ calcular %)</span></label><input id="abDiasPrev" type="number" min="0" step="1" placeholder="Ex.: 26"></div>
       </div>
+      <div id="abLeitura" style="display:none;background:#eff6ff;border:1px solid #3b82f6;color:#1e40af;padding:10px 12px;border-radius:8px;margin:8px 0;font-size:13px"></div>
       <div class="form-row"><label>Observações</label><textarea id="abObs"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="abSalvar()">Lançar</button></div>
     </div>
@@ -945,6 +949,69 @@ function abPreencherUnidade() {
   if (uni && campo && !campo.value) campo.value = uni;
 }
 
+// Ao ANEXAR o atestado: sobe pro Drive, lê (OCR) e preenche as datas.
+async function abLerAtestado() {
+  const inp = el("#abAtestado");
+  if (!inp || !inp.files || !inp.files[0]) return;
+  const f = inp.files[0];
+  const colab = (el("#abColab").value || "").trim();
+  if (!colab) { toast("Escolha o colaborador antes de anexar o atestado.", "err"); inp.value = ""; return; }
+  if (f.size > 15 * 1024 * 1024) { toast("Atestado muito grande (máx. 15 MB).", "err"); inp.value = ""; return; }
+
+  const box = el("#abLeitura");
+  if (box) { box.style.display = "block"; box.innerHTML = "⏳ Enviando e lendo o atestado..."; }
+  try {
+    toggleLoading(true);
+    const b64 = await fileToBase64(f);
+    const up = await apiUpload("uploadAtestado", {
+      Colaborador: colab, nomeArquivo: "Atestado - " + f.name,
+      tipo: f.type || "application/pdf", base64: b64
+    });
+    STATE.atestadoUrl = (up && up.url) || "";
+
+    const L = up && up.leitura;
+    if (L && (L.inicio || L.dias || L.cid)) {
+      const ini = brParaInput(L.inicio), fim = brParaInput(L.fim);
+      if (ini && el("#abInicio")) el("#abInicio").value = ini;
+      if (fim && el("#abFim")) el("#abFim").value = fim;
+      if (L.dias > 0 && el("#abDias")) el("#abDias").value = L.dias;
+      if (L.cid && el("#abMotivo") && !el("#abMotivo").value) el("#abMotivo").value = "CID " + L.cid;
+      if (ini && el("#abData") && !el("#abData").value) el("#abData").value = ini;
+      if (el("#abTipo") && !el("#abTipo").value) el("#abTipo").value = "Atestado";
+      if (box) box.innerHTML = `🔎 <b>Li o atestado</b> (confiança: ${escapeHtml(L.confianca)}) —
+        ${L.inicio ? `início <b>${escapeHtml(L.inicio)}</b>` : ""}
+        ${L.fim ? ` · fim <b>${escapeHtml(L.fim)}</b>` : ""}
+        ${L.dias ? ` · <b>${escapeHtml(L.dias)} dia(s)</b>` : ""}
+        ${L.cid ? ` · CID <b>${escapeHtml(L.cid)}</b>` : ""}
+        <br>⚠️ <b>Confira os campos</b> antes de lançar — a leitura automática pode errar.`;
+    } else if (box) {
+      box.innerHTML = `📄 Atestado anexado com sucesso. Não consegui ler as datas — preencha o <b>início</b> e o <b>fim</b> manualmente.`;
+    }
+  } catch (e) {
+    if (box) box.innerHTML = `<span style="color:#b91c1c">Não consegui enviar: ${escapeHtml(e.message)}</span>`;
+  } finally { toggleLoading(false); }
+}
+
+// Calcula os dias do atestado a partir do início e fim (inclusive)
+function abCalcDias() {
+  const i = el("#abInicio") ? el("#abInicio").value : "";
+  const f = el("#abFim") ? el("#abFim").value : "";
+  if (!i || !f) return;
+  const d1 = new Date(i + "T12:00:00"), d2 = new Date(f + "T12:00:00");
+  if (isNaN(d1) || isNaN(d2) || d2 < d1) return;
+  const dias = Math.round((d2 - d1) / 86400000) + 1;
+  if (el("#abDias")) el("#abDias").value = dias;
+  if (el("#abData") && !el("#abData").value) el("#abData").value = i;
+}
+
+// Converte dd/mm/aaaa -> aaaa-mm-dd (para os campos de data)
+function brParaInput(s) {
+  const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
+  if (!m) return "";
+  let ano = m[3]; if (ano.length === 2) ano = "20" + ano;
+  return `${ano}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
+}
+
 async function abSalvar() {
   const colab = el("#abColab").value.trim();
   const data = el("#abData").value;
@@ -958,36 +1025,15 @@ async function abSalvar() {
     Dias: el("#abDias").value || 1,
     Motivo: el("#abMotivo").value.trim(),
     DiasEscala: el("#abDiasPrev").value || 0,
+    AtestadoInicio: el("#abInicio") ? el("#abInicio").value : "",
+    AtestadoFim: el("#abFim") ? el("#abFim").value : "",
+    AtestadoUrl: STATE.atestadoUrl || "",
     Observacoes: el("#abObs").value.trim()
   };
   try {
     const r = await api("registrarAbsenteismo", dados);
     toast(r.msg || "Lançado.", "ok");
-    // anexa o atestado (se houver) -> vai pro Drive, pro dossiê e fica ligado ao lançamento
-    const fa = el("#abAtestado");
-    if (fa && fa.files && fa.files[0]) {
-      const f = fa.files[0];
-      if (f.size > 15 * 1024 * 1024) { toast("Atestado muito grande (máx. 15 MB).", "err"); }
-      else {
-        try {
-          toast("Enviando atestado...", "info");
-          toggleLoading(true);
-          const b64 = await fileToBase64(f);
-          const dt = new Date(data + "T12:00:00");
-          const up = await apiUpload("uploadAtestado", {
-            Colaborador: colab, cpf: "",
-            Mes: dt.getMonth() + 1, Ano: dt.getFullYear(),
-            nomeArquivo: "Atestado " + data + " - " + f.name,
-            tipo: f.type || "application/pdf",
-            base64: b64
-          });
-          if (up && up.url) toast("Atestado anexado ao dossiê. ✅", "ok");
-          else toast("Atestado enviado. Confira no dossiê do colaborador.", "ok");
-          if (el("#abAtestado")) el("#abAtestado").value = "";
-        } catch (e) { toast("Atestado não anexado: " + e.message, "err"); }
-        finally { toggleLoading(false); }
-      }
-    }
+    STATE.atestadoUrl = "";
     await renderAbsenteismo();
   } catch (e) { toast(e.message, "err"); }
 }
@@ -999,9 +1045,12 @@ async function abCarregarTabela() {
     const cols = ["Mes", "Ano", "Colaborador", "Unidade", "Atestados", "FaltasInjustificadas", "FaltasJustificadas", "PercentualAbsenteismo"];
     document.getElementById("abTabela").innerHTML = linhas.length
       ? `<div class="table-wrap"><table>
-          <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join("")}<th>Atestado</th></tr></thead>
+          <thead><tr>${cols.map(c => `<th>${escapeHtml(c)}</th>`).join("")}<th>Período do atestado</th><th>Arquivo</th></tr></thead>
           <tbody>${linhas.map(l => `<tr>
             ${cols.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}
+            <td>${(l.AtestadoInicio || l.AtestadoFim)
+              ? `${formatarCelula("Data", l.AtestadoInicio)} → ${formatarCelula("Data", l.AtestadoFim)}${l.DiasAtestado ? `<br><span class="badge info">${escapeHtml(l.DiasAtestado)} dia(s)</span>` : ""}`
+              : "—"}</td>
             <td>${l.AtestadoUrl
               ? String(l.AtestadoUrl).split("|").map((u, i) => `<a href="${escapeHtml(u.trim())}" target="_blank" rel="noopener" style="margin-right:6px">📄 Ver${i > 0 ? " " + (i + 1) : ""}</a>`).join("")
               : "—"}</td>
@@ -1228,7 +1277,16 @@ function tabelaIndicadores(linhas) {
     </tr>`).join("")}</tbody></table></div>`;
 }
 
+// Abas do dashboard (gestão à vista — uma seção de cada vez, sem poluição)
+function ABA(nome) { return (STATE.dashAba || "visao") === nome; }
+function dashAba(nome) {
+  STATE.dashAba = nome;
+  renderDashboard(STATE.dashUnidade || "");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
 async function renderDashboard(unidade) {
+  if (unidade !== undefined) STATE.dashUnidade = unidade;
   setMain(`<div class="loading">Carregando dashboard...</div>`);
   let r;
   try {
@@ -1300,11 +1358,22 @@ async function renderDashboard(unidade) {
       <div class="kpi" style="border-left-color:var(--info)"><small>Horas de Treinamento (mês)</small><strong>${k.horasTreinMes || 0}h</strong></div>
     </div>
 
+    <div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid #e2e8f0;margin:20px 0 18px">
+      ${[["visao","🏆 Visão Geral"],["custo","💰 Custo (CMO)"],["pessoas","👥 Pessoas"],["recrutamento","🎯 Recrutamento"],["analise","📊 Análises"]].map(([t,rot]) => {
+        const on = (STATE.dashAba || "visao") === t;
+        return `<button onclick="dashAba('${t}')" style="background:${on ? "#1e3a8a" : "transparent"};color:${on ? "#fff" : "#64748b"};border:none;border-radius:8px 8px 0 0;padding:10px 18px;font-weight:${on ? "700" : "500"};font-size:14px;cursor:pointer;border-bottom:3px solid ${on ? "#ea580c" : "transparent"};transition:all .15s">${rot}</button>`;
+      }).join("")}
+    </div>
+
+
+    ${ABA("visao") ? `
     <div class="card">
       <h3>👥 Headcount, Folha e Faturamento por Unidade</h3>
       ${tabelaPorUnidade(dash.porUnidade)}
     </div>
+    ` : ""}
 
+    ${ABA("recrutamento") ? `
     <div class="grid g2">
       <div class="card">
         <h3>⏱️ SLA de Vagas por Mês <span class="muted" style="font-weight:400;font-size:12px">(tempo médio de fechamento)</span></h3>
@@ -1340,7 +1409,45 @@ async function renderDashboard(unidade) {
         ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
     </div>
+    ` : ""}
 
+    ${ABA("custo") ? `
+    <div class="card">
+      <h3>🪑 Vagas em Aberto — Custo Projetado <span class="muted" style="font-weight:400;font-size:12px">(se preencher hoje, quanto pesa até o fim do mês)</span></h3>
+      ${(() => {
+        const v = dash.vagasAbertasCusto || {};
+        return `
+        <div class="grid g4">
+          <div class="kpi"><small>Vagas em aberto</small><strong>${escapeHtml(v.Qtd || 0)}</strong></div>
+          <div class="kpi" style="border-left-color:var(--info)"><small>Dias restantes do mês</small><strong>${escapeHtml(v.DiasRestantes || 0)}</strong><span class="muted" style="font-size:11px;display:block">de ${escapeHtml(v.DiasNoMes || 0)} dias (${escapeHtml(v.Proporcao || 0)}%)</span></div>
+          <div class="kpi" style="border-left-color:var(--laranja)"><small>💸 Custo proporcional</small><strong>${fmtMoeda(v.CustoProporcional || 0)}</strong><span class="muted" style="font-size:11px;display:block">se contratar agora</span></div>
+          <div class="kpi"><small>Custo em mês cheio</small><strong>${fmtMoeda(v.CustoMesCheio || 0)}</strong></div>
+        </div>
+
+        <div class="kpi" style="border-left-color:#7c3aed;margin-top:12px">
+          <small>🎯 CMO PROJETADO (com as vagas preenchidas)</small>
+          <strong style="font-size:22px">${fmtMoeda(dash.cmoProjetado || 0)}</strong>
+          <span class="muted" style="font-size:11px;display:block">CMO atual ${fmtMoeda((dash.cmo && dash.cmo.total) || 0)} + vagas ${fmtMoeda(v.CustoProporcional || 0)}</span>
+        </div>
+
+        ${(v.Lista && v.Lista.length)
+          ? `<div class="table-wrap" style="margin-top:12px"><table>
+              <thead><tr><th>Unidade</th><th>Cargo</th><th>Salário</th><th>Custo mês cheio</th><th>Custo proporcional</th></tr></thead>
+              <tbody>${v.Lista.map(x => `<tr>
+                <td>${escapeHtml(x.Unidade)}</td>
+                <td style="font-weight:600">${escapeHtml(x.Cargo)}</td>
+                <td>${fmtMoeda(x.Salario)}</td>
+                <td class="muted">${fmtMoeda(x.CustoMesCheio)}</td>
+                <td style="font-weight:600;color:#b45309">${fmtMoeda(x.CustoProporcional)}</td>
+              </tr>`).join("")}</tbody>
+            </table></div>
+            <p class="muted" style="font-size:12px;margin-top:8px">Inclui salário + complementar + FGTS, provisão de férias e rescisão, e refeição — proporcional aos <b>${escapeHtml(v.DiasRestantes || 0)} dias</b> que faltam.</p>`
+          : `<div class="empty">Nenhuma vaga em aberto no momento. 🎉</div>`}`;
+      })()}
+    </div>
+    ` : ""}
+
+    ${ABA("custo") ? `
     <div class="card">
       <h3>💰 CMO — Custo de Mão de Obra <span class="muted" style="font-weight:400;font-size:12px">(tudo que a empresa gasta, automático)</span></h3>
       ${(() => {
@@ -1350,6 +1457,13 @@ async function renderDashboard(unidade) {
           <td style="text-align:right;font-weight:600;color:${cor || "#334155"}">${fmtMoeda(val || 0)}</td>
         </tr>`;
         return `
+        <div class="grid g4" style="margin-bottom:12px">
+          <div class="kpi" style="border-left-color:var(--warn)"><small>🚪 Rescisões no mês</small><strong>${fmtMoeda(m.rescisoesPagas || 0)}</strong><span class="muted" style="font-size:11px;display:block">+ provisão ${fmtMoeda(m.rescisaoProv || 0)}</span></div>
+          <div class="kpi" style="border-left-color:var(--info)"><small>🚌 Vale transporte (custo)</small><strong>${fmtMoeda(m.vtCusto || 0)}</strong><span class="muted" style="font-size:11px;display:block">colaborador paga ${fmtMoeda(m.vtDesconto || 0)}</span></div>
+          <div class="kpi"><small>🏥 Plano de saúde</small><strong>${fmtMoeda(m.saude || 0)}</strong></div>
+          <div class="kpi"><small>🦷 Plano odontológico</small><strong>${fmtMoeda(m.odonto || 0)}</strong></div>
+        </div>
+
         <div class="grid g4" style="margin-bottom:12px">
           <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 CMO TOTAL (mês)</small><strong>${fmtMoeda(m.total || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(m.ativos || 0)} ativos · ${fmtMoeda(m.porColaborador || 0)}/pessoa</span></div>
           <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}%</span></div>
@@ -1381,8 +1495,11 @@ async function renderDashboard(unidade) {
             <div class="table-wrap"><table>
               <tbody>
                 ${lin("Variável da liderança", m.variavel)}
+                ${lin("Gratificação Rio Mar", m.riomarVariavel, "#0369a1", "proporcional ao faturamento")}
+                ${lin("Dobras", m.dobras, "#334155", (m.dobrasProj ? "projetado: " + fmtMoeda(m.dobrasProj) : ""))}
+                ${lin("Diárias avulsas", m.diarias, "#334155", (m.diariasProj ? "projetado: " + fmtMoeda(m.diariasProj) : ""))}
                 ${lin("Processos trabalhistas", m.processos)}
-                ${lin("Rescisões pagas", m.rescisoesPagas)}
+                ${lin("Rescisões pagas no mês", m.rescisoesPagas)}
                 ${lin("Fardamento entregue", m.fardamento)}
                 ${lin("Admissões (CPF + ASO)", m.admissoes, "#334155", (m.qtdAdmissoes || 0) + " admissão(ões) no mês")}
                 ${lin("Endomarketing", m.endomarketing)}
@@ -1405,7 +1522,138 @@ async function renderDashboard(unidade) {
         <p class="muted" style="font-size:12px;margin-top:10px">Ajuste percentuais e valores em <b>Operações → Parâmetros do CMO</b>. Lance processos, endomarketing e rescisões em <b>Custos do Mês</b>.</p>`;
       })()}
     </div>
+    ` : ""}
 
+    ${ABA("visao") ? `
+    <div class="card">
+      <h3>🏆 Saúde de Cada Casa <span class="muted" style="font-weight:400;font-size:12px">(comparativo — turnover, absenteísmo, CMO, quadro, SLA e recontratação)</span></h3>
+      ${(dash.scorecard && dash.scorecard.length) ? (() => {
+        const mg = dash.mediaGrupo || {};
+        const cor = s => s >= 75 ? "#16a34a" : (s >= 55 ? "#d97706" : "#dc2626");
+        const bad = s => s === "Saudável" ? "ok" : (s === "Atenção" ? "warn" : "bad");
+        const vs = (v, media, menorMelhor) => {
+          if (!media) return "";
+          const dif = Math.round((v - media) * 10) / 10;
+          if (Math.abs(dif) < 0.1) return `<span class="muted" style="font-size:11px">= média</span>`;
+          const ruim = menorMelhor ? dif > 0 : dif < 0;
+          return `<span style="font-size:11px;color:${ruim ? "#dc2626" : "#16a34a"}">${dif > 0 ? "+" : ""}${dif} vs média</span>`;
+        };
+        return `
+        <div class="grid g4" style="margin-bottom:14px">
+          <div class="kpi"><small>Nota média do grupo</small><strong style="color:${cor(mg.Score || 0)}">${escapeHtml(mg.Score || 0)}/100</strong></div>
+          <div class="kpi"><small>Turnover médio</small><strong>${escapeHtml(mg.Turnover || 0)}%</strong></div>
+          <div class="kpi"><small>Absenteísmo médio</small><strong>${escapeHtml(mg.Absenteismo || 0)}%</strong></div>
+          <div class="kpi"><small>CMO médio s/ faturamento</small><strong>${escapeHtml(mg.CMOpct || 0)}%</strong></div>
+        </div>
+
+        <div class="table-wrap"><table>
+          <thead><tr>
+            <th>#</th><th>Unidade</th><th>Nota</th><th>Situação</th>
+            <th>Ativos</th><th>Cobertura</th>
+            <th>Turnover</th><th>Absenteísmo</th>
+            <th>CMO/colab</th><th>CMO %</th>
+            <th>Fat./colab</th><th>Meta</th>
+            <th>SLA</th><th>Recontrataria</th>
+          </tr></thead>
+          <tbody>${dash.scorecard.map(u => `<tr>
+            <td style="font-weight:700;color:${u.Posicao === 1 ? "#16a34a" : "#64748b"}">${escapeHtml(u.Posicao)}º</td>
+            <td style="font-weight:600">${escapeHtml(u.Unidade)}</td>
+            <td><strong style="font-size:16px;color:${cor(u.Score)}">${escapeHtml(u.Score)}</strong><span class="muted" style="font-size:11px">/100</span></td>
+            <td><span class="badge ${bad(u.Status)}">${escapeHtml(u.Status)}</span></td>
+            <td>${escapeHtml(u.Ativos)}${u.QuadroIdeal ? `<span class="muted" style="font-size:11px">/${escapeHtml(u.QuadroIdeal)}</span>` : ""}</td>
+            <td>${u.QuadroIdeal ? `<span class="badge ${u.Cobertura >= 100 ? "ok" : (u.Cobertura >= 85 ? "warn" : "bad")}">${escapeHtml(u.Cobertura)}%</span>` : "—"}</td>
+            <td><span class="badge ${u.Turnover >= 10 ? "bad" : (u.Turnover >= 5 ? "warn" : "ok")}">${escapeHtml(u.Turnover)}%</span><br>${vs(u.Turnover, mg.Turnover, true)}</td>
+            <td><span class="badge ${u.Absenteismo >= 5 ? "bad" : (u.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(u.Absenteismo)}%</span><br>${vs(u.Absenteismo, mg.Absenteismo, true)}</td>
+            <td>${fmtMoeda(u.CMOporColab)}</td>
+            <td>${u.CMOpct ? `<span class="badge ${u.CMOpct >= 35 ? "bad" : (u.CMOpct >= 28 ? "warn" : "ok")}">${escapeHtml(u.CMOpct)}%</span>` : "—"}</td>
+            <td style="color:#0369a1;font-weight:600">${fmtMoeda(u.FatPorColab)}</td>
+            <td>${u.Atingimento ? `<span class="badge ${u.Atingimento >= 100 ? "ok" : (u.Atingimento >= 80 ? "warn" : "bad")}">${escapeHtml(u.Atingimento)}%</span>` : "—"}</td>
+            <td>${u.SLADias ? `<span class="badge ${u.SLADias > 30 ? "bad" : (u.SLADias > 20 ? "warn" : "ok")}">${escapeHtml(u.SLADias)}d</span>` : "—"}</td>
+            <td>${u.RecontratariaPct ? `<span class="badge ${u.RecontratariaPct >= 70 ? "ok" : "warn"}">${escapeHtml(u.RecontratariaPct)}%</span>` : "—"}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>
+
+        ${dash.scorecard.some(u => u.Alertas && u.Alertas.length) ? `
+        <h4 style="margin:16px 0 8px">🚨 Pontos de atenção por casa</h4>
+        <div class="grid g2">
+          ${dash.scorecard.filter(u => u.Alertas && u.Alertas.length).map(u => `
+            <div style="border:1px solid #e2e8f0;border-left:4px solid ${cor(u.Score)};border-radius:8px;padding:10px 12px">
+              <div style="font-weight:700;margin-bottom:6px">${escapeHtml(u.Unidade)} <span class="badge ${bad(u.Status)}">${escapeHtml(u.Score)}/100</span></div>
+              <ul style="margin:0;padding-left:18px;font-size:13px;color:#475569;line-height:1.7">
+                ${u.Alertas.map(a => `<li>${escapeHtml(a)}</li>`).join("")}
+              </ul>
+            </div>`).join("")}
+        </div>` : `<div class="msg ok" style="margin-top:12px">✅ Nenhum ponto crítico nas casas neste mês.</div>`}
+
+        <p class="muted" style="font-size:12px;margin-top:12px">
+          <b>Como a nota é calculada:</b> turnover (25%) · absenteísmo (20%) · CMO sobre faturamento (20%) · cobertura do quadro (15%) · SLA de vagas (10%) · % que recontrataria (10%).
+          <b>Saudável</b> ≥ 75 · <b>Atenção</b> 55–74 · <b>Crítico</b> &lt; 55.
+        </p>`;
+      })() : `<div class="empty">Sem dados suficientes para comparar as casas ainda.</div>`}
+    </div>
+    ` : ""}
+
+    ${ABA("custo") ? `
+    <div class="card">
+      <h3>🏬 CMO e Faturamento por Casa <span class="muted" style="font-weight:400;font-size:12px">(projetado x realizado — tempo real)</span></h3>
+      ${(dash.cmoPorUnidade && dash.cmoPorUnidade.length)
+        ? `<div class="table-wrap"><table>
+            <thead><tr>
+              <th>Unidade</th><th>Ativos</th>
+              <th>CMO</th><th>CMO / colaborador</th>
+              <th>Fat. PROJETADO</th><th>Fat. REALIZADO</th><th>Atingimento</th>
+              <th>Fat./colab PROJETADO</th><th>Fat./colab REALIZADO</th>
+              <th>CMO % (proj)</th><th>CMO % (real)</th>
+            </tr></thead>
+            <tbody>${dash.cmoPorUnidade.map(u => `<tr>
+              <td style="font-weight:600">${escapeHtml(u.Unidade)}</td>
+              <td>${escapeHtml(u.Ativos)}</td>
+              <td>${fmtMoeda(u.CMO)}</td>
+              <td style="font-weight:600">${fmtMoeda(u.CMOporColab)}</td>
+              <td class="muted">${fmtMoeda(u.FatProjetado)}</td>
+              <td style="font-weight:600">${fmtMoeda(u.FatRealizado)}</td>
+              <td><span class="badge ${u.Atingimento >= 100 ? "ok" : (u.Atingimento >= 80 ? "warn" : "bad")}">${escapeHtml(u.Atingimento)}%</span></td>
+              <td class="muted">${fmtMoeda(u.FatPorColabProjetado)}</td>
+              <td style="font-weight:600;color:#0369a1">${fmtMoeda(u.FatPorColabRealizado)}</td>
+              <td class="muted">${escapeHtml(u.CMOpctProjetado)}%</td>
+              <td><span class="badge ${u.CMOpctRealizado > 30 ? "bad" : (u.CMOpctRealizado > 25 ? "warn" : "ok")}">${escapeHtml(u.CMOpctRealizado)}%</span></td>
+            </tr>`).join("")}</tbody>
+          </table></div>
+          <p class="muted" style="font-size:12px;margin-top:8px">Lance o <b>faturamento projetado</b> e o <b>realizado</b> de cada casa em <b>Indicadores</b>. Se não lançar a projeção, uso a média histórica por colaborador.</p>`
+        : `<div class="empty">Sem dados por unidade ainda.</div>`}
+    </div>
+    ` : ""}
+
+    ${ABA("custo") && dash.riomar && dash.riomar.Colaboradores ? `
+    <div class="card">
+      <h3>🍽️ Parrileiro Rio Mar — Salário + Gratificação <span class="muted" style="font-weight:400;font-size:12px">(proporcional ao faturamento)</span></h3>
+      <div class="grid g4">
+        <div class="kpi"><small>🎯 Faturamento PROJETADO</small><strong>${fmtMoeda(dash.riomar.FatProjetado || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(dash.riomar.FatRealizado || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:${(dash.riomar.Atingimento || 0) >= 100 ? "var(--ok, #16a34a)" : "var(--warn)"}"><small>📊 Atingimento</small><strong>${escapeHtml(dash.riomar.Atingimento || 0)}%</strong><span class="muted" style="font-size:11px;display:block">a gratificação é proporcional a isso</span></div>
+        <div class="kpi" style="border-left-color:var(--laranja)"><small>💵 Gratificação a pagar</small><strong>${fmtMoeda(dash.riomar.GratificacaoAPagar || 0)}</strong><span class="muted" style="font-size:11px;display:block">teto: ${fmtMoeda(dash.riomar.TetoGratificacao || 0)}</span></div>
+      </div>
+
+      ${dash.riomar.SemRegra ? `<div class="msg warn" style="margin-top:10px;font-size:13px">⚠️ ${escapeHtml(dash.riomar.SemRegra)} colaborador(es) sem regra de gratificação cadastrada (o cargo não bateu com a tabela). Eles aparecem com gratificação zero.</div>` : ""}
+
+      ${(dash.riomar.Lista && dash.riomar.Lista.length)
+        ? `<div class="table-wrap" style="margin-top:12px"><table>
+            <thead><tr><th>Colaborador</th><th>Função</th><th>Salário base</th><th>Gratificação (teto)</th><th>Gratificação ganha</th><th>Total a receber</th><th>Total máximo</th></tr></thead>
+            <tbody>${dash.riomar.Lista.map(x => `<tr${x.TemRegra ? "" : ' style="opacity:.55"'}>
+              <td style="font-weight:600">${escapeHtml(x.Nome)}</td>
+              <td>${escapeHtml(x.Cargo || "—")}${x.TemRegra ? "" : ' <span class="badge warn">sem regra</span>'}</td>
+              <td>${fmtMoeda(x.SalarioBase)}</td>
+              <td class="muted">${fmtMoeda(x.GratificacaoMax)}</td>
+              <td style="color:#0369a1;font-weight:600">+ ${fmtMoeda(x.GratificacaoGanha)}</td>
+              <td style="font-weight:700">${fmtMoeda(x.TotalReceber)}</td>
+              <td class="muted">${fmtMoeda(x.TotalMax)}</td>
+            </tr>`).join("")}</tbody>
+          </table></div>`
+        : `<div class="empty">Nenhum colaborador no Rio Mar.</div>`}
+      <p class="muted" style="font-size:12px;margin-top:8px">A gratificação é o <b>teto da função × % de atingimento</b>. Bateu os ${fmtMoeda(dash.riomar.FatProjetado || 0)} → gratificação cheia. Lance o faturamento em <b>Indicadores</b>.</p>
+    </div>` : ""}
+
+    ${ABA("pessoas") ? `
     <div class="card">
       <h3>👥 Quadro Ideal x Quadro Real <span class="muted" style="font-weight:400;font-size:12px">(edite o ideal direto aqui)</span></h3>
       <div class="grid g4">
@@ -1428,7 +1676,9 @@ async function renderDashboard(unidade) {
           </table></div>`
         : `<div class="empty">Nenhuma unidade encontrada.</div>`}
     </div>
+    ` : ""}
 
+    ${ABA("visao") ? `
     <div class="card">
       <h3>🏢 Grupo Evol — Consolidado <span class="muted" style="font-weight:400;font-size:12px">(todas as unidades juntas, mês atual)</span></h3>
       <div class="grid g4">
@@ -1439,7 +1689,9 @@ async function renderDashboard(unidade) {
         <div class="kpi" style="border-left-color:var(--info)"><small>🩺 Absenteísmo do GRUPO</small><strong>${(dash.grupoConsolidado && dash.grupoConsolidado.Absenteismo) || 0}%</strong></div>
       </div>
     </div>
+    ` : ""}
 
+    ${ABA("analise") ? `
     <div class="card">
       <h3>🏬 Turnover e Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(setor dentro de cada unidade)</span></h3>
       ${(dash.porUnidadeSetor && dash.porUnidadeSetor.length)
@@ -1457,7 +1709,9 @@ async function renderDashboard(unidade) {
           </table></div>`
         : `<div class="empty">Sem dados por setor ainda. Preencha o Setor no cadastro dos colaboradores.</div>`}
     </div>
+    ` : ""}
 
+    ${ABA("custo") ? `
     <div class="card">
       <h3>💵 Variável da Liderança <span class="muted" style="font-weight:400;font-size:12px">(entra na folha real)</span></h3>
       <div class="grid g4">
@@ -1489,7 +1743,9 @@ async function renderDashboard(unidade) {
            </table></div>`
         : `<div class="empty">Nenhuma variável lançada. Cadastre em "Variável da Liderança".</div>`}
     </div>
+    ` : ""}
 
+    ${ABA("analise") ? `
     <div class="card">
       <h3>📊 Turnover e Absenteísmo por Mês <span class="muted" style="font-weight:400;font-size:12px">(do que você lança em Indicadores — turnover calculado)</span></h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
@@ -1498,7 +1754,9 @@ async function renderDashboard(unidade) {
       </div>
       ${tabelaIndicadoresMensais(dash.indicadoresMensais || [])}
     </div>
+    ` : ""}
 
+    ${ABA("analise") ? `
     <div class="card">
       <h3>🚪 Entrevistas de Desligamento</h3>
       <div class="grid g4">
@@ -1536,7 +1794,9 @@ async function renderDashboard(unidade) {
            </table></div>`
         : ""}
     </div>
+    ` : ""}
 
+    ${ABA("analise") ? `
     <div class="grid g2">
       <div class="card">
         <h3>🔄 Turnover por Setor <span class="muted" style="font-weight:400;font-size:12px">(mês atual)</span></h3>
@@ -1562,12 +1822,16 @@ async function renderDashboard(unidade) {
           : `<div class="empty">Nenhum absenteísmo lançado ainda.</div>`}
       </div>
     </div>
+    ` : ""}
 
+    ${ABA("pessoas") ? `
     <div class="card">
       <h3>🧪 Colaboradores em Período de Experiência ${sel ? `<span class="badge info">${escapeHtml(sel)}</span>` : ""}</h3>
       ${tabelaExperiencia(dash.emExperiencia || [])}
     </div>
+    ` : ""}
 
+    ${ABA("pessoas") ? `
     <div class="card">
       <h3>📝 Avaliações de Período de Experiência</h3>
       <div class="grid g4" style="margin-bottom:12px">
@@ -1578,7 +1842,9 @@ async function renderDashboard(unidade) {
       </div>
       ${tabelaComBadge((dash.avaliacoesExp && dash.avaliacoesExp.recentes) || [], ["Colaborador", "Unidade", "Etapa", "Resultado"])}
     </div>
+    ` : ""}
 
+    ${ABA("pessoas") ? `
     <div class="grid g2">
       <div class="card">
         <h3>🎂 Aniversariantes do Mês</h3>
@@ -1589,11 +1855,14 @@ async function renderDashboard(unidade) {
         ${tabelaSimples(dash.experienciaProximas, ["Nome", "Unidade", "Cargo", "FimExperiencia"])}
       </div>
     </div>
+    ` : ""}
 
+    ${ABA("recrutamento") ? `
     <div class="card">
       <h3>📦 Estoque Crítico de Fardamento</h3>
       ${tabelaSimples(dash.estoqueCritico, ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima"])}
     </div>
+    ` : ""}
   `);
 }
 
@@ -3152,14 +3421,17 @@ const MODULES = {
     label: "Fardamento / Estoque",
     listAction: "listarFardamento", listKey: "fardamento",
     saveAction: "salvarFardamento",
-    columns: ["Unidade", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima", "Status"],
+    filtros: ["Unidade", "Setor"],
+    columns: ["Unidade", "Setor", "Item", "Tamanho", "QuantidadeEstoque", "QuantidadeMinima", "Status"],
     fields: [
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Setor", label: "Setor", type: "datalist", list: "dl-setores", hint: "Ex.: Salão, Cozinha, Bar, Parrilla" },
       { name: "Item", label: "Item", type: "text", required: true },
       { name: "Tipo", label: "Tipo", type: "text" },
       { name: "Tamanho", label: "Tamanho", type: "text" },
       { name: "QuantidadeEstoque", label: "Quantidade em Estoque", type: "number" },
       { name: "QuantidadeMinima", label: "Quantidade Mínima", type: "number" },
+      { name: "ValorUnitario", label: "Valor unitário (R$)", type: "moneyBR", hint: "Usado no custo do CMO" },
       { name: "Fornecedor", label: "Fornecedor", type: "text" }
     ]
   },
@@ -3178,9 +3450,11 @@ const MODULES = {
       { name: "Ano", label: "Ano", type: "number", required: true },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
       { name: "Tipo", label: "Tipo de custo", type: "select", required: true, options: [
-        "Processos trabalhistas", "Endomarketing", "Rescisão", "Exame / ASO", "Treinamento", "Outros"
+        "Processos trabalhistas", "Endomarketing", "Rescisão", "Dobras", "Diárias avulsas",
+        "Exame / ASO", "Treinamento", "Outros"
       ] },
-      { name: "Valor", label: "Valor (R$)", type: "moneyBR", required: true },
+      { name: "Valor", label: "Valor REALIZADO (R$)", type: "moneyBR", required: true },
+      { name: "ValorProjetado", label: "Valor PROJETADO para o mês (R$)", type: "moneyBR", hint: "Use para acompanhar projetado x realizado" },
       { name: "Descricao", label: "Descrição", type: "textarea", col: "g2" }
     ]
   },
@@ -3204,7 +3478,8 @@ const MODULES = {
         { v: "DIAS_UTEIS", l: "Dias trabalhados no mês (usado no VT)" },
         { v: "ADMISSAO_CUSTO", l: "Custo por admissão — CPF + ASO (R$)" },
         { v: "SAL_FAMILIA_TETO", l: "Salário família — teto (R$)" },
-        { v: "SAL_FAMILIA_VALOR", l: "Salário família — valor por dependente (R$)" }
+        { v: "SAL_FAMILIA_VALOR", l: "Salário família — valor por dependente (R$)" },
+        { v: "RIOMAR_FAT_PROJETADO", l: "Rio Mar — faturamento projetado do mês (R$)" }
       ] },
       { name: "Valor", label: "Valor", type: "number", step: 0.01, required: true },
       { name: "Descricao", label: "Observação", type: "text", col: "g2" }
@@ -3314,7 +3589,8 @@ const MODULES = {
       { name: "Admissoes", label: "Admissões no mês", type: "number", min: 0 },
       { name: "Desligamentos", label: "Desligamentos no mês", type: "number", min: 0 },
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
-      { name: "Faturamento", label: "Faturamento do mês (R$)", type: "moneyBR" },
+      { name: "Faturamento", label: "Faturamento REALIZADO do mês (R$)", type: "moneyBR" },
+      { name: "FaturamentoProjetado", label: "Faturamento PROJETADO do mês (R$)", type: "moneyBR", hint: "Meta da casa — usada no acompanhamento em tempo real" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
@@ -3459,7 +3735,8 @@ async function renderModulo(key) {
   const cfg = MODULES[key];
   STATE.editModulo = null;
   STATE.filtroModulo = { unidade: "", busca: "" };
-  const temFiltro = key === "colaboradores";
+  const temFiltro = key === "colaboradores" || (cfg.filtros && cfg.filtros.length);
+  const filtros = cfg.filtros || ["Unidade"];
   setMain(`
     <div class="page-title">
       <div><h2>${escapeHtml(cfg.label)}</h2>${cfg.note ? `<p>${escapeHtml(cfg.note)}</p>` : ""}</div>
@@ -3482,18 +3759,32 @@ async function renderModulo(key) {
     <div class="card">
       <h3>Registros</h3>
       ${temFiltro ? `
-      <div class="grid g2" style="margin-bottom:12px">
+      <div class="grid g3" style="margin-bottom:12px">
+        ${filtros.indexOf("Unidade") !== -1 ? `
         <div class="form-row">
           <label>Filtrar por Unidade</label>
           <select id="fmUnidade" onchange="filtrarModulo('${key}')">
             <option value="">Todas as unidades</option>
             ${(STATE.init.unidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}
           </select>
-        </div>
+        </div>` : ""}
+        ${filtros.indexOf("Setor") !== -1 ? `
+        <div class="form-row">
+          <label>Filtrar por Setor</label>
+          <select id="fmSetor" onchange="filtrarModulo('${key}')">
+            <option value="">Todos os setores</option>
+            ${(STATE.init.setores || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("")}
+          </select>
+        </div>` : ""}
+        ${key === "colaboradores" ? `
         <div class="form-row">
           <label>Buscar por nome</label>
           <input id="fmBusca" type="text" placeholder="Digite o nome..." oninput="filtrarModulo('${key}')">
-        </div>
+        </div>` : `
+        <div class="form-row">
+          <label>Buscar</label>
+          <input id="fmBusca" type="text" placeholder="Digite para buscar..." oninput="filtrarModulo('${key}')">
+        </div>`}
       </div>
       <div id="fmContagem" class="muted" style="font-size:13px;margin-bottom:8px"></div>` : ""}
       <div id="tabelaModulo"><div class="loading">Carregando...</div></div>
@@ -3503,26 +3794,44 @@ async function renderModulo(key) {
 }
 
 // Filtra a tabela de colaboradores por unidade e/ou nome
+function temFiltroModulo(key) {
+  const cfg = MODULES[key];
+  return key === "colaboradores" || !!(cfg && cfg.filtros && cfg.filtros.length);
+}
+
 function filtrarModulo(key) {
-  const uni = el("#fmUnidade") ? el("#fmUnidade").value : "";
-  const busca = el("#fmBusca") ? el("#fmBusca").value : "";
-  STATE.filtroModulo = { unidade: uni, busca: busca };
+  STATE.filtroModulo = {
+    unidade: el("#fmUnidade") ? el("#fmUnidade").value : "",
+    setor: el("#fmSetor") ? el("#fmSetor").value : "",
+    busca: el("#fmBusca") ? el("#fmBusca").value : ""
+  };
   aplicarFiltroModulo(key);
 }
 
 function aplicarFiltroModulo(key) {
   const cfg = MODULES[key];
   const todos = STATE.cacheTodos[key] || [];
-  const f = STATE.filtroModulo || { unidade: "", busca: "" };
+  const f = STATE.filtroModulo || {};
   const bu = normalize(f.busca);
+  const ehColab = key === "colaboradores";
+  const val = (l, campo) => ehColab ? valorCampoColab(l, campo) : (l[campo] || "");
+
   const linhas = todos.filter(l => {
-    if (f.unidade && normalize(valorCampoColab(l, "Unidade")) !== normalize(f.unidade)) return false;
-    if (bu && normalize(valorCampoColab(l, "Nome")).indexOf(bu) === -1) return false;
+    if (f.unidade && normalize(val(l, "Unidade")) !== normalize(f.unidade)) return false;
+    if (f.setor && normalize(val(l, "Setor")) !== normalize(f.setor)) return false;
+    if (bu) {
+      // busca no nome (colaboradores) ou em todas as colunas visíveis
+      const alvo = ehColab
+        ? normalize(valorCampoColab(l, "Nome"))
+        : normalize(cfg.columns.map(c => l[c] || "").join(" "));
+      if (alvo.indexOf(bu) === -1) return false;
+    }
     return true;
   });
+
   STATE.cache[key] = linhas;
   const cont = document.getElementById("fmContagem");
-  if (cont) cont.textContent = `Mostrando ${linhas.length} de ${todos.length} colaboradores.`;
+  if (cont) cont.textContent = `Mostrando ${linhas.length} de ${todos.length} registro(s).`;
   document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
 }
 
@@ -3539,7 +3848,7 @@ async function carregarTabelaModulo(key) {
       linhas = r[cfg.listKey] || [];
     }
     STATE.cacheTodos[key] = linhas;
-    if (key === "colaboradores") { aplicarFiltroModulo(key); return; }
+    if (temFiltroModulo(key)) { aplicarFiltroModulo(key); return; }
     STATE.cache[key] = linhas;
     document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
   } catch (e) {

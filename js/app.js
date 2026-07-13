@@ -1166,6 +1166,31 @@ async function trnCarregarTabela() {
 
 /* ===================== DASHBOARD ===================== */
 
+// Salva o quadro ideal de TODAS as casas de uma vez (evita esquecer alguma)
+async function salvarQuadroTodos() {
+  const inputs = [...document.querySelectorAll('input[id^="qi_"]')];
+  const alvos = inputs
+    .map(inp => ({ unidade: inp.getAttribute("data-uni"), valor: Number(inp.value) }))
+    .filter(x => x.unidade && x.valor > 0);
+
+  if (!alvos.length) return toast("Digite o quadro ideal de pelo menos uma casa.", "err");
+
+  const vazias = inputs.filter(inp => !Number(inp.value)).length;
+  if (vazias && !confirm(`${alvos.length} casa(s) serão salvas.\n${vazias} casa(s) estão SEM quadro ideal e não vão contar no total.\n\nContinuar mesmo assim?`)) return;
+
+  try {
+    toggleLoading(true);
+    let ok = 0;
+    for (const a of alvos) {
+      await api("salvarQuadro", { Unidade: a.unidade, QuadroIdeal: a.valor });
+      ok++;
+    }
+    toast(`Quadro ideal salvo para ${ok} casa(s).`, "ok");
+    await renderDashboard(STATE.dashUnidade || "");
+  } catch (e) { toast(e.message, "err"); }
+  finally { toggleLoading(false); }
+}
+
 // Salva o quadro ideal de uma unidade direto do dashboard
 async function salvarQuadroIdeal(unidade, i) {
   const campo = document.getElementById("qi_" + i);
@@ -1539,6 +1564,30 @@ async function renderDashboard(unidade) {
           return `<span style="font-size:11px;color:${ruim ? "#dc2626" : "#16a34a"}">${dif > 0 ? "+" : ""}${dif} vs média</span>`;
         };
         return `
+        ${dash.scorecard.length ? `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+          ${dash.scorecard.slice(0, 3).map((u, i) => {
+            const medalha = ["🥇", "🥈", "🥉"][i];
+            const primeiro = i === 0;
+            return `<div style="
+              flex:1;min-width:200px;
+              background:${primeiro ? "linear-gradient(135deg,#fef3c7,#fde68a)" : "#f8fafc"};
+              border:2px solid ${primeiro ? "#f59e0b" : "#e2e8f0"};
+              border-radius:12px;padding:14px 16px;position:relative;
+              ${primeiro ? "box-shadow:0 4px 12px rgba(245,158,11,.25)" : ""}
+            ">
+              <div style="font-size:${primeiro ? "32px" : "24px"};line-height:1">${medalha}</div>
+              <div style="font-weight:800;font-size:${primeiro ? "15px" : "14px"};margin:6px 0 2px;color:#1e293b">${escapeHtml(u.Unidade)}</div>
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-size:${primeiro ? "26px" : "20px"};font-weight:800;color:${cor(u.Score)}">${escapeHtml(u.Score)}</span>
+                <span class="muted" style="font-size:12px">/100</span>
+                <span class="badge ${bad(u.Status)}" style="margin-left:auto">${escapeHtml(u.Status)}</span>
+              </div>
+              ${primeiro ? `<div style="font-size:11px;font-weight:700;color:#b45309;margin-top:6px;text-transform:uppercase;letter-spacing:.5px">🏆 Casa mais saudável</div>` : ""}
+            </div>`;
+          }).join("")}
+        </div>` : ""}
+
         <div class="grid g4" style="margin-bottom:14px">
           <div class="kpi"><small>Nota média do grupo</small><strong style="color:${cor(mg.Score || 0)}">${escapeHtml(mg.Score || 0)}/100</strong></div>
           <div class="kpi"><small>Turnover médio</small><strong>${escapeHtml(mg.Turnover || 0)}%</strong></div>
@@ -1555,9 +1604,9 @@ async function renderDashboard(unidade) {
             <th>Fat./colab</th><th>Meta</th>
             <th>SLA</th><th>Recontrataria</th>
           </tr></thead>
-          <tbody>${dash.scorecard.map(u => `<tr>
-            <td style="font-weight:700;color:${u.Posicao === 1 ? "#16a34a" : "#64748b"}">${escapeHtml(u.Posicao)}º</td>
-            <td style="font-weight:600">${escapeHtml(u.Unidade)}</td>
+          <tbody>${dash.scorecard.map(u => `<tr${u.Posicao === 1 ? ' style="background:#fffbeb"' : ""}>
+            <td style="font-weight:700;white-space:nowrap;color:${u.Posicao === 1 ? "#b45309" : "#64748b"}">${["🥇", "🥈", "🥉"][u.Posicao - 1] || (u.Posicao + "º")}</td>
+            <td style="font-weight:${u.Posicao === 1 ? "800" : "600"}">${escapeHtml(u.Unidade)}${u.Posicao === 1 ? ` <span class="badge" style="background:#f59e0b;color:#fff;font-size:10px">1º LUGAR</span>` : ""}</td>
             <td><strong style="font-size:16px;color:${cor(u.Score)}">${escapeHtml(u.Score)}</strong><span class="muted" style="font-size:11px">/100</span></td>
             <td><span class="badge ${bad(u.Status)}">${escapeHtml(u.Status)}</span></td>
             <td>${escapeHtml(u.Ativos)}${u.QuadroIdeal ? `<span class="muted" style="font-size:11px">/${escapeHtml(u.QuadroIdeal)}</span>` : ""}</td>
@@ -1657,7 +1706,7 @@ async function renderDashboard(unidade) {
     <div class="card">
       <h3>👥 Quadro Ideal x Quadro Real <span class="muted" style="font-weight:400;font-size:12px">(edite o ideal direto aqui)</span></h3>
       <div class="grid g4">
-        <div class="kpi"><small>Quadro Ideal (total)</small><strong>${(dash.quadroTotal && dash.quadroTotal.Ideal) || 0}</strong></div>
+        <div class="kpi"><small>Quadro Ideal (total)</small><strong>${(dash.quadroTotal && dash.quadroTotal.Ideal) || 0}</strong>${(dash.quadroPorUnidade || []).some(q => !q.QuadroIdeal) ? `<span style="font-size:11px;display:block;color:#b45309">⚠️ ${(dash.quadroPorUnidade || []).filter(q => !q.QuadroIdeal).length} casa(s) sem quadro definido</span>` : ""}</div>
         <div class="kpi"><small>Quadro Real (ativos)</small><strong>${(dash.quadroTotal && dash.quadroTotal.Real) || 0}</strong></div>
         <div class="kpi" style="border-left-color:${(dash.quadroTotal && dash.quadroTotal.Gap) < 0 ? "var(--warn)" : "var(--info)"}"><small>Diferença</small><strong>${(dash.quadroTotal && dash.quadroTotal.Gap) > 0 ? "+" : ""}${(dash.quadroTotal && dash.quadroTotal.Gap) || 0}</strong></div>
         <div class="kpi" style="border-left-color:var(--laranja)"><small>Cobertura</small><strong>${(dash.quadroTotal && dash.quadroTotal.Cobertura) || 0}%</strong></div>
@@ -1665,15 +1714,19 @@ async function renderDashboard(unidade) {
       ${(dash.quadroPorUnidade && dash.quadroPorUnidade.length)
         ? `<div class="table-wrap" style="margin-top:12px"><table>
             <thead><tr><th>Unidade</th><th style="width:130px">Quadro Ideal</th><th>Quadro Real</th><th>Diferença</th><th>Cobertura</th><th style="width:1%">Salvar</th></tr></thead>
-            <tbody>${dash.quadroPorUnidade.map((q, i) => `<tr>
+            <tbody>${dash.quadroPorUnidade.map((q, i) => `<tr${q.QuadroIdeal ? "" : ' style="background:#fffbeb"'}>
               <td style="font-weight:600">${escapeHtml(q.Unidade)}</td>
-              <td><input type="number" min="0" id="qi_${i}" value="${escapeHtml(q.QuadroIdeal || "")}" placeholder="—" style="width:90px;padding:4px 6px"></td>
+              <td><input type="number" min="0" id="qi_${i}" data-uni="${escapeHtml(q.Unidade)}" value="${escapeHtml(q.QuadroIdeal || "")}" placeholder="digite..." style="width:100px;padding:5px 7px"></td>
               <td>${escapeHtml(q.QuadroReal)}</td>
               <td><span class="badge ${q.QuadroIdeal === 0 ? "" : (q.Gap < 0 ? "warn" : (q.Gap > 0 ? "info" : "ok"))}">${escapeHtml(q.Situacao)}</span></td>
               <td>${q.QuadroIdeal ? `<span class="badge ${q.Cobertura >= 100 ? "ok" : (q.Cobertura >= 85 ? "warn" : "bad")}">${escapeHtml(q.Cobertura)}%</span>` : "—"}</td>
               <td><button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="salvarQuadroIdeal('${escapeHtml(q.Unidade)}', ${i})">💾</button></td>
             </tr>`).join("")}</tbody>
-          </table></div>`
+          </table></div>
+          <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="salvarQuadroTodos()">💾 Salvar quadro de TODAS as casas</button>
+            <span class="muted" style="font-size:12px">Digite o ideal de cada casa e clique aqui — grava tudo de uma vez.</span>
+          </div>`
         : `<div class="empty">Nenhuma unidade encontrada.</div>`}
     </div>
     ` : ""}

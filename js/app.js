@@ -2393,9 +2393,34 @@ async function abrirDossie() {
 
   cont.innerHTML = `
     <div class="card">
-      <h2 style="margin-bottom:4px">${escapeHtml(c.Nome || nome)}</h2>
-      <p class="muted">${escapeHtml([c.Cargo, c.Unidade].filter(Boolean).join(" · "))}${c.Status ? " · Status: " + escapeHtml(c.Status) : ""}</p>
-      <p class="muted">Admissão: ${escapeHtml(c.DataAdmissao || "não informada")}</p>
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <h2 style="margin-bottom:6px">${escapeHtml(c.Nome || nome)}</h2>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="badge" style="background:${c.TipoContrato === "PJ" ? "#7c3aed" : "#0369a1"};color:#fff;font-weight:700;font-size:12px">
+              ${escapeHtml(c.TipoContrato || "CLT")}
+            </span>
+            <span class="badge ${normalize(c.Status).indexOf("ATIVO") !== -1 ? "ok" : (normalize(c.Status).indexOf("AFAST") !== -1 ? "warn" : "bad")}">${escapeHtml(c.Status || "ATIVO")}</span>
+            ${c.Integrado === "Sim" ? `<span class="badge ok">Integrado</span>` : ""}
+            ${c.ValeTransporte === "Sim" ? `<span class="badge info">Vale transporte</span>` : ""}
+          </div>
+        </div>
+      </div>
+
+      <div class="table-wrap" style="margin-top:14px"><table>
+        <tbody>
+          <tr><td class="muted" style="width:170px">Cargo</td><td style="font-weight:600">${escapeHtml(c.Cargo || "—")}</td>
+              <td class="muted" style="width:170px">Setor</td><td style="font-weight:600">${escapeHtml(c.Setor || "—")}</td></tr>
+          <tr><td class="muted">Unidade</td><td style="font-weight:600">${escapeHtml(c.Unidade || "—")}</td>
+              <td class="muted">Líder direto</td><td style="font-weight:600">${escapeHtml(c.Lider || "—")}</td></tr>
+          <tr><td class="muted">Tipo de contrato</td><td style="font-weight:600">${escapeHtml(c.ContratoDetalhe || c.TipoContrato || "—")}</td>
+              <td class="muted">Admissão</td><td style="font-weight:600">${escapeHtml(c.DataAdmissao || "—")}</td></tr>
+          <tr><td class="muted">Turno</td><td>${escapeHtml(c.Turno || "—")}</td>
+              <td class="muted">Folga</td><td>${escapeHtml(c.Folga || "—")}</td></tr>
+          <tr><td class="muted">Telefone</td><td>${escapeHtml(c.Telefone || "—")}</td>
+              <td class="muted">Nascimento</td><td>${escapeHtml(c.DataNascimento || "—")}</td></tr>
+        </tbody>
+      </table></div>
     </div>
 
     <div class="grid g4">
@@ -3454,6 +3479,7 @@ const MODULES = {
 
   treinamentos: {
     label: "Treinamentos",
+    filtros: ["Unidade"],
     listAction: "listarTreinamentos", listKey: "treinamentos",
     saveAction: "salvarTreinamento",
     columns: ["Data", "Unidade", "Tema", "Tipo", "Ministrante", "HorasDadas"],
@@ -3491,6 +3517,7 @@ const MODULES = {
 
   custosMensais: {
     label: "Custos do Mês (processos, endomarketing, rescisões)",
+    filtros: ["Unidade"],
     listAction: "listarCustosMensais", listKey: "custosMensais",
     saveAction: "salvarCustoMensal",
     columns: ["Mes", "Ano", "Unidade", "Tipo", "Valor", "Descricao"],
@@ -3541,6 +3568,7 @@ const MODULES = {
 
   variavel: {
     label: "Variável da Liderança",
+    filtros: ["Unidade"],
     listAction: "listarVariavel", listKey: "variavel",
     saveAction: "salvarVariavel",
     columns: ["Mes", "Ano", "Unidade", "Colaborador", "Cargo", "TipoVariavel", "Valor", "Pago"],
@@ -3563,6 +3591,7 @@ const MODULES = {
 
   utensilios: {
     label: "Desconto de Utensílios",
+    filtros: ["Unidade"],
     listAction: "listarUtensilios", listKey: "utensilios",
     saveAction: "salvarUtensilio",
     columns: ["Unidade", "Cargo", "Mes", "Ano", "Percentual", "Ativo"],
@@ -3583,6 +3612,7 @@ const MODULES = {
 
   entregas: {
     label: "Entrega de Fardamento / EPI",
+    filtros: ["Unidade"],
     listAction: "listarEntregas", listKey: "entregas",
     saveAction: "salvarEntrega",
     columns: ["Data", "Colaborador", "Unidade", "Tipo", "Item", "Tamanho", "Quantidade", "EntreguePor"],
@@ -3602,6 +3632,7 @@ const MODULES = {
 
   desligamentos: {
     label: "Entrevista de Desligamento",
+    filtros: ["Unidade", "Setor"],
     listAction: "listarDesligamentos", listKey: "desligamentos",
     saveAction: "salvarDesligamento",
     columns: ["Data", "Unidade", "Colaborador", "Cargo", "LiderDireto", "TipoDesligamento", "MotivoPrincipal", "Recontrataria", "PreenchidoPor"],
@@ -3627,6 +3658,8 @@ const MODULES = {
     ]
   },
   indicadores: {
+    label: "Indicadores Mensais",
+    filtros: ["Unidade"],
     listAction: "listarIndicadoresMensais", listKey: "indicadores",
     saveAction: "salvarIndicadorMensal",
     columns: ["Mes", "Ano", "Unidade", "Ativos", "Admissoes", "Desligamentos", "AbsenteismoPercentual", "Faturamento"],
@@ -3650,6 +3683,7 @@ const MODULES = {
 
   absenteismo: {
     label: "Absenteísmo",
+    filtros: ["Unidade", "Setor"],
     listAction: "listarAbsenteismo", listKey: "absenteismo",
     saveAction: "salvarAbsenteismo",
     columns: ["Mes", "Ano", "Unidade", "Colaborador", "Atestados", "TotalFaltas", "PercentualAbsenteismo"],
@@ -3670,6 +3704,7 @@ const MODULES = {
 
   sla: {
     label: "SLA de Vagas",
+    filtros: ["Unidade"],
     listAction: "listarSLA", listKey: "sla",
     saveAction: "salvarSLA",
     columns: ["Mes", "Ano", "Unidade", "SLA_Dias", "VagasFechadas"],
@@ -3861,6 +3896,12 @@ function filtrarModulo(key) {
   aplicarFiltroModulo(key);
 }
 
+// Compara unidades tolerando variações ("PARRILEIRO RIO MAR" = "PARRILEIRO RIOMAR")
+function mesmaUnidade(a, b) {
+  const limpa = s => normalize(s).replace(/\s+/g, "");
+  return limpa(a) === limpa(b);
+}
+
 function aplicarFiltroModulo(key) {
   const cfg = MODULES[key];
   const todos = STATE.cacheTodos[key] || [];
@@ -3870,7 +3911,7 @@ function aplicarFiltroModulo(key) {
   const val = (l, campo) => ehColab ? valorCampoColab(l, campo) : (l[campo] || "");
 
   const linhas = todos.filter(l => {
-    if (f.unidade && normalize(val(l, "Unidade")) !== normalize(f.unidade)) return false;
+    if (f.unidade && !mesmaUnidade(val(l, "Unidade"), f.unidade)) return false;
     if (f.setor && normalize(val(l, "Setor")) !== normalize(f.setor)) return false;
     if (bu) {
       // busca no nome (colaboradores) ou em todas as colunas visíveis

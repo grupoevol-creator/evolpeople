@@ -356,9 +356,6 @@ const GRUPOS_NAV = [
     { key: "emteste", label: "Quem está testando" }
   ]},
   { titulo: "Gestão de Pessoas", itens: [
-    { key: "escalas", label: "Escalas" },
-    { key: "ponto", label: "Ponto" },
-    { key: "ajustesPonto", label: "Ajustes de Ponto" },
     { key: "feedbacks", label: "Feedbacks" },
     { key: "experiencia", label: "Avaliação de Experiência" },
     { key: "treinamentos", label: "Treinamentos" }
@@ -370,6 +367,8 @@ const GRUPOS_NAV = [
     { key: "fardamento", label: "Fardamento / Estoque" },
     { key: "entregas", label: "Entrega de Fardamento / EPI" },
     { key: "variavel", label: "Variável da Liderança" },
+    { key: "custosMensais", label: "Custos do Mês" },
+    { key: "parametrosCMO", label: "Parâmetros do CMO" },
     { key: "utensilios", label: "Desconto de Utensílios" },
     { key: "valetransporte", label: "Vale Transporte (quem recebe)" },
     { key: "indicadores", label: "Indicadores Mensais" },
@@ -421,8 +420,6 @@ async function navegar(key) {
     if (key === "feedbacks") return renderFeedback();
     if (key === "dossie") return renderDossie();
     if (key === "universidade") return renderUniversidade();
-    if (key === "escalas") return renderEscalas();
-    if (key === "ponto") return renderPonto();
     if (key === "absenteismo") return renderAbsenteismo();
     if (key === "treinamentos") return renderTreinamentos();
     if (key === "assistente") return renderAssistente();
@@ -1342,6 +1339,71 @@ async function renderDashboard(unidade) {
         <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(mês atual — admissões/desligamentos automáticos)</span></h3>
         ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>💰 CMO — Custo de Mão de Obra <span class="muted" style="font-weight:400;font-size:12px">(tudo que a empresa gasta, automático)</span></h3>
+      ${(() => {
+        const m = dash.cmo || {};
+        const lin = (rot, val, cor, obs) => `<tr>
+          <td>${escapeHtml(rot)}${obs ? `<br><span class="muted" style="font-size:11px">${escapeHtml(obs)}</span>` : ""}</td>
+          <td style="text-align:right;font-weight:600;color:${cor || "#334155"}">${fmtMoeda(val || 0)}</td>
+        </tr>`;
+        return `
+        <div class="grid g4" style="margin-bottom:12px">
+          <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 CMO TOTAL (mês)</small><strong>${fmtMoeda(m.total || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(m.ativos || 0)} ativos · ${fmtMoeda(m.porColaborador || 0)}/pessoa</span></div>
+          <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}%</span></div>
+          <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(m.fatRealizado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctRealizado || 0)}%</span></div>
+          <div class="kpi"><small>⏳ Ritmo do mês</small><strong>${fmtMoeda(m.fatRitmo || 0)}</strong><span class="muted" style="font-size:11px;display:block">Dia ${escapeHtml(m.diaHoje || 0)} de ${escapeHtml(m.diasNoMes || 0)} (${escapeHtml(m.pctMes || 0)}%)</span></div>
+        </div>
+
+        <div class="grid g2">
+          <div>
+            <h4 style="margin:8px 0 6px">Custos de pessoal (automático)</h4>
+            <div class="table-wrap"><table>
+              <tbody>
+                ${lin("Salários (fixo + complementar)", m.salarios)}
+                ${lin("Adicional noturno", m.adicNoturno, "#334155", "20% — turno noturno")}
+                ${lin("FGTS (a empresa paga)", m.fgts, "#b45309", "8% — exceto PJ")}
+                ${lin("Vale transporte (custo da empresa)", m.vtCusto, "#b45309", "total − 6% descontado")}
+                ${lin("Plano de saúde", m.saude, "#b45309")}
+                ${lin("Plano odontológico", m.odonto, "#b45309")}
+                ${lin("Provisão de férias", m.ferias, "#b45309", "1/12 + 1/3")}
+                ${lin("Provisão de rescisão", m.rescisaoProv, "#b45309")}
+                ${lin("Refeição do colaborador", m.refeicao, "#b45309", "custo mensal por pessoa")}
+                ${lin("Salário família", m.salFamilia, "#b45309", "teto R$ 1.980,38")}
+                <tr style="border-top:2px solid #cbd5e1"><td style="font-weight:700">Subtotal pessoal</td><td style="text-align:right;font-weight:700">${fmtMoeda(m.custoPessoal || 0)}</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+          <div>
+            <h4 style="margin:8px 0 6px">Outros custos</h4>
+            <div class="table-wrap"><table>
+              <tbody>
+                ${lin("Variável da liderança", m.variavel)}
+                ${lin("Processos trabalhistas", m.processos)}
+                ${lin("Rescisões pagas", m.rescisoesPagas)}
+                ${lin("Fardamento entregue", m.fardamento)}
+                ${lin("Admissões (CPF + ASO)", m.admissoes, "#334155", (m.qtdAdmissoes || 0) + " admissão(ões) no mês")}
+                ${lin("Endomarketing", m.endomarketing)}
+                ${lin("Outros", m.outros)}
+                <tr style="border-top:2px solid #cbd5e1"><td style="font-weight:700">🎯 CMO TOTAL</td><td style="text-align:right;font-weight:700;color:#b45309;font-size:16px">${fmtMoeda(m.total || 0)}</td></tr>
+              </tbody>
+            </table></div>
+
+            <h4 style="margin:14px 0 6px">Descontos do colaborador <span class="muted" style="font-weight:400;font-size:11px">(não é custo da empresa)</span></h4>
+            <div class="table-wrap"><table>
+              <tbody>
+                ${lin("INSS (9%)", m.inss, "#b91c1c", "descontado do colaborador — PJ não paga")}
+                ${lin("Vale transporte (6%)", m.vtDesconto, "#b91c1c")}
+                ${lin("Utensílios", m.utensilios, "#b91c1c", "só sobre o complementar")}
+                <tr style="border-top:2px solid #cbd5e1"><td style="font-weight:700">Líquido pago aos colaboradores</td><td style="text-align:right;font-weight:700">${fmtMoeda(m.liquido || 0)}</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:10px">Ajuste percentuais e valores em <b>Operações → Parâmetros do CMO</b>. Lance processos, endomarketing e rescisões em <b>Custos do Mês</b>.</p>`;
+      })()}
     </div>
 
     <div class="card">
@@ -3102,6 +3164,53 @@ const MODULES = {
     ]
   },
 
+  custosMensais: {
+    label: "Custos do Mês (processos, endomarketing, rescisões)",
+    listAction: "listarCustosMensais", listKey: "custosMensais",
+    saveAction: "salvarCustoMensal",
+    columns: ["Mes", "Ano", "Unidade", "Tipo", "Valor", "Descricao"],
+    fields: [
+      { name: "Mes", label: "Mês", type: "select", required: true, options: [
+        { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
+        { v: 5, l: "Maio" }, { v: 6, l: "Junho" }, { v: 7, l: "Julho" }, { v: 8, l: "Agosto" },
+        { v: 9, l: "Setembro" }, { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" }
+      ] },
+      { name: "Ano", label: "Ano", type: "number", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Tipo", label: "Tipo de custo", type: "select", required: true, options: [
+        "Processos trabalhistas", "Endomarketing", "Rescisão", "Exame / ASO", "Treinamento", "Outros"
+      ] },
+      { name: "Valor", label: "Valor (R$)", type: "moneyBR", required: true },
+      { name: "Descricao", label: "Descrição", type: "textarea", col: "g2" }
+    ]
+  },
+
+  parametrosCMO: {
+    label: "Parâmetros do CMO",
+    note: "Ajuste os percentuais e valores usados no cálculo do custo. Mudou aqui, o dashboard recalcula.",
+    listAction: "listarParametrosCMO", listKey: "parametrosCMO",
+    saveAction: "salvarParametroCMO",
+    columns: ["Chave", "Valor", "Descricao"],
+    fields: [
+      { name: "Chave", label: "Parâmetro", type: "select", required: true, options: [
+        { v: "FGTS_PCT", l: "FGTS % (empresa paga)" },
+        { v: "INSS_PCT", l: "INSS % (desconto do colaborador)" },
+        { v: "VT_DESC_PCT", l: "Vale transporte — desconto %" },
+        { v: "VT_VALOR_DIA", l: "Vale transporte — valor por dia (R$)" },
+        { v: "ADIC_NOTURNO_PCT", l: "Adicional noturno %" },
+        { v: "FERIAS_PROV_PCT", l: "Provisão de férias %" },
+        { v: "RESCISAO_PROV_PCT", l: "Provisão de rescisão %" },
+        { v: "REFEICAO_MES", l: "Refeição — custo MENSAL por colaborador (R$)" },
+        { v: "DIAS_UTEIS", l: "Dias trabalhados no mês (usado no VT)" },
+        { v: "ADMISSAO_CUSTO", l: "Custo por admissão — CPF + ASO (R$)" },
+        { v: "SAL_FAMILIA_TETO", l: "Salário família — teto (R$)" },
+        { v: "SAL_FAMILIA_VALOR", l: "Salário família — valor por dependente (R$)" }
+      ] },
+      { name: "Valor", label: "Valor", type: "number", step: 0.01, required: true },
+      { name: "Descricao", label: "Observação", type: "text", col: "g2" }
+    ]
+  },
+
   variavel: {
     label: "Variável da Liderança",
     listAction: "listarVariavel", listKey: "variavel",
@@ -3242,21 +3351,6 @@ const MODULES = {
       { name: "SLA_Dias", label: "SLA (dias)", type: "number" },
       { name: "VagasFechadas", label: "Vagas Fechadas no Período", type: "number" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
-    ]
-  },
-
-  ajustesPonto: {
-    label: "Ajustes de Ponto",
-    listAction: "listarAjustesPonto", listKey: "ajustes",
-    saveAction: "solicitarAjustePonto",
-    columns: ["DataRegistro", "Colaborador", "Data", "Hora", "TipoBatida", "Status"],
-    fields: [
-      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
-      { name: "Data", label: "Data do Ponto a Ajustar", type: "date", required: true },
-      { name: "Hora", label: "Hora Correta", type: "time", required: true },
-      { name: "TipoBatida", label: "Tipo de Batida", type: "select", options: ["ENTRADA", "SAÍDA", "INÍCIO INTERVALO", "FIM INTERVALO"] },
-      { name: "Justificativa", label: "Justificativa", type: "textarea", col: "g2", required: true }
     ]
   }
 };
@@ -3693,99 +3787,7 @@ function filtrarColabsEscala() {
   if (cont) cont.innerHTML = linhasChecklistEscala(colabsDaUnidade(uni));
 }
 
-async function renderEscalas() {
-  setMain(`
-    <div class="page-title"><div><h2>Escalas</h2><p>Defina os horários de cada turno e o turno de cada colaborador. A geração respeita abertura, intermediário e fechamento.</p></div></div>
 
-    <div class="card">
-      <h3>1. Período e tipo</h3>
-      <div class="grid g2">
-        <div class="form-row"><label>Unidade</label><input id="escUnidade" type="text" list="dl-unidades" onchange="filtrarColabsEscala()" placeholder="Filtra os colaboradores"></div>
-        <div class="form-row"><label>Tipo padrão (opcional — dá pra definir por pessoa abaixo)</label>
-          <select id="escTipo">
-            <option value="6X1">6x1</option>
-            <option value="5X2">5x2</option>
-            <option value="12X36">12x36</option>
-            <option value="ROTATIVA">Rotativa (gira folga + turnos)</option>
-          </select>
-        </div>
-        <div class="form-row"><label>Início</label><input id="escInicio" type="date"></div>
-        <div class="form-row"><label>Fim</label><input id="escFim" type="date"></div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>2. Horários dos turnos</h3>
-      <p class="card-subtitle">Preencha uma vez. Cada colaborador vai usar o horário do turno dele.</p>
-      <div class="grid g3">
-        <div>
-          <div class="form-row"><label>Abertura — Entrada</label><input id="tAberturaEntrada" type="time" value="08:00"></div>
-          <div class="form-row"><label>Abertura — Saída</label><input id="tAberturaSaida" type="time" value="16:20"></div>
-        </div>
-        <div>
-          <div class="form-row"><label>Intermediário — Entrada</label><input id="tIntermEntrada" type="time" value="11:00"></div>
-          <div class="form-row"><label>Intermediário — Saída</label><input id="tIntermSaida" type="time" value="19:20"></div>
-        </div>
-        <div>
-          <div class="form-row"><label>Fechamento — Entrada</label><input id="tFechamentoEntrada" type="time" value="15:40"></div>
-          <div class="form-row"><label>Fechamento — Saída</label><input id="tFechamentoSaida" type="time" value="00:00"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>3. Colaboradores e turnos</h3>
-      <div class="form-row">
-        <label>Colaboradores da unidade (marque e escolha o turno de cada um)</label>
-        <div class="checklist" id="escChecklist">${linhasChecklistEscala(colabsDaUnidade(""))}</div>
-      </div>
-
-      <div class="grid g2">
-        <div class="form-row">
-          <label>Colaboradores Avulsos (um por linha)</label>
-          <textarea id="escAvulsos"></textarea>
-        </div>
-        <div class="form-row">
-          <label>Turno dos avulsos</label>
-          ${selectTurnoHtml("INTERMEDIARIO").replace('class="turno-select"', 'id="escAvulsosTurno"')}
-        </div>
-      </div>
-
-      <div class="form-row">
-        <label>Observações</label>
-        <textarea id="escObs"></textarea>
-      </div>
-
-      <div class="actions">
-        <button class="btn btn-primary" onclick="gerarEscala()">Gerar Escala</button>
-        <button class="btn btn-secondary" onclick="excluirEscala()">Excluir escala desta unidade</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <h3>Grade de Escala</h3>
-      <div class="form-row" style="max-width:320px">
-        <label>Ver grade da unidade</label>
-        <select id="gradeUnidade" onchange="montarGradeEscala()"><option value="">Todas</option></select>
-      </div>
-      <div id="gradeEscala"><div class="loading">Carregando...</div></div>
-    </div>
-  `);
-  await carregarEscalas();
-}
-
-async function carregarEscalas() {
-  try {
-    const r = await api("listarEscalas");
-    STATE.cache.escalas = r.escalas || [];
-    const unis = [...new Set(STATE.cache.escalas.map(e => e.Unidade).filter(Boolean))].sort();
-    const sel = document.getElementById("gradeUnidade");
-    if (sel) sel.innerHTML = `<option value="">Todas</option>` + unis.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("");
-    montarGradeEscala();
-  } catch (e) {
-    document.getElementById("gradeEscala").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
-  }
-}
 
 function fmtHoraCurta(h) {
   const s = String(h || "").trim();
@@ -3795,125 +3797,8 @@ function fmtHoraCurta(h) {
   return m[2] === "00" ? (m[1].padStart(2, "0") + "H") : (m[1].padStart(2, "0") + ":" + m[2]);
 }
 
-function montarGradeEscala() {
-  const dados = STATE.cache.escalas || [];
-  const uni = el("#gradeUnidade") ? el("#gradeUnidade").value : "";
-  const filtradas = uni ? dados.filter(e => normalize(e.Unidade) === normalize(uni)) : dados;
-  const cont = document.getElementById("gradeEscala");
-  if (!filtradas.length) { cont.innerHTML = `<div class="empty">Nenhuma escala gerada ainda.</div>`; return; }
 
-  const datas = [...new Set(filtradas.map(e => e.Data).filter(Boolean))].sort();
-  const colabs = [...new Set(filtradas.map(e => e.Colaborador).filter(Boolean))].sort();
-  const diaSemana = {};
-  filtradas.forEach(e => { if (e.Data) diaSemana[e.Data] = e.DiaSemana; });
-  const mapa = {};
-  filtradas.forEach(e => { mapa[e.Colaborador + "|" + e.Data] = e; });
 
-  function labelData(d) {
-    const p = String(d).split("-"); // yyyy-MM-dd
-    return p.length === 3 ? p[2] + "/" + p[1] : d;
-  }
-  const TURNO_HR = { ABERTURA: ["08:00", "16:20"], INTERMEDIARIO: ["11:00", "19:20"], FECHAMENTO: ["15:40", "00:00"] };
-  const TURNO_NOME = { ABERTURA: "Abertura", INTERMEDIARIO: "Intermediário", FECHAMENTO: "Fechamento" };
-  function celula(e) {
-    if (!e) return `<td style="text-align:center;color:#9ca3af">-</td>`;
-    const folgaVal = (function () { for (const k in e) { if (normalize(k) === "FOLGA") return e[k]; } return e.Folga || ""; })();
-    if (normalize(folgaVal).indexOf("SIM") !== -1)
-      return `<td style="text-align:center;background:#dcfce7;color:#166534;font-weight:800">FOLGA</td>`;
-    const tn = normalize(e.Turno);
-    let ent = fmtHoraCurta(e.HorarioEntrada), sai = fmtHoraCurta(e.HorarioSaida);
-    if ((!ent || !sai) && TURNO_HR[tn]) {
-      if (!ent) ent = fmtHoraCurta(TURNO_HR[tn][0]);
-      if (!sai) sai = fmtHoraCurta(TURNO_HR[tn][1]);
-    }
-    const nome = TURNO_NOME[tn] || "";
-    if (ent && sai) {
-      return `<td style="text-align:center;background:#fff7ed;white-space:nowrap">
-        <div style="color:#9a3412;font-weight:800">${escapeHtml(ent)}–${escapeHtml(sai)}</div>
-        ${nome ? `<div style="font-size:10px;color:#c2410c">${escapeHtml(nome)}</div>` : ""}
-      </td>`;
-    }
-    return `<td style="text-align:center;background:#fff7ed;color:#9a3412;font-weight:800">${escapeHtml(nome || "Trabalha")}</td>`;
-  }
-
-  cont.innerHTML = `
-    <div class="table-wrap"><table>
-      <thead>
-        <tr><th>Colaborador</th>${datas.map(d => `<th style="text-align:center">${labelData(d)}<br><span style="font-weight:400;font-size:11px">${escapeHtml(diaSemana[d] || "")}</span></th>`).join("")}</tr>
-      </thead>
-      <tbody>
-        ${colabs.map(nome => `<tr><td style="font-weight:800;white-space:nowrap">${escapeHtml(nome)}</td>${datas.map(d => celula(mapa[nome + "|" + d])).join("")}</tr>`).join("")}
-      </tbody>
-    </table></div>`;
-}
-
-async function excluirEscala() {
-  const unidade = el("#escUnidade") ? el("#escUnidade").value.trim() : "";
-  const inicio = el("#escInicio") ? el("#escInicio").value : "";
-  const fim = el("#escFim") ? el("#escFim").value : "";
-  if (!unidade) { toast("Escolha a unidade (campo Unidade lá em cima).", "err"); return; }
-  const escopo = (inicio && fim) ? `do período ${inicio} a ${fim}` : "TODA a escala";
-  if (!confirm(`Excluir ${escopo} da unidade ${unidade}? Isso não pode ser desfeito.`)) return;
-  try {
-    const r = await api("excluirEscala", { unidade, inicio, fim });
-    toast(r.msg || "Escala excluída.", "ok");
-    if (typeof montarGradeEscala === "function") montarGradeEscala();
-  } catch (e) { toast(e.message, "err"); }
-}
-
-async function gerarEscala() {
-  const inicio = el("#escInicio").value;
-  const fim = el("#escFim").value;
-  if (!inicio || !fim) { toast("Informe início e fim da escala.", "err"); return; }
-
-  // Colaboradores marcados + turno, escala e folga de cada um.
-  const colaboradores = [];
-  document.querySelectorAll("#escChecklist .check").forEach(row => {
-    const cb = row.querySelector('input[type="checkbox"]');
-    const selTurno = row.querySelector(".turno-select");
-    const selEscala = row.querySelector(".escala-select");
-    const selFolga = row.querySelector(".folga-select");
-    if (cb && cb.checked) {
-      colaboradores.push({
-        nome: cb.value,
-        turno: selTurno ? selTurno.value : "INTERMEDIARIO",
-        escala: selEscala ? selEscala.value : "6X1",
-        folga: selFolga ? selFolga.value : "GIRA"
-      });
-    }
-  });
-
-  // Avulsos (um por linha), com o turno escolhido; escala 6x1 e folga girando.
-  const turnoAvulsos = el("#escAvulsosTurno") ? el("#escAvulsosTurno").value : "INTERMEDIARIO";
-  String(el("#escAvulsos").value || "").split(/\r?\n/).forEach(n => {
-    n = n.trim();
-    if (n) colaboradores.push({ nome: n, turno: turnoAvulsos, escala: "6X1", folga: "GIRA" });
-  });
-
-  if (!colaboradores.length) { toast("Selecione ao menos um colaborador.", "err"); return; }
-
-  const dados = {
-    unidade: el("#escUnidade").value,
-    tipo: el("#escTipo").value,
-    inicio: inicio,
-    fim: fim,
-    turnos: {
-      ABERTURA: { entrada: el("#tAberturaEntrada").value, saida: el("#tAberturaSaida").value },
-      INTERMEDIARIO: { entrada: el("#tIntermEntrada").value, saida: el("#tIntermSaida").value },
-      FECHAMENTO: { entrada: el("#tFechamentoEntrada").value, saida: el("#tFechamentoSaida").value }
-    },
-    colaboradores: colaboradores,
-    observacoes: el("#escObs").value
-  };
-
-  try {
-    const r = await api("gerarEscala", dados);
-    toast(r.msg, "ok");
-    await carregarEscalas();
-  } catch (e) {
-    toast(e.message, "err");
-  }
-}
 
 /* ===================== PONTO ===================== */
 
@@ -3996,109 +3881,12 @@ async function docListar(nome, aviso) {
   }
 }
 
-async function gerarPonto() {
-  const unidade = el("#cfUnidade").value.trim();
-  const colaborador = el("#cfColab") ? el("#cfColab").value.trim() : "";
-  const mes = el("#cfMes").value;
-  const ano = el("#cfAno").value;
-  if (!unidade) { toast("Escolha a unidade.", "err"); return; }
-  el("#cfResultado").innerHTML = `<div class="loading">Gerando o arquivo... pode levar alguns segundos.</div>`;
-  try {
-    const r = await api("gerarControleFrequencia", { unidade, colaborador, mes, ano });
-    el("#cfResultado").innerHTML = `<div class="msg ok">${escapeHtml(r.msg || "Gerado.")}<br>
-      <a href="${escapeHtml(r.url)}" target="_blank" rel="noopener" style="font-weight:600">Abrir o Controle de Frequência ↗</a></div>`;
-    if (r.url) window.open(r.url, "_blank");
-  } catch (e) {
-    el("#cfResultado").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
-  }
-}
 
 // Filtra o datalist de colaboradores do Ponto pela unidade escolhida
-function cfFiltrarColab() {
-  const u = normalize(el("#cfUnidade") ? el("#cfUnidade").value : "");
-  const nomes = (STATE.init.colaboradores || [])
-    .filter(c => !u || normalize(c.Unidade) === u)
-    .map(c => c.Nome).filter(Boolean).sort();
-  setDatalist("dl-cf-colab", nomes);
-}
 
-async function renderPonto() {
-  const nomesColab = STATE.init.colaboradores.map(c => c.Nome);
-  setMain(`
-    <div class="page-title"><div><h2>Ponto</h2><p>Registro de entrada, saída e intervalos.</p></div></div>
 
-    <div class="card">
-      <h3>🖨️ Gerar Controle de Frequência (para imprimir)</h3>
-      <p class="muted">Escolha a unidade. Deixe o colaborador em branco para gerar a unidade toda (uma aba por pessoa), ou escolha um colaborador para gerar só o dele. FOLGA vem da escala do mês.</p>
-      <div class="grid g2">
-        <div class="form-row"><label>Unidade</label><input id="cfUnidade" type="text" list="dl-unidades" autocomplete="off" oninput="cfFiltrarColab()" onchange="cfFiltrarColab()"></div>
-        <div class="form-row"><label>Colaborador <span class="muted">(opcional — vazio = unidade toda)</span></label><input id="cfColab" type="text" list="dl-cf-colab" autocomplete="off" placeholder="Escolha a unidade primeiro"></div>
-      </div>
-      <div class="grid g2">
-        <div class="form-row"><label>Mês</label>
-          <select id="cfMes">${["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"].map((m,i)=>`<option value="${i+1}" ${i===new Date().getMonth()?"selected":""}>${m}</option>`).join("")}</select>
-        </div>
-        <div class="form-row"><label>Ano</label><input id="cfAno" type="number" value="${new Date().getFullYear()}"></div>
-      </div>
-      <datalist id="dl-cf-colab"></datalist>
-      <div class="actions"><button class="btn btn-primary" onclick="gerarPonto()">Gerar Controle de Frequência</button></div>
-      <div id="cfResultado" style="margin-top:10px"></div>
-    </div>
 
-    <div class="card">
-      <h3>Espelho de Ponto</h3>
-      <div id="tabelaPonto"><div class="loading">Carregando...</div></div>
-    </div>
-  `);
-  await carregarEspelhoPonto();
-}
 
-function obterLocalizacao() {
-  return new Promise((resolve) => {
-    if (!navigator.geolocation) { resolve(null); return; }
-    navigator.geolocation.getCurrentPosition(
-      pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => resolve(null),
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
-    );
-  });
-}
-
-async function baterPonto() {
-  const colaborador = el("#pontoColaborador").value.trim();
-  if (!colaborador) { toast("Selecione o colaborador.", "err"); return; }
-
-  toast("Obtendo localização...", "info");
-  const loc = await obterLocalizacao();
-  if (!loc) toast("Sem localização (permissão negada ou indisponível). Ponto será registrado sem GPS.", "warn");
-
-  const dados = {
-    Colaborador: colaborador,
-    Unidade: el("#pontoUnidade").value.trim(),
-    TipoBatida: el("#pontoTipo").value,
-    Dispositivo: navigator.userAgent,
-    Latitude: loc ? loc.lat : "",
-    Longitude: loc ? loc.lng : ""
-  };
-
-  try {
-    const r = await api("registrarPonto", dados);
-    toast(r.msg, "ok");
-    await carregarEspelhoPonto();
-  } catch (e) {
-    toast(e.message, "err");
-  }
-}
-
-async function carregarEspelhoPonto() {
-  try {
-    const r = await api("listarEspelhoPonto");
-    document.getElementById("tabelaPonto").innerHTML =
-      tabelaComBadge(r.espelho, ["Data", "Colaborador", "Unidade", "Batidas", "Alertas"]);
-  } catch (e) {
-    document.getElementById("tabelaPonto").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
-  }
-}
 
 /* ===================== ASSISTENTE IA ===================== */
 

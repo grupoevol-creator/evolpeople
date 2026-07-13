@@ -18,7 +18,9 @@ const STATE = {
   user: null,
   init: { unidades: [], cargos: [], colaboradores: [], salarios: [] },
   pagina: "dashboard",
-  cache: {} // cache simples por módulo: { colaboradores: [...], vagas: [...] }
+  cache: {}, // cache simples por módulo: { colaboradores: [...], vagas: [...] }
+  cacheTodos: {}, // lista completa (antes do filtro)
+  filtroModulo: { unidade: "", busca: "" }
 };
 
 /* ===================== JSONP (chamada ao backend) ===================== */
@@ -467,6 +469,7 @@ async function renderHeadcount() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
   try {
     const r = await api("listarHeadcount", {});
+    HC.geradoEm = r.geradoEm || "";
     HC.todos = (r.headcount || []).map(c => Object.assign({}, c, {
       Nome: c.Nome || c["Funcionário"] || c.Funcionario || c.Colaborador || c.NOME || "",
       Unidade: c.Unidade || c.Operacao || c["Operação"] || c.Lotacao || "",
@@ -498,7 +501,7 @@ function hcRender() {
   const unis = [...new Set(HC.todos.map(c => String(c.Unidade || "").trim()).filter(Boolean))].sort();
   setMain(`
     <div class="page-title">
-      <div><h2>Headcount</h2><p>Busque por nome e/ou filtre por unidade, marque o colaborador e veja os detalhes. <span class="muted" style="font-size:12px">Atualizado em ${new Date().toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}</span></p></div>
+      <div><h2>Headcount</h2><p>Busque por nome e/ou filtre por unidade, marque o colaborador e veja os detalhes.${HC.geradoEm ? ` <span class="muted" style="font-size:12px">Atualizado em ${escapeHtml(HC.geradoEm)}</span>` : ""}</p></div>
       <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:flex-end">
         <div style="min-width:220px">
           <label>Buscar por nome</label>
@@ -1117,6 +1120,19 @@ async function trnCarregarTabela() {
 
 /* ===================== DASHBOARD ===================== */
 
+// Salva o quadro ideal de uma unidade direto do dashboard
+async function salvarQuadroIdeal(unidade, i) {
+  const campo = document.getElementById("qi_" + i);
+  if (!campo) return;
+  const valor = Number(campo.value);
+  if (!valor || valor <= 0) return toast("Informe quantas pessoas o quadro ideal dessa unidade tem.", "err");
+  try {
+    const r = await api("salvarQuadro", { Unidade: unidade, QuadroIdeal: valor });
+    toast(r.msg || "Quadro ideal salvo.", "ok");
+    await renderDashboard();
+  } catch (e) { toast(e.message, "err"); }
+}
+
 function tabelaIndicadoresMensais(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum indicador lançado ainda. Vá em "Indicadores" e cadastre o mês, admissões e desligamentos por unidade.</div>`;
   return `<div class="table-wrap"><table>
@@ -1326,6 +1342,29 @@ async function renderDashboard(unidade) {
         <h3>🔄 Turnover por Unidade <span class="muted" style="font-weight:400;font-size:12px">(mês atual — admissões/desligamentos automáticos)</span></h3>
         ${tabelaTurnover(dash.turnoverAuto || [])}
       </div>
+    </div>
+
+    <div class="card">
+      <h3>👥 Quadro Ideal x Quadro Real <span class="muted" style="font-weight:400;font-size:12px">(edite o ideal direto aqui)</span></h3>
+      <div class="grid g4">
+        <div class="kpi"><small>Quadro Ideal (total)</small><strong>${(dash.quadroTotal && dash.quadroTotal.Ideal) || 0}</strong></div>
+        <div class="kpi"><small>Quadro Real (ativos)</small><strong>${(dash.quadroTotal && dash.quadroTotal.Real) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:${(dash.quadroTotal && dash.quadroTotal.Gap) < 0 ? "var(--warn)" : "var(--info)"}"><small>Diferença</small><strong>${(dash.quadroTotal && dash.quadroTotal.Gap) > 0 ? "+" : ""}${(dash.quadroTotal && dash.quadroTotal.Gap) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--laranja)"><small>Cobertura</small><strong>${(dash.quadroTotal && dash.quadroTotal.Cobertura) || 0}%</strong></div>
+      </div>
+      ${(dash.quadroPorUnidade && dash.quadroPorUnidade.length)
+        ? `<div class="table-wrap" style="margin-top:12px"><table>
+            <thead><tr><th>Unidade</th><th style="width:130px">Quadro Ideal</th><th>Quadro Real</th><th>Diferença</th><th>Cobertura</th><th style="width:1%">Salvar</th></tr></thead>
+            <tbody>${dash.quadroPorUnidade.map((q, i) => `<tr>
+              <td style="font-weight:600">${escapeHtml(q.Unidade)}</td>
+              <td><input type="number" min="0" id="qi_${i}" value="${escapeHtml(q.QuadroIdeal || "")}" placeholder="—" style="width:90px;padding:4px 6px"></td>
+              <td>${escapeHtml(q.QuadroReal)}</td>
+              <td><span class="badge ${q.QuadroIdeal === 0 ? "" : (q.Gap < 0 ? "warn" : (q.Gap > 0 ? "info" : "ok"))}">${escapeHtml(q.Situacao)}</span></td>
+              <td>${q.QuadroIdeal ? `<span class="badge ${q.Cobertura >= 100 ? "ok" : (q.Cobertura >= 85 ? "warn" : "bad")}">${escapeHtml(q.Cobertura)}%</span>` : "—"}</td>
+              <td><button class="btn btn-primary" style="padding:4px 10px;font-size:12px" onclick="salvarQuadroIdeal('${escapeHtml(q.Unidade)}', ${i})">💾</button></td>
+            </tr>`).join("")}</tbody>
+          </table></div>`
+        : `<div class="empty">Nenhuma unidade encontrada.</div>`}
     </div>
 
     <div class="card">
@@ -3325,6 +3364,8 @@ function validarCampos(fields) {
 async function renderModulo(key) {
   const cfg = MODULES[key];
   STATE.editModulo = null;
+  STATE.filtroModulo = { unidade: "", busca: "" };
+  const temFiltro = key === "colaboradores";
   setMain(`
     <div class="page-title">
       <div><h2>${escapeHtml(cfg.label)}</h2>${cfg.note ? `<p>${escapeHtml(cfg.note)}</p>` : ""}</div>
@@ -3346,10 +3387,49 @@ async function renderModulo(key) {
 
     <div class="card">
       <h3>Registros</h3>
+      ${temFiltro ? `
+      <div class="grid g2" style="margin-bottom:12px">
+        <div class="form-row">
+          <label>Filtrar por Unidade</label>
+          <select id="fmUnidade" onchange="filtrarModulo('${key}')">
+            <option value="">Todas as unidades</option>
+            ${(STATE.init.unidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Buscar por nome</label>
+          <input id="fmBusca" type="text" placeholder="Digite o nome..." oninput="filtrarModulo('${key}')">
+        </div>
+      </div>
+      <div id="fmContagem" class="muted" style="font-size:13px;margin-bottom:8px"></div>` : ""}
       <div id="tabelaModulo"><div class="loading">Carregando...</div></div>
     </div>
   `);
   await carregarTabelaModulo(key);
+}
+
+// Filtra a tabela de colaboradores por unidade e/ou nome
+function filtrarModulo(key) {
+  const uni = el("#fmUnidade") ? el("#fmUnidade").value : "";
+  const busca = el("#fmBusca") ? el("#fmBusca").value : "";
+  STATE.filtroModulo = { unidade: uni, busca: busca };
+  aplicarFiltroModulo(key);
+}
+
+function aplicarFiltroModulo(key) {
+  const cfg = MODULES[key];
+  const todos = STATE.cacheTodos[key] || [];
+  const f = STATE.filtroModulo || { unidade: "", busca: "" };
+  const bu = normalize(f.busca);
+  const linhas = todos.filter(l => {
+    if (f.unidade && normalize(valorCampoColab(l, "Unidade")) !== normalize(f.unidade)) return false;
+    if (bu && normalize(valorCampoColab(l, "Nome")).indexOf(bu) === -1) return false;
+    return true;
+  });
+  STATE.cache[key] = linhas;
+  const cont = document.getElementById("fmContagem");
+  if (cont) cont.textContent = `Mostrando ${linhas.length} de ${todos.length} colaboradores.`;
+  document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
 }
 
 async function carregarTabelaModulo(key) {
@@ -3357,20 +3437,15 @@ async function carregarTabelaModulo(key) {
   try {
     let linhas;
     if (key === "colaboradores") {
-      // Usa os dados já traduzidos (Função, salário resolvido) em vez das colunas cruas.
-      const r = await api("listarHeadcount");
-      linhas = (r.headcount || []).map(c => ({
-        Nome: c.Nome,
-        CPF: c.CPF,
-        Unidade: c.Unidade,
-        Cargo: c.Cargo || c.Funcao,
-        SalarioTotal: c.Salario,
-        Status: c.Status
-      }));
+      // Linha COMPLETA (todas as colunas) — necessário para o ✏️ abrir preenchido.
+      const r = await api("listarColaboradores");
+      linhas = r.colaboradores || [];
     } else {
       const r = await api(cfg.listAction);
       linhas = r[cfg.listKey] || [];
     }
+    STATE.cacheTodos[key] = linhas;
+    if (key === "colaboradores") { aplicarFiltroModulo(key); return; }
     STATE.cache[key] = linhas;
     document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
   } catch (e) {
@@ -3442,7 +3517,7 @@ function tabelaModuloHtml(key, linhas, colunas) {
         <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}${editavel ? '<th style="width:1%">Ações</th>' : ""}</tr></thead>
         <tbody>
           ${linhas.map((l, i) => `<tr>
-            ${colunas.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}
+            ${colunas.map(c => `<td>${formatarCelula(c, key === "colaboradores" ? valorCampoColab(l, c) : l[c])}</td>`).join("")}
             ${editavel ? `<td style="white-space:nowrap;text-align:right">
               <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px" title="Editar" onclick="editarRegistroModulo('${key}',${i})">✏️</button>
               <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px;color:#b91c1c" title="Excluir" onclick="excluirRegistroModulo('${key}',${i})">🗑️</button>

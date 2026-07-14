@@ -263,6 +263,8 @@ async function carregarInit() {
       Nome: c.Nome || c["Funcionário"] || c.Funcionario || c.Colaborador || c.NOME || "",
       Unidade: c.Unidade || c.Operacao || c["Operação"] || c.Lotacao || "",
       Cargo: c.Cargo || c.Funcao || c["Função"] || c.CARGO || "",
+      Setor: c.Setor || c.SETOR || c.Departamento || "",
+      Status: c.Status || c.Situacao || c["Situação"] || "",
       Lider: c.Lider || c["Líder"] || ""
     }));
     STATE.init.salarios = r.salarios || [];
@@ -335,48 +337,55 @@ function setDatalist(id, valores) {
 /* ===================== NAVEGAÇÃO / SIDEBAR ===================== */
 
 const GRUPOS_NAV = [
-  { titulo: "Visão Geral", itens: [
+  { titulo: "Início", icone: "🏠", itens: [
     { key: "dashboard", label: "Dashboard" },
     { key: "agenda", label: "Agenda" },
     { key: "avisos", label: "Avisos" }
-  ] },
-  { titulo: "Pessoas", itens: [
+  ]},
+  { titulo: "Pessoas", icone: "👥", itens: [
     { key: "colaboradores", label: "Cadastro de Colaboradores" },
     { key: "headcount", label: "Headcount" },
-    { key: "cargos", label: "Cargos e Salários" },
-    { key: "unidades", label: "Unidades" },
-    { key: "lideranca", label: "Liderança" },
-    { key: "dossie", label: "Dossiê" },
-    { key: "documentos", label: "Documentos" }
+    { key: "dossie", label: "Dossiê" }
   ]},
-  { titulo: "Recrutamento", itens: [
-    { key: "vagas", label: "Recrutamento (Vagas)" },
+  { titulo: "Recrutamento", icone: "🎯", itens: [
+    { key: "vagas", label: "Vagas" },
     { key: "testerh", label: "Agendar Teste (RH)" },
-    { key: "testes", label: "Teste Prático (parecer do líder)" },
-    { key: "emteste", label: "Quem está testando" }
+    { key: "emteste", label: "Quem está testando" },
+    { key: "testes", label: "Teste Prático (líder)" }
   ]},
-  { titulo: "Gestão de Pessoas", itens: [
+  { titulo: "Desenvolvimento", icone: "📚", itens: [
     { key: "feedbacks", label: "Feedbacks" },
     { key: "experiencia", label: "Avaliação de Experiência" },
-    { key: "treinamentos", label: "Treinamentos" }
-  ]},
-  { titulo: "Desenvolvimento", itens: [
+    { key: "treinamentos", label: "Treinamentos" },
     { key: "universidade", label: "Universidade Evol" }
   ]},
-  { titulo: "Operações", itens: [
-    { key: "fardamento", label: "Fardamento / Estoque" },
-    { key: "entregas", label: "Entrega de Fardamento / EPI" },
-    { key: "variavel", label: "Variável da Liderança" },
+  { titulo: "Custos e CMO", icone: "💰", itens: [
+    { key: "cmoRelatorio", label: "Relatório de CMO" },
     { key: "custosMensais", label: "Custos do Mês" },
-    { key: "parametrosCMO", label: "Parâmetros do CMO" },
-    { key: "utensilios", label: "Desconto de Utensílios" },
-    { key: "valetransporte", label: "Vale Transporte (quem recebe)" },
+    { key: "variavel", label: "Variável da Liderança" },
+    { key: "utensilios", label: "Desconto de Utensílios e Produtos" },
+    { key: "valetransporte", label: "Vale Transporte" },
+    { key: "parametrosCMO", label: "Parâmetros do CMO" }
+  ]},
+  { titulo: "Indicadores", icone: "📊", itens: [
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "absenteismo", label: "Absenteísmo" },
     { key: "desligamentos", label: "Entrevista de Desligamento" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
-  { titulo: "Assistente", itens: [{ key: "assistente", label: "EVA (Assistente)" }] }
+  { titulo: "Fardamento e EPI", icone: "👕", itens: [
+    { key: "fardamento", label: "Estoque" },
+    { key: "entregas", label: "Entrega ao Colaborador" }
+  ]},
+  { titulo: "Configurações", icone: "⚙️", itens: [
+    { key: "cargos", label: "Cargos e Salários" },
+    { key: "unidades", label: "Unidades" },
+    { key: "lideranca", label: "Liderança" },
+    { key: "documentos", label: "Documentos" }
+  ]},
+  { titulo: "Assistente", icone: "🤖", itens: [
+    { key: "assistente", label: "EVA (Assistente)" }
+  ]}
 ];
 
 function permitido(key) {
@@ -386,13 +395,35 @@ function permitido(key) {
   return lista.indexOf(normalize(key)) !== -1;
 }
 
+// Abre/fecha um grupo do menu lateral
+function toggleGrupoNav(gi) {
+  if (!STATE.navAberto) STATE.navAberto = {};
+  const div = document.getElementById("navGrupo_" + gi);
+  if (!div) return;
+  const fechado = div.style.display === "none";
+  STATE.navAberto[gi] = fechado;
+  div.style.display = fechado ? "block" : "none";
+  const seta = div.previousElementSibling && div.previousElementSibling.querySelector("span:last-child");
+  if (seta) seta.style.transform = `rotate(${fechado ? "90" : "0"}deg)`;
+}
+
 function montarSidebar() {
-  const html = GRUPOS_NAV.map(grupo => {
+  const html = GRUPOS_NAV.map((grupo, gi) => {
     const itens = grupo.itens.filter(i => permitido(i.key));
     if (!itens.length) return "";
+    // grupo fica aberto se contém a tela atual, ou se o usuário abriu
+    const temAtual = itens.some(i => i.key === STATE.pagina);
+    const aberto = STATE.navAberto ? STATE.navAberto[gi] : undefined;
+    const mostrar = aberto !== undefined ? aberto : (temAtual || gi === 0);
     return `
-      <div class="nav-title">${escapeHtml(grupo.titulo)}</div>
-      ${itens.map(i => `<button class="nav" data-nav="${i.key}" onclick="navegar('${i.key}')">${escapeHtml(i.label)}</button>`).join("")}
+      <div class="nav-title" onclick="toggleGrupoNav(${gi})" style="cursor:pointer;display:flex;align-items:center;gap:6px;user-select:none">
+        <span style="font-size:14px">${grupo.icone || ""}</span>
+        <span style="flex:1">${escapeHtml(grupo.titulo)}</span>
+        <span style="font-size:10px;opacity:.6;transition:transform .15s;transform:rotate(${mostrar ? "90" : "0"}deg)">▶</span>
+      </div>
+      <div id="navGrupo_${gi}" style="display:${mostrar ? "block" : "none"}">
+        ${itens.map(i => `<button class="nav" data-nav="${i.key}" onclick="navegar('${i.key}')">${escapeHtml(i.label)}</button>`).join("")}
+      </div>
     `;
   }).join("");
   document.getElementById("sidebar").innerHTML = html;
@@ -416,6 +447,7 @@ async function navegar(key) {
     if (key === "testes") return renderTestePratico();
     if (key === "testerh") return renderTesteRH();
     if (key === "valetransporte") return renderValeTransporte();
+    if (key === "cmoRelatorio") return renderCmoRelatorio();
     if (key === "experiencia") return renderExperiencia();
     if (key === "feedbacks") return renderFeedback();
     if (key === "dossie") return renderDossie();
@@ -736,6 +768,147 @@ async function excluirTesteRH(i) {
     toast("Teste excluído.", "ok");
     await carregarTabelaTesteRH();
   } catch (e) { toast(e.message, "err"); }
+}
+
+/* ============ RELATÓRIO DE CMO ============ */
+async function renderCmoRelatorio() {
+  const hoje = new Date();
+  setMain(`
+    <div class="page-title"><div><h2>Relatório de CMO</h2><p>Custo de Mão de Obra completo — com memória de cálculo e origem dos dados.</p></div></div>
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row">
+          <label>Mês</label>
+          <select id="cmMes">
+            ${["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+              .map((m, i) => `<option value="${i + 1}" ${i === hoje.getMonth() ? "selected" : ""}>${m}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Ano</label>
+          <input id="cmAno" type="number" value="${hoje.getFullYear()}">
+        </div>
+        <div class="form-row" style="display:flex;align-items:flex-end">
+          <button class="btn btn-primary" onclick="gerarCmoRelatorio()" style="width:100%">📊 Gerar relatório</button>
+        </div>
+      </div>
+    </div>
+    <div id="cmConteudo"></div>
+  `);
+  await gerarCmoRelatorio();
+}
+
+async function gerarCmoRelatorio() {
+  const cont = document.getElementById("cmConteudo");
+  cont.innerHTML = `<div class="loading">Calculando CMO...</div>`;
+  let r;
+  try { r = await api("cmoRelatorio", { mes: el("#cmMes").value, ano: el("#cmAno").value }); }
+  catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
+
+  const p = r.periodo || {}, n = r.cmoNominal || {}, h = r.cmoHora || {}, f = r.cmoFaturamento || {}, m = r.memoria || {};
+  const lin = (rot, v, obs) => `<tr><td>${escapeHtml(rot)}${obs ? `<br><span class="muted" style="font-size:11px">${escapeHtml(obs)}</span>` : ""}</td><td style="text-align:right;font-weight:600">${fmtMoeda(v || 0)}</td></tr>`;
+
+  cont.innerHTML = `
+    ${(r.camposFaltantes && r.camposFaltantes.length) ? `
+    <div class="msg warn" style="font-size:13px">
+      <b>⚠️ Campos que não existem na sua base</b> (o cálculo segue sem eles):
+      <ul style="margin:6px 0 0;padding-left:18px">
+        ${r.camposFaltantes.map(x => `<li><b>${escapeHtml(x.campo)}</b> — ${escapeHtml(x.obs)}</li>`).join("")}
+      </ul>
+    </div>` : ""}
+
+    <div class="grid g4">
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>1️⃣ CMO NOMINAL</small><strong>${fmtMoeda(n.valor)}</strong><span class="muted" style="font-size:11px;display:block">por colaborador · ${escapeHtml(n.colaboradores || 0)} ativos</span></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>2️⃣ CMO POR HORA</small><strong>${fmtMoeda(h.valor)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(h.horas || 0)}h no período</span></div>
+      <div class="kpi"><small>3️⃣ CUSTO TOTAL</small><strong>${fmtMoeda(n.custoTotal)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(p.nomeMes)}/${escapeHtml(p.ano)}</span></div>
+      <div class="kpi" style="border-left-color:${(f.percentual || 0) > 30 ? "var(--warn)" : "var(--info)"}"><small>4️⃣ CMO % DO FATURAMENTO</small><strong>${escapeHtml(f.percentual || 0)}%</strong><span class="muted" style="font-size:11px;display:block">fat. ${fmtMoeda(f.faturamento)}</span></div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🧮 Memória de Cálculo</h3>
+        <div class="table-wrap"><table><tbody>
+          <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">REMUNERAÇÃO</td></tr>
+          ${lin("Salários (base + complementar)", m.salarios)}
+          ${lin("Adicional noturno", m.adicNoturno)}
+          ${lin("Horas extras", m.horasExtras)}
+          ${lin("Insalubridade", m.insalubridade)}
+          ${lin("Periculosidade", m.periculosidade)}
+          ${lin("Comissões", m.comissoes)}
+          ${lin("Bonificações (variável liderança)", m.bonificacoes)}
+          <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">ENCARGOS PATRONAIS</td></tr>
+          ${lin("FGTS", m.fgts, `${(r.parametros || {}).FGTS_PCT}% — exceto PJ`)}
+          ${lin("INSS patronal", m.inssPatronal, `${(r.parametros || {}).INSS_PATRONAL_PCT}% — exceto PJ`)}
+          ${lin("RAT / FAP", m.ratFap, `${(r.parametros || {}).RAT_FAP_PCT}%`)}
+          ${lin("Terceiros / Sistema S", m.terceiros, `${(r.parametros || {}).TERCEIROS_PCT}%`)}
+          <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">BENEFÍCIOS</td></tr>
+          ${lin("Vale transporte (custo empresa)", m.vt)}
+          ${lin("Refeição", m.refeicao)}
+          ${lin("Plano de saúde", m.saude)}
+          ${lin("Plano odontológico", m.odonto)}
+          ${lin("Salário família", m.salFamilia)}
+          <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">PROVISÕES</td></tr>
+          ${lin("Férias (1/12 + 1/3)", m.ferias)}
+          ${lin("13º salário", m.decimo)}
+          ${lin("Rescisão", m.rescisao)}
+          <tr style="border-top:3px solid #1e293b"><td style="font-weight:800;font-size:15px">CUSTO TOTAL DA MÃO DE OBRA</td><td style="text-align:right;font-weight:800;font-size:16px;color:#b45309">${fmtMoeda(m.total)}</td></tr>
+        </tbody></table></div>
+      </div>
+
+      <div class="card">
+        <h3>📐 Fórmulas</h3>
+        <div style="font-size:13px;line-height:1.9;color:#475569">
+          <p><b>1️⃣ CMO Nominal</b><br>
+          <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(n.formula)}</code><br>
+          ${fmtMoeda(n.custoTotal)} ÷ ${escapeHtml(n.colaboradores)} = <b>${fmtMoeda(n.valor)}</b></p>
+
+          <p><b>2️⃣ CMO por Hora</b><br>
+          <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(h.formula)}</code><br>
+          ${fmtMoeda(h.custoTotal)} ÷ ${escapeHtml(h.horas)}h = <b>${fmtMoeda(h.valor)}/hora</b></p>
+
+          <p><b>4️⃣ CMO % do Faturamento</b><br>
+          <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(f.formula)}</code><br>
+          (${fmtMoeda(f.custo)} ÷ ${fmtMoeda(f.faturamento)}) × 100 = <b>${escapeHtml(f.percentual)}%</b></p>
+        </div>
+
+        <h4 style="margin:16px 0 8px">5️⃣ CMO % por Centro de Custo</h4>
+        ${(r.porCentroCusto && r.porCentroCusto.length)
+          ? `<div class="table-wrap"><table>
+              <thead><tr><th>Centro de Custo</th><th>Colab.</th><th>Custo da equipe</th><th>Custo total</th><th>%</th></tr></thead>
+              <tbody>${r.porCentroCusto.map(c => `<tr>
+                <td style="font-weight:600">${escapeHtml(c.CentroCusto)}</td>
+                <td>${escapeHtml(c.Colaboradores)}</td>
+                <td>${fmtMoeda(c.CustoEquipe)}</td>
+                <td>${fmtMoeda(c.CustoTotalCentro)}</td>
+                <td><span class="badge ${c.Percentual > 80 ? "warn" : "ok"}">${escapeHtml(c.Percentual)}%</span></td>
+              </tr>`).join("")}</tbody>
+            </table></div>`
+          : `<div class="empty">Sem centros de custo.</div>`}
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>3️⃣ CMO por Colaborador <span class="muted" style="font-weight:400;font-size:12px">(média geral: ${fmtMoeda(r.mediaGeral)})</span></h3>
+      <div class="table-wrap" style="max-height:520px;overflow-y:auto"><table>
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Departamento</th><th>Centro de Custo</th><th>Contrato</th><th>Dias</th><th>Remuneração</th><th>Encargos</th><th>Benefícios</th><th>Provisões</th><th>Custo Total</th><th>R$/hora</th></tr></thead>
+        <tbody>${(r.porColaborador || []).map(c => `<tr>
+          <td style="font-weight:600">${escapeHtml(c.Nome)}</td>
+          <td>${escapeHtml(c.Cargo || "—")}</td>
+          <td>${escapeHtml(c.Departamento)}</td>
+          <td>${escapeHtml(c.CentroCusto)}</td>
+          <td><span class="badge" style="background:${c.Contrato === "PJ" ? "#7c3aed" : "#0369a1"};color:#fff;font-size:10px">${escapeHtml(c.Contrato)}</span></td>
+          <td>${escapeHtml(c.DiasTrabalhados)}${c.Proporcao < 100 ? `<br><span class="muted" style="font-size:10px">${escapeHtml(c.Proporcao)}%</span>` : ""}</td>
+          <td>${fmtMoeda(c.Remuneracao)}</td>
+          <td>${fmtMoeda(c.Encargos)}</td>
+          <td>${fmtMoeda(c.Beneficios)}</td>
+          <td>${fmtMoeda(c.Provisoes)}</td>
+          <td style="font-weight:700">${fmtMoeda(c.CustoTotal)}</td>
+          <td>${fmtMoeda(c.CustoHora)}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>
+      <p class="muted" style="font-size:12px;margin-top:8px">Admitidos/desligados no mês entram <b>proporcional aos dias</b>. Férias e afastados <b>continuam no custo</b>. Desligados antes do período são ignorados.</p>
+    </div>
+  `;
 }
 
 /* ============ VALE TRANSPORTE (marcar em massa) ============ */
@@ -1304,23 +1477,47 @@ function tabelaIndicadores(linhas) {
 
 // Abas do dashboard (gestão à vista — uma seção de cada vez, sem poluição)
 function ABA(nome) { return (STATE.dashAba || "visao") === nome; }
+async function atualizarDashboard() {
+  STATE.dashCache = null;
+  try {
+    toggleLoading(true);
+    const uni = STATE.dashUnidade || "";
+    const r = await api("dashboard", Object.assign({ semCache: true }, uni ? { unidade: uni } : {}));
+    STATE.dashCache = r;
+    STATE.dashCacheUni = uni;
+    toast("Dashboard atualizado.", "ok");
+    await renderDashboard(undefined, true);
+  } catch (e) { toast(e.message, "err"); }
+  finally { toggleLoading(false); }
+}
+
+// Troca de aba: NÃO recarrega do servidor, só redesenha (muito mais rápido)
 function dashAba(nome) {
   STATE.dashAba = nome;
-  renderDashboard(STATE.dashUnidade || "");
+  renderDashboard(undefined, true); // usa o cache
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-async function renderDashboard(unidade) {
+async function renderDashboard(unidade, usarCache) {
   if (unidade !== undefined) STATE.dashUnidade = unidade;
-  setMain(`<div class="loading">Carregando dashboard...</div>`);
+
+  // Se já temos os dados e é só troca de aba, redesenha na hora (sem ir ao servidor)
   let r;
-  try {
-    r = await api("dashboard", unidade ? { unidade: unidade } : {});
-  } catch (e) {
-    setMain(`<div class="page-title"><div><h2>Dashboard</h2></div></div>
-      <div class="card"><div class="msg err">Não consegui carregar o dashboard: ${escapeHtml(e.message)}</div>
-      <p class="muted">Se aparecer "Ação desconhecida" ou demorar muito, publique a Nova versão do Code.gs no Apps Script.</p></div>`);
-    return;
+  if (usarCache && STATE.dashCache && STATE.dashCacheUni === (STATE.dashUnidade || "")) {
+    r = STATE.dashCache;
+  } else {
+    setMain(`<div class="loading">Carregando dashboard...</div>`);
+    try {
+      const uni = STATE.dashUnidade || "";
+      r = await api("dashboard", uni ? { unidade: uni } : {});
+      STATE.dashCache = r;
+      STATE.dashCacheUni = uni;
+    } catch (e) {
+      setMain(`<div class="page-title"><div><h2>Dashboard</h2></div></div>
+        <div class="card"><div class="msg err">Não consegui carregar o dashboard: ${escapeHtml(e.message)}</div>
+        <p class="muted">Se aparecer "Ação desconhecida" ou demorar muito, publique a Nova versão do Code.gs no Apps Script.</p></div>`);
+      return;
+    }
   }
   const dash = r.dashboard || {};
   const k = dash.kpis || {};
@@ -1339,6 +1536,7 @@ async function renderDashboard(unidade) {
       <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.${dash.geradoEm ? ` <span class="muted" style="font-size:12px">Atualizado em ${escapeHtml(dash.geradoEm)}</span>` : ""}</p></div>
       <div style="min-width:230px">
         <label>Filtrar por Unidade</label>
+        <button class="btn btn-secondary" onclick="atualizarDashboard()" style="padding:6px 10px;font-size:12px;margin-bottom:6px" title="Recalcular agora">🔄 Atualizar</button>
         <select onchange="renderDashboard(this.value)">
           <option value="">Todas as unidades</option>
           ${unis.map(u => `<option value="${escapeHtml(u)}" ${normalize(u) === normalize(sel) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
@@ -1360,8 +1558,6 @@ async function renderDashboard(unidade) {
 
     <div class="grid g4">
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
-      <div class="kpi"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong></div>
-      <div class="kpi"><small>Custo Projetado</small><strong>${fmtMoeda(k.custoProjetado)}</strong></div>
       <div class="kpi" style="border-left-color:var(--laranja);min-width:280px">
         <small>💰 FOLHA REAL (MÊS)</small>
         <strong>${fmtMoeda(k.folhaReal || k.folhaTotal)}</strong>
@@ -1372,15 +1568,16 @@ async function renderDashboard(unidade) {
           <div style="display:flex;justify-content:space-between;color:#0369a1"><span>(+) Variável liderança</span><span>+ ${fmtMoeda(k.variavelMes || 0)}</span></div>
         </div>
       </div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>SLA Médio de Fechamento</small><strong>${k.slaMedioGeral || 0} dias</strong></div>
-      <div class="kpi"><small>Testes no Mês</small><strong>${k.testesMes}</strong></div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>Candidatos em Teste (vagas)</small><strong>${k.candidatosEmTeste || 0}</strong></div>
-      <div class="kpi"><small>Aniversariantes do Mês</small><strong>${k.aniversariantes}</strong></div>
-      <div class="kpi" style="border-left-color:var(--warn)"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong></div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>Integrados no Mês</small><strong>${k.integradosMes || 0}</strong></div>
-      <div class="kpi"><small>Itens em Estoque Crítico</small><strong>${k.estoqueCritico}</strong></div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>Treinamentos no Mês</small><strong>${k.treinamentosMes || 0}</strong></div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>Horas de Treinamento (mês)</small><strong>${k.horasTreinMes || 0}h</strong></div>
+      <div class="kpi" style="border-left-color:var(--info)"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong><span class="muted" style="font-size:11px;display:block">SLA médio: ${k.slaMedio || 0} dias</span></div>
+      <div class="kpi"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong><span class="muted" style="font-size:11px;display:block">${k.integradosMes || 0} integrados no mês</span></div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0;font-size:12px">
+      ${k.aniversariantes ? `<span class="badge info">🎂 ${k.aniversariantes} aniversariante(s)</span>` : ""}
+      ${k.candidatosEmTeste ? `<span class="badge info">🧪 ${k.candidatosEmTeste} em teste</span>` : ""}
+      ${k.testesMes ? `<span class="badge">📋 ${k.testesMes} teste(s) no mês</span>` : ""}
+      ${k.treinamentosMes ? `<span class="badge">📚 ${k.treinamentosMes} treinamento(s) · ${k.horasTreinMes || 0}h</span>` : ""}
+      ${k.estoqueCritico ? `<span class="badge bad">📦 ${k.estoqueCritico} item(ns) em estoque crítico</span>` : ""}
     </div>
 
     <div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid #e2e8f0;margin:20px 0 18px">
@@ -2368,20 +2565,90 @@ async function carregarExpTabela() {
 
 async function renderDossie() {
   setMain(`
-    <div class="page-title"><div><h2>Dossiê do Colaborador</h2><p>Histórico completo: ocorrências, avaliações, feedbacks e treinamentos.</p></div></div>
+    <div class="page-title"><div><h2>Dossiê do Colaborador</h2><p>Histórico completo: ocorrências, avaliações, feedbacks, treinamentos, fardamentos e EPIs.</p></div></div>
+
     <div class="card">
-      <div class="actions">
-        <input id="dsColab" type="text" list="dl-colaboradores" placeholder="Selecione o colaborador" style="flex:1">
-        <button class="btn btn-primary" onclick="abrirDossie()">Abrir dossiê</button>
+      <div class="grid g3">
+        <div class="form-row">
+          <label>Filtrar por Unidade</label>
+          <select id="dsUnidade" onchange="dsFiltrar()">
+            <option value="">Todas as unidades</option>
+            ${(STATE.init.unidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Filtrar por Setor</label>
+          <select id="dsSetor" onchange="dsFiltrar()">
+            <option value="">Todos os setores</option>
+            ${(STATE.init.setores || []).map(s => `<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Buscar por nome</label>
+          <input id="dsBusca" type="text" placeholder="Digite o nome..." oninput="dsFiltrar()">
+        </div>
       </div>
+      <div id="dsContagem" class="muted" style="font-size:13px;margin:6px 0 10px"></div>
+      <div id="dsLista"></div>
     </div>
+
     <div id="dossieConteudo"></div>
   `);
+  dsFiltrar();
+}
+
+// Lista os colaboradores conforme os filtros — clique no nome abre o dossiê
+function dsFiltrar() {
+  const uni = el("#dsUnidade") ? el("#dsUnidade").value : "";
+  const setor = el("#dsSetor") ? el("#dsSetor").value : "";
+  const busca = normalize(el("#dsBusca") ? el("#dsBusca").value : "");
+
+  const todos = (STATE.init.colaboradores || []).filter(c => {
+    const st = normalize(c.Status || "");
+    return st.indexOf("DESLIG") === -1 && st.indexOf("DEMIT") === -1;
+  });
+
+  const lista = todos.filter(c => {
+    if (uni && !mesmaUnidade(c.Unidade, uni)) return false;
+    if (setor && normalize(c.Setor || "") !== normalize(setor)) return false;
+    if (busca && normalize(c.Nome || "").indexOf(busca) === -1) return false;
+    return true;
+  }).sort((a, b) => String(a.Nome || "").localeCompare(String(b.Nome || ""), "pt"));
+
+  const cont = document.getElementById("dsContagem");
+  if (cont) cont.textContent = `Mostrando ${lista.length} de ${todos.length} colaboradores. Clique no nome para abrir o dossiê.`;
+
+  const div = document.getElementById("dsLista");
+  if (!div) return;
+  div.innerHTML = lista.length
+    ? `<div class="table-wrap" style="max-height:420px;overflow-y:auto"><table>
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Setor</th><th>Unidade</th><th>Líder</th><th style="width:1%"></th></tr></thead>
+        <tbody>${lista.map(c => `<tr style="cursor:pointer" onclick="abrirDossieDe('${escapeHtml(String(c.Nome || "").replace(/'/g, "\\'"))}')">
+          <td style="font-weight:600">${escapeHtml(c.Nome || "—")}</td>
+          <td>${escapeHtml(c.Cargo || "—")}</td>
+          <td>${escapeHtml(c.Setor || "—")}</td>
+          <td>${escapeHtml(c.Unidade || "—")}</td>
+          <td>${escapeHtml(c.Lider || "—")}</td>
+          <td><button class="btn btn-primary" style="padding:4px 10px;font-size:12px">Abrir</button></td>
+        </tr>`).join("")}</tbody>
+      </table></div>`
+    : `<div class="empty">Nenhum colaborador encontrado com esses filtros.</div>`;
+}
+
+// Abre o dossiê de um colaborador específico (clique na lista)
+async function abrirDossieDe(nome) {
+  await carregarDossie(nome);
+  const alvo = document.getElementById("dossieConteudo");
+  if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 async function abrirDossie() {
-  const nome = el("#dsColab").value.trim();
-  if (!nome) { toast("Selecione o colaborador.", "err"); return; }
+  const nome = (el("#dsBusca") ? el("#dsBusca").value : "").trim();
+  if (!nome) { toast("Escolha um colaborador na lista abaixo.", "err"); return; }
+  await carregarDossie(nome);
+}
+
+async function carregarDossie(nome) {
   const cont = document.getElementById("dossieConteudo");
   cont.innerHTML = `<div class="loading">Carregando dossiê...</div>`;
   let r;
@@ -3548,6 +3815,11 @@ const MODULES = {
     fields: [
       { name: "Chave", label: "Parâmetro", type: "select", required: true, options: [
         { v: "FGTS_PCT", l: "FGTS % (empresa paga)" },
+        { v: "INSS_PATRONAL_PCT", l: "INSS PATRONAL % (empresa paga)" },
+        { v: "RAT_FAP_PCT", l: "RAT/FAP % (acidente de trabalho)" },
+        { v: "TERCEIROS_PCT", l: "Terceiros / Sistema S %" },
+        { v: "DECIMO_PROV_PCT", l: "Provisão de 13º %" },
+        { v: "JORNADA_MENSAL_H", l: "Jornada mensal (horas)" },
         { v: "INSS_PCT", l: "INSS % (desconto do colaborador)" },
         { v: "VT_DESC_PCT", l: "Vale transporte — desconto %" },
         { v: "VT_VALOR_DIA", l: "Vale transporte — valor por dia (R$)" },
@@ -3590,21 +3862,25 @@ const MODULES = {
   },
 
   utensilios: {
-    label: "Desconto de Utensílios",
+    label: "Desconto de Utensílios e Produtos",
+    note: "Configure o desconto que incide sobre o COMPLEMENTAR do colaborador. Pode ser por unidade, cargo e mês.",
     filtros: ["Unidade"],
     listAction: "listarUtensilios", listKey: "utensilios",
     saveAction: "salvarUtensilio",
-    columns: ["Unidade", "Cargo", "Mes", "Ano", "Percentual", "Ativo"],
+    columns: ["Unidade", "Cargo", "Tipo", "Item", "Mes", "Ano", "Percentual", "Valor", "Ativo"],
     fields: [
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", hint: "Deixe vazio = vale para todas as unidades" },
-      { name: "Cargo", label: "Cargo / Função", type: "datalist", list: "dl-cargos", hint: "Deixe vazio = vale para todos os cargos" },
+      { name: "Tipo", label: "Tipo de desconto", type: "select", required: true, default: "Utensílio", options: ["Utensílio", "Produto"] },
+      { name: "Item", label: "Item / Descrição", type: "text", hint: "Ex.: Prato quebrado, Taça, Uniforme extra, Produto de limpeza" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", hint: "Deixe vazio = todas as unidades" },
+      { name: "Cargo", label: "Cargo / Função", type: "datalist", list: "dl-cargos", hint: "Deixe vazio = todos os cargos" },
       { name: "Mes", label: "Mês", type: "select", options: [
         { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
         { v: 5, l: "Maio" }, { v: 6, l: "Junho" }, { v: 7, l: "Julho" }, { v: 8, l: "Agosto" },
         { v: 9, l: "Setembro" }, { v: 10, l: "Outubro" }, { v: 11, l: "Novembro" }, { v: 12, l: "Dezembro" }
       ] },
       { name: "Ano", label: "Ano", type: "number" },
-      { name: "Percentual", label: "Percentual (%)", type: "number", step: 0.01, required: true, hint: "Ex.: 5 para 5%. Incide SÓ sobre o complementar." },
+      { name: "Percentual", label: "Percentual (%)", type: "number", step: 0.01, hint: "Ex.: 5 para 5% do complementar" },
+      { name: "Valor", label: "OU valor fixo (R$)", type: "moneyBR", hint: "Use se for um valor fixo em vez de percentual" },
       { name: "Ativo", label: "Ativo?", type: "select", options: ["Sim", "Não"], default: "Sim" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
@@ -3819,6 +4095,42 @@ function validarCampos(fields) {
   return true;
 }
 
+// Anexa um documento ao colaborador (vai pro Drive e aparece no Dossiê)
+async function anexarDocColab() {
+  const colab = (el("#docColab").value || "").trim();
+  const tipo = (el("#docTipo").value || "").trim();
+  const inp = el("#docArquivo");
+  const box = el("#docStatus");
+
+  if (!colab) return toast("Escolha o colaborador.", "err");
+  if (!inp || !inp.files || !inp.files[0]) return toast("Escolha o arquivo do documento.", "err");
+
+  const f = inp.files[0];
+  if (f.size > 15 * 1024 * 1024) return toast("Arquivo muito grande (máx. 15 MB).", "err");
+
+  if (box) { box.style.display = "block"; box.innerHTML = "⏳ Enviando documento..."; }
+  try {
+    toggleLoading(true);
+    const b64 = await fileToBase64(f);
+    const nomeArq = (tipo ? tipo + " - " : "") + f.name;
+    const up = await apiUpload("uploadDocumento", {
+      Colaborador: colab, colaborador: colab,
+      nomeArquivo: nomeArq, tipo: f.type || "application/pdf", base64: b64
+    });
+    if (box) {
+      box.innerHTML = up && up.url
+        ? `✅ <b>Documento anexado</b> ao dossiê de ${escapeHtml(colab)}. <a href="${escapeHtml(up.url)}" target="_blank" rel="noopener">📄 Abrir</a>`
+        : `✅ Documento enviado. Confira no <b>Dossiê</b> de ${escapeHtml(colab)}.`;
+    }
+    toast("Documento anexado ao dossiê.", "ok");
+    inp.value = "";
+    if (el("#docTipo")) el("#docTipo").value = "";
+  } catch (e) {
+    if (box) box.innerHTML = `<span style="color:#b91c1c">Não consegui enviar: ${escapeHtml(e.message)}</span>`;
+    toast(e.message, "err");
+  } finally { toggleLoading(false); }
+}
+
 async function renderModulo(key) {
   const cfg = MODULES[key];
   STATE.editModulo = null;
@@ -3843,6 +4155,45 @@ async function renderModulo(key) {
         <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
       </div>
     </div>
+
+    ${key === "colaboradores" ? `
+    <div class="card">
+      <h3>📎 Anexar Documentos do Colaborador</h3>
+      <p class="muted" style="font-size:13px;margin-bottom:10px">Contrato, RG, CPF, comprovante de residência, ASO, carteira de trabalho... Fica guardado no Drive e aparece no <b>Dossiê</b> da pessoa.</p>
+      <div class="grid g3">
+        <div class="form-row g2">
+          <label>Colaborador *</label>
+          <input id="docColab" type="text" list="dl-colaboradores" placeholder="Escolha o colaborador">
+        </div>
+        <div class="form-row">
+          <label>Tipo de documento</label>
+          <select id="docTipo">
+            <option value="">Selecione...</option>
+            <option>Contrato de trabalho</option>
+            <option>RG / CPF</option>
+            <option>Carteira de trabalho</option>
+            <option>Comprovante de residência</option>
+            <option>ASO (exame admissional)</option>
+            <option>ASO periódico</option>
+            <option>Certificado / Curso</option>
+            <option>Advertência</option>
+            <option>Termo de rescisão</option>
+            <option>Outro</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid g3">
+        <div class="form-row g2">
+          <label>Arquivo (PDF ou imagem)</label>
+          <input id="docArquivo" type="file" accept=".pdf,.doc,.docx,image/*">
+        </div>
+        <div class="form-row" style="display:flex;align-items:flex-end">
+          <button class="btn btn-primary" onclick="anexarDocColab()" style="width:100%">📎 Anexar documento</button>
+        </div>
+      </div>
+      <div id="docStatus" style="display:none;margin-top:10px;font-size:13px"></div>
+    </div>
+    ` : ""}
 
     <div class="card">
       <h3>Registros</h3>

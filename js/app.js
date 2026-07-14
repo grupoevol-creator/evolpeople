@@ -1590,6 +1590,55 @@ async function renderDashboard(unidade, usarCache) {
     ` : ""}
 
     ${ABA("recrutamento") ? `
+    <div class="card">
+      <h3>🪧 Vagas em Aberto por Motivo <span class="muted" style="font-weight:400;font-size:12px">(por que a vaga existe)</span></h3>
+      ${(() => {
+        const v = dash.vagasResumo || {};
+        const CORES = {
+          "Substituição": "#d97706",
+          "Substituição por Promoção": "#16a34a",
+          "Aumento de Quadro": "#0369a1",
+          "Quadro Ideal": "#7c3aed",
+          "Não informado": "#94a3b8"
+        };
+        return `
+        <div class="grid g4">
+          <div class="kpi"><small>Total em aberto</small><strong>${escapeHtml(v.total || 0)}</strong></div>
+          <div class="kpi" style="border-left-color:#d97706"><small>🔄 Substituição</small><strong>${escapeHtml(v.substituicao || 0)}</strong><span class="muted" style="font-size:11px;display:block">alguém saiu</span></div>
+          <div class="kpi" style="border-left-color:#0369a1"><small>📈 Aumento de Quadro</small><strong>${escapeHtml(v.aumento || 0)}</strong><span class="muted" style="font-size:11px;display:block">crescimento</span></div>
+          <div class="kpi" style="border-left-color:#7c3aed"><small>🎯 Quadro Ideal</small><strong>${escapeHtml(v.quadroIdeal || 0)}</strong><span class="muted" style="font-size:11px;display:block">completar o time</span></div>
+        </div>
+
+        ${(v.porMotivo && v.porMotivo.length) ? `
+        <h4 style="margin:14px 0 6px">Resumo por motivo</h4>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Motivo</th><th>Vagas</th><th>Custo mensal estimado</th><th>Unidades</th></tr></thead>
+          <tbody>${v.porMotivo.map(m => `<tr>
+            <td><span class="badge" style="background:${CORES[m.Motivo] || "#64748b"};color:#fff">${escapeHtml(m.Motivo)}</span></td>
+            <td style="font-weight:700">${escapeHtml(m.Qtd)}</td>
+            <td>${fmtMoeda(m.Custo)}</td>
+            <td class="muted" style="font-size:12px">${escapeHtml(m.Unidades || "—")}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>
+
+        <h4 style="margin:16px 0 6px">Detalhe das vagas</h4>
+        <div class="table-wrap"><table>
+          <thead><tr><th>Unidade</th><th>Cargo</th><th>Motivo</th><th>Substituindo</th><th>Urgência</th><th>Salário</th></tr></thead>
+          <tbody>${(v.lista || []).map(x => `<tr>
+            <td>${escapeHtml(x.Unidade || "—")}</td>
+            <td style="font-weight:600">${escapeHtml(x.Cargo)}</td>
+            <td><span class="badge" style="background:${CORES[x.Motivo] || "#64748b"};color:#fff;font-size:10px">${escapeHtml(x.Motivo)}</span></td>
+            <td>${escapeHtml(x.Substituido || "—")}</td>
+            <td>${x.Urgencia ? `<span class="badge ${normalize(x.Urgencia) === "CRITICA" ? "bad" : (normalize(x.Urgencia) === "ALTA" ? "warn" : "")}">${escapeHtml(x.Urgencia)}</span>` : "—"}</td>
+            <td>${fmtMoeda(x.Salario)}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>`
+        : `<div class="empty">Nenhuma vaga em aberto no momento. 🎉</div>`}`;
+      })()}
+    </div>
+    ` : ""}
+
+    ${ABA("recrutamento") ? `
     <div class="grid g2">
       <div class="card">
         <h3>⏱️ SLA de Vagas por Mês <span class="muted" style="font-weight:400;font-size:12px">(tempo médio de fechamento)</span></h3>

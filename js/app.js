@@ -377,12 +377,6 @@ const GRUPOS_NAV = [
     { key: "fardamento", label: "Estoque" },
     { key: "entregas", label: "Entrega ao Colaborador" }
   ]},
-  { titulo: "Configurações", icone: "⚙️", itens: [
-    { key: "cargos", label: "Cargos e Salários" },
-    { key: "unidades", label: "Unidades" },
-    { key: "lideranca", label: "Liderança" },
-    { key: "documentos", label: "Documentos" }
-  ]},
   { titulo: "Assistente", icone: "🤖", itens: [
     { key: "assistente", label: "EVA (Assistente)" }
   ]}

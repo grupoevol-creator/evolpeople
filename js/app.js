@@ -250,6 +250,7 @@ async function iniciarApp() {
 
   await carregarInit();
   montarSidebar();
+  carregarNotificacoes();
   navegar("dashboard");
   mostrarAvisosLogin();
 }
@@ -354,10 +355,14 @@ const GRUPOS_NAV = [
     { key: "testes", label: "Teste Prático (líder)" }
   ]},
   { titulo: "Desenvolvimento", icone: "📚", itens: [
+    { key: "carreira", label: "🎯 Plano de Carreira" },
+    { key: "universidade", label: "🎓 Universidade Evol" },
+    { key: "cargosDescricao", label: "Descrições de Cargo" },
+    { key: "competenciasColab", label: "Competências do Colaborador" },
+    { key: "promocoes", label: "Promoção Interna" },
     { key: "feedbacks", label: "Feedbacks" },
     { key: "experiencia", label: "Avaliação de Experiência" },
-    { key: "treinamentos", label: "Treinamentos" },
-    { key: "universidade", label: "Universidade Evol" }
+    { key: "treinamentos", label: "Treinamentos" }
   ]},
   { titulo: "Custos e CMO", icone: "💰", itens: [
     { key: "cmoRelatorio", label: "Relatório de CMO" },
@@ -442,6 +447,7 @@ async function navegar(key) {
     if (key === "testerh") return renderTesteRH();
     if (key === "valetransporte") return renderValeTransporte();
     if (key === "cmoRelatorio") return renderCmoRelatorio();
+    if (key === "carreira") return renderCarreira();
     if (key === "experiencia") return renderExperiencia();
     if (key === "feedbacks") return renderFeedback();
     if (key === "dossie") return renderDossie();
@@ -803,6 +809,16 @@ async function gerarCmoRelatorio() {
   const lin = (rot, v, obs) => `<tr><td>${escapeHtml(rot)}${obs ? `<br><span class="muted" style="font-size:11px">${escapeHtml(obs)}</span>` : ""}</td><td style="text-align:right;font-weight:600">${fmtMoeda(v || 0)}</td></tr>`;
 
   cont.innerHTML = `
+    ${(r.semSalario && r.semSalario.length) ? `
+    <div class="msg err" style="font-size:13px">
+      <b>🚨 ${r.semSalario.length} colaborador(es) SEM SALÁRIO cadastrado</b> — eles entram no CMO com custo ZERO, o que distorce o número:
+      <div class="table-wrap" style="margin-top:8px;max-height:180px;overflow-y:auto"><table>
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Unidade</th></tr></thead>
+        <tbody>${r.semSalario.map(x => `<tr><td>${escapeHtml(x.Nome)}</td><td>${escapeHtml(x.Cargo || "—")}</td><td>${escapeHtml(x.Unidade || "—")}</td></tr>`).join("")}</tbody>
+      </table></div>
+      <p style="margin:8px 0 0"><b>Como resolver:</b> edite a pessoa em <b>Cadastro de Colaboradores</b> (✏️) e preencha o salário — ou cadastre o salário do CARGO dela, que o sistema puxa automaticamente.</p>
+    </div>` : ""}
+
     ${(r.camposFaltantes && r.camposFaltantes.length) ? `
     <div class="msg warn" style="font-size:13px">
       <b>⚠️ Campos que não existem na sua base</b> (o cálculo segue sem eles):
@@ -901,6 +917,308 @@ async function gerarCmoRelatorio() {
         </tr>`).join("")}</tbody>
       </table></div>
       <p class="muted" style="font-size:12px;margin-top:8px">Admitidos/desligados no mês entram <b>proporcional aos dias</b>. Férias e afastados <b>continuam no custo</b>. Desligados antes do período são ignorados.</p>
+    </div>
+  `;
+}
+
+/* ============ ADVERTÊNCIA / SUSPENSÃO ============ */
+function abrirDisciplinar(nome, unidade) {
+  const div = document.createElement("div");
+  div.id = "modalDisc";
+  div.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px";
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;padding:22px;max-height:90vh;overflow-y:auto">
+      <h3 style="margin:0 0 4px">⚠️ Registrar Ocorrência Disciplinar</h3>
+      <p class="muted" style="font-size:13px;margin-bottom:14px">${escapeHtml(nome)}</p>
+
+      <div class="form-row"><label>Tipo *</label>
+        <select id="dscTipo" onchange="dscTipoMudou()">
+          <option value="">Selecione...</option>
+          <option>Advertência Verbal</option>
+          <option>Advertência Escrita</option>
+          <option>Suspensão</option>
+          <option>Falta Injustificada</option>
+          <option>Falta Justificada</option>
+          <option>Atraso</option>
+        </select>
+      </div>
+      <div class="form-row" id="dscDiasBox" style="display:none">
+        <label>Dias de suspensão *</label>
+        <input id="dscDias" type="number" min="1" max="30" placeholder="Ex.: 3">
+      </div>
+      <div class="form-row"><label>Data *</label><input id="dscData" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+      <div class="form-row"><label>Motivo / Descrição *</label><textarea id="dscDesc" rows="3" placeholder="O que aconteceu?"></textarea></div>
+      <div class="form-row"><label>Testemunha</label><input id="dscTest" type="text" list="dl-colaboradores" placeholder="Quem presenciou"></div>
+      <div class="form-row"><label>O colaborador assinou?</label>
+        <select id="dscAssinou"><option>Não</option><option>Sim</option><option>Recusou assinar</option></select>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="salvarDisciplinar('${escapeHtml(nome.replace(/'/g, "\\'"))}','${escapeHtml(unidade || "")}')" style="flex:1">Registrar</button>
+        <button class="btn btn-secondary" onclick="fecharDisciplinar()">Cancelar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+function dscTipoMudou() {
+  const t = el("#dscTipo") ? el("#dscTipo").value : "";
+  const box = document.getElementById("dscDiasBox");
+  if (box) box.style.display = t === "Suspensão" ? "block" : "none";
+}
+
+function fecharDisciplinar() {
+  const m = document.getElementById("modalDisc");
+  if (m) m.remove();
+}
+
+async function salvarDisciplinar(nome, unidade) {
+  const tipo = el("#dscTipo").value;
+  const desc = (el("#dscDesc").value || "").trim();
+  const data = el("#dscData").value;
+  if (!tipo) return toast("Escolha o tipo.", "err");
+  if (!desc) return toast("Descreva o que aconteceu.", "err");
+  const dias = el("#dscDias") ? Number(el("#dscDias").value) : 0;
+  if (tipo === "Suspensão" && !dias) return toast("Informe os dias de suspensão.", "err");
+
+  try {
+    const r = await api("salvarOcorrenciaDisciplinar", {
+      Colaborador: nome, Unidade: unidade, Tipo: tipo, Data: data,
+      Descricao: desc, Dias: dias,
+      Testemunha: (el("#dscTest").value || "").trim(),
+      Assinou: el("#dscAssinou").value
+    });
+    toast(r.msg || "Registrado.", "ok");
+    fecharDisciplinar();
+    await carregarDossie(nome);
+  } catch (e) { toast(e.message, "err"); }
+}
+
+/* ============ CENTRAL DE NOTIFICAÇÕES ============ */
+async function carregarNotificacoes() {
+  try {
+    const r = await api("notificacoes", {});
+    STATE.notifs = r;
+    pintarSino(r);
+  } catch (e) { /* silencioso */ }
+}
+
+function pintarSino(r) {
+  let sino = document.getElementById("sinoNotif");
+  if (!sino) {
+    const top = document.querySelector(".top-actions");
+    if (!top) return;
+    sino = document.createElement("button");
+    sino.id = "sinoNotif";
+    sino.className = "btn btn-secondary";
+    sino.style.cssText = "position:relative;padding:8px 12px;font-size:18px";
+    sino.onclick = abrirNotificacoes;
+    top.insertBefore(sino, top.firstChild);
+  }
+  const urg = (r.resumo && (r.resumo.urgente || 0)) + (r.resumo && (r.resumo.alerta || 0));
+  sino.innerHTML = `🔔${r.total ? `<span style="position:absolute;top:-4px;right:-4px;background:${urg ? "#dc2626" : "#0369a1"};color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 6px;min-width:18px">${r.total}</span>` : ""}`;
+}
+
+function abrirNotificacoes() {
+  const r = STATE.notifs || { notificacoes: [] };
+  const CORES = { urgente: "#dc2626", alerta: "#d97706", festa: "#db2777", info: "#0369a1" };
+  const div = document.createElement("div");
+  div.id = "modalNotif";
+  div.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px";
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
+      <div style="padding:18px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
+        <h3 style="margin:0">🔔 Notificações <span class="muted" style="font-weight:400;font-size:13px">(${r.total || 0})</span></h3>
+        <button class="btn btn-secondary" style="padding:4px 10px" onclick="document.getElementById('modalNotif').remove()">✕</button>
+      </div>
+      <div style="overflow-y:auto;padding:14px 18px">
+        ${(r.notificacoes && r.notificacoes.length) ? r.notificacoes.map(n => `
+          <div onclick="navegar('${n.tela}');document.getElementById('modalNotif').remove()" style="
+            display:flex;gap:12px;padding:12px;border-radius:10px;margin-bottom:8px;cursor:pointer;
+            border-left:4px solid ${CORES[n.nivel] || "#94a3b8"};background:#f8fafc" onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+            <div style="font-size:22px">${n.icone}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px;color:${CORES[n.nivel] || "#334155"}">${escapeHtml(n.titulo)}</div>
+              <div style="font-size:13px;color:#475569">${escapeHtml(n.texto)}</div>
+              ${n.extra ? `<div style="font-size:11px;color:#b45309;margin-top:2px">${escapeHtml(n.extra)}</div>` : ""}
+            </div>
+            <div class="muted" style="font-size:11px;white-space:nowrap">${escapeHtml(n.data || "")}</div>
+          </div>`).join("")
+        : `<div class="empty">Nenhuma notificação. Tudo em dia! 🎉</div>`}
+      </div>
+    </div>`;
+  document.body.appendChild(div);
+}
+
+/* ============ PLANO DE CARREIRA / PROMOÇÃO ============ */
+async function renderCarreira() {
+  setMain(`
+    <div class="page-title"><div><h2>Plano de Carreira</h2><p>Diagnóstico de prontidão para promoção, baseado em evidências — não em percepção.</p></div></div>
+    <div class="card">
+      <div class="grid g3">
+        <div class="form-row g2">
+          <label>Colaborador</label>
+          <input id="carColab" type="text" list="dl-colaboradores" placeholder="Escolha o colaborador">
+        </div>
+        <div class="form-row" style="display:flex;align-items:flex-end">
+          <button class="btn btn-primary" onclick="gerarDiagnostico()" style="width:100%">🎯 Gerar diagnóstico</button>
+        </div>
+      </div>
+    </div>
+    <div id="carConteudo"></div>
+  `);
+}
+
+async function gerarDiagnostico() {
+  const nome = (el("#carColab").value || "").trim();
+  if (!nome) return toast("Escolha o colaborador.", "err");
+  const cont = document.getElementById("carConteudo");
+  cont.innerHTML = `<div class="loading">Analisando carreira...</div>`;
+
+  let r;
+  try { r = await api("diagnosticoCarreira", { colaborador: nome }); }
+  catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
+
+  const c = r.colaborador || {}, comp = r.competencias || {}, uni = r.universidade || {}, nv = uni.nivel || {};
+  const ind = r.indicadores || {}, hist = r.historico || {};
+
+  if (r.semDescricao) {
+    cont.innerHTML = `<div class="card"><div class="msg warn">
+      <b>⚠️ O cargo "${escapeHtml(c.Cargo)}" ainda não tem descrição cadastrada.</b><br>
+      Sem a descrição do cargo, não consigo calcular a prontidão para promoção.<br><br>
+      Vá em <b>Descrições de Cargo</b> e cadastre: missão, competências técnicas e comportamentais, cursos obrigatórios, tempo mínimo e o <b>próximo cargo</b> da trilha.
+    </div></div>`;
+    return;
+  }
+
+  const barra = (rot, pct, peso) => `
+    <div style="margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+        <span>${escapeHtml(rot)} <span class="muted">(peso ${escapeHtml(peso)}%)</span></span>
+        <span style="font-weight:700">${escapeHtml(pct)}%</span>
+      </div>
+      <div style="background:#e2e8f0;border-radius:6px;height:8px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${pct >= 80 ? "#16a34a" : (pct >= 50 ? "#d97706" : "#dc2626")};transition:width .4s"></div>
+      </div>
+    </div>`;
+
+  const W = r.pesos || {};
+
+  cont.innerHTML = `
+    <div class="card" style="background:linear-gradient(135deg,#f8fafc,#eff6ff);border:2px solid #cbd5e1">
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+        <div style="flex:1;min-width:240px">
+          <h2 style="margin:0 0 4px">${escapeHtml(c.Nome)}</h2>
+          <p class="muted" style="margin:0">${escapeHtml(c.Cargo)} · ${escapeHtml(c.Unidade)} · ${escapeHtml(c.MesesCasa)} meses de casa</p>
+          ${r.proximoCargo ? `
+          <div style="margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span class="badge" style="background:#64748b;color:#fff">${escapeHtml(c.Cargo)}</span>
+            <span style="font-size:18px;color:#94a3b8">→</span>
+            <span class="badge" style="background:#1e3a8a;color:#fff;font-weight:700">${escapeHtml(r.proximoCargo.Cargo)}</span>
+          </div>` : `<div class="msg warn" style="margin-top:10px;font-size:12px">Este cargo não tem "próximo cargo" definido na trilha.</div>`}
+        </div>
+
+        <div style="text-align:center;min-width:180px">
+          <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Promotion Score</div>
+          <div style="font-size:52px;font-weight:800;line-height:1;color:${r.cor === "ok" ? "#16a34a" : (r.cor === "warn" ? "#d97706" : "#dc2626")}">${escapeHtml(r.promotionScore)}</div>
+          <span class="badge ${escapeHtml(r.cor)}" style="font-size:12px">${escapeHtml(r.classificacao)}</span>
+        </div>
+
+        <div style="text-align:center;min-width:150px;border-left:1px solid #cbd5e1;padding-left:20px">
+          <div style="font-size:12px;color:#64748b">Aderência ao cargo</div>
+          <div style="font-size:32px;font-weight:800;color:#0369a1">${escapeHtml(r.aderencia)}%</div>
+          <div style="font-size:12px;color:#64748b;margin-top:8px">Probabilidade</div>
+          <div style="font-weight:700;color:${r.probabilidade === "Alta" ? "#16a34a" : (r.probabilidade === "Média" ? "#d97706" : "#dc2626")}">${escapeHtml(r.probabilidade)}</div>
+          <div style="font-size:12px;color:#64748b;margin-top:6px">⏳ ~${escapeHtml(r.tempoEstimadoMeses)} meses</div>
+        </div>
+      </div>
+
+      ${r.bloqueado ? `<div class="msg err" style="margin-top:12px"><b>🚫 Bloqueado:</b> falta competência ELIMINATÓRIA — ${comp.eliminatorias.falta.map(escapeHtml).join(", ")}</div>` : ""}
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>📊 Como o score foi calculado</h3>
+        ${barra("Competências técnicas", ind.tecnicas, W.PROM_TECNICAS)}
+        ${barra("Competências comportamentais", ind.comportamentais, W.PROM_COMPORTAMENTAIS)}
+        ${barra("Treinamentos", ind.treinamentos, W.PROM_TREINAMENTOS)}
+        ${barra("Universidade Evol", ind.universidade, W.PROM_UNIVERSIDADE)}
+        ${barra("Avaliação de desempenho", ind.avaliacao, W.PROM_AVALIACAO)}
+        ${barra("Feedbacks do líder", ind.feedback, W.PROM_FEEDBACK)}
+        ${barra("Sem advertências", ind.disciplina, W.PROM_DISCIPLINA)}
+        ${barra("Tempo no cargo", ind.tempo, W.PROM_TEMPO)}
+        ${barra("Projetos e reconhecimentos", ind.projetos, W.PROM_PROJETOS)}
+        <p class="muted" style="font-size:12px;margin-top:10px">
+          ${escapeHtml(hist.treinamentos)} treinamento(s) · ${escapeHtml(hist.horasTreinamento)}h ·
+          ${escapeHtml(hist.feedbacks)} feedback(s) · ${escapeHtml(hist.advertencias)} advertência(s) ·
+          ${escapeHtml(hist.projetos)} projeto(s)
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>✅ Competências</h3>
+        <h4 style="margin:10px 0 6px;font-size:13px">Técnicas <span class="muted">(${escapeHtml(comp.tecnicas.pct)}%)</span></h4>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${comp.tecnicas.tem.map(x => `<span class="badge ok">✔ ${escapeHtml(x)}</span>`).join("")}
+          ${comp.tecnicas.falta.map(x => `<span class="badge" style="background:#e2e8f0;color:#64748b">⬜ ${escapeHtml(x)}</span>`).join("")}
+          ${!comp.tecnicas.tem.length && !comp.tecnicas.falta.length ? `<span class="muted">Nenhuma cadastrada</span>` : ""}
+        </div>
+
+        <h4 style="margin:14px 0 6px;font-size:13px">Comportamentais <span class="muted">(${escapeHtml(comp.comportamentais.pct)}%)</span></h4>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${comp.comportamentais.tem.map(x => `<span class="badge ok">✔ ${escapeHtml(x)}</span>`).join("")}
+          ${comp.comportamentais.falta.map(x => `<span class="badge" style="background:#e2e8f0;color:#64748b">⬜ ${escapeHtml(x)}</span>`).join("")}
+          ${!comp.comportamentais.tem.length && !comp.comportamentais.falta.length ? `<span class="muted">Nenhuma cadastrada</span>` : ""}
+        </div>
+
+        <h4 style="margin:14px 0 6px;font-size:13px">Cursos obrigatórios <span class="muted">(${escapeHtml(comp.cursos.pct)}%)</span></h4>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${comp.cursos.tem.map(x => `<span class="badge ok">🎓 ${escapeHtml(x)}</span>`).join("")}
+          ${comp.cursos.falta.map(x => `<span class="badge warn">📚 ${escapeHtml(x)}</span>`).join("")}
+          ${!comp.cursos.tem.length && !comp.cursos.falta.length ? `<span class="muted">Nenhum cadastrado</span>` : ""}
+        </div>
+
+        <div style="margin-top:16px;padding:12px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:28px">${escapeHtml(nv.icone || "🌱")}</span>
+            <div style="flex:1">
+              <div style="font-weight:800">${escapeHtml(nv.nome || "Iniciante")} · Nível ${escapeHtml(nv.nivel || 1)}</div>
+              <div style="font-size:12px;color:#78350f">${escapeHtml(nv.xp || 0)} XP · ${escapeHtml(uni.modulosConcluidos || 0)} módulo(s) na Universidade Evol</div>
+            </div>
+          </div>
+          ${nv.falta ? `
+          <div style="margin-top:8px">
+            <div style="background:rgba(255,255,255,.6);border-radius:6px;height:8px;overflow:hidden">
+              <div style="width:${nv.progresso}%;height:100%;background:#b45309"></div>
+            </div>
+            <div style="font-size:11px;color:#78350f;margin-top:4px">Faltam ${escapeHtml(nv.falta)} XP para ${escapeHtml(nv.proximoNivel)}</div>
+          </div>` : ""}
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>🛤️ Trilha de Desenvolvimento <span class="muted" style="font-weight:400;font-size:12px">(gerada automaticamente pelas lacunas)</span></h3>
+      ${(r.trilha && r.trilha.length) ? `
+        <div style="display:flex;flex-direction:column;gap:10px">
+          ${r.trilha.map((t, i) => `
+            <div style="border:1px solid #e2e8f0;border-left:4px solid ${t.Prioridade === "CRÍTICA" ? "#dc2626" : (t.Prioridade === "Alta" ? "#d97706" : "#0369a1")};border-radius:10px;padding:12px 14px;background:#fff">
+              <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+                <span style="font-weight:800;font-size:15px">${escapeHtml(t.Competencia)}</span>
+                <span class="badge ${t.Prioridade === "CRÍTICA" ? "bad" : (t.Prioridade === "Alta" ? "warn" : "info")}">${escapeHtml(t.Prioridade)}</span>
+                <span class="muted" style="font-size:12px">${escapeHtml(t.Tipo)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                ${t.Etapas.map((e, k) => `
+                  <span style="background:#f1f5f9;padding:5px 10px;border-radius:20px;font-size:12px;color:#475569">${k + 1}. ${escapeHtml(e)}</span>
+                  ${k < t.Etapas.length - 1 ? `<span style="color:#cbd5e1">→</span>` : ""}
+                `).join("")}
+                <span style="color:#16a34a;font-weight:700;margin-left:4px">→ ✅ Competência concluída</span>
+              </div>
+            </div>`).join("")}
+        </div>
+        <p class="muted" style="font-size:12px;margin-top:12px">⏳ Tempo estimado para estar apto: <b>${escapeHtml(r.tempoEstimadoMeses)} meses</b> · ${escapeHtml(r.trilha.length)} competência(s) a desenvolver</p>
+      ` : `<div class="msg ok">🎉 <b>Nenhuma lacuna!</b> Todas as competências do próximo cargo já foram atendidas.</div>`}
     </div>
   `;
 }
@@ -1695,18 +2013,25 @@ async function renderDashboard(unidade, usarCache) {
           <span class="muted" style="font-size:11px;display:block">CMO atual ${fmtMoeda((dash.cmo && dash.cmo.total) || 0)} + vagas ${fmtMoeda(v.CustoProporcional || 0)}</span>
         </div>
 
+        ${(v.SemSalario && v.SemSalario.length) ? `<div class="msg err" style="margin-top:10px;font-size:13px">
+          <b>🚨 ${v.SemSalario.length} vaga(s) com cargo SEM SALÁRIO cadastrado</b> — entram com custo ZERO e distorcem a projeção:
+          ${v.SemSalario.map(x => `<span class="badge bad" style="margin:2px">${escapeHtml(x.Cargo)} · ${escapeHtml(x.Unidade)}</span>`).join("")}
+          <br><b>Resolva:</b> cadastre o salário desse cargo na aba <b>Cargos</b> da planilha.
+        </div>` : ""}
         ${(v.Lista && v.Lista.length)
           ? `<div class="table-wrap" style="margin-top:12px"><table>
-              <thead><tr><th>Unidade</th><th>Cargo</th><th>Salário</th><th>Custo mês cheio</th><th>Custo proporcional</th></tr></thead>
-              <tbody>${v.Lista.map(x => `<tr>
+              <thead><tr><th>Unidade</th><th>Cargo</th><th>Salário</th><th>Encargos</th><th>Benefícios</th><th>Custo mês cheio</th><th>Custo proporcional</th></tr></thead>
+              <tbody>${v.Lista.map(x => `<tr${x.SemSalario ? ' style="background:#fef2f2"' : ""}>
                 <td>${escapeHtml(x.Unidade)}</td>
-                <td style="font-weight:600">${escapeHtml(x.Cargo)}</td>
+                <td style="font-weight:600">${escapeHtml(x.Cargo)}${x.SemSalario ? ' <span class="badge bad" style="font-size:9px">sem salário</span>' : ""}</td>
                 <td>${fmtMoeda(x.Salario)}</td>
+                <td class="muted">${fmtMoeda(x.Encargos)}</td>
+                <td class="muted">${fmtMoeda(x.Beneficios)}</td>
                 <td class="muted">${fmtMoeda(x.CustoMesCheio)}</td>
                 <td style="font-weight:600;color:#b45309">${fmtMoeda(x.CustoProporcional)}</td>
               </tr>`).join("")}</tbody>
             </table></div>
-            <p class="muted" style="font-size:12px;margin-top:8px">Inclui salário + complementar + FGTS, provisão de férias e rescisão, e refeição — proporcional aos <b>${escapeHtml(v.DiasRestantes || 0)} dias</b> que faltam.</p>`
+            <p class="muted" style="font-size:12px;margin-top:8px">Inclui salário + FGTS + INSS patronal + RAT/FAP + terceiros + provisão de férias, 13º e rescisão + refeição — proporcional aos <b>${escapeHtml(v.DiasRestantes || 0)} dias</b> que faltam.</p>`
           : `<div class="empty">Nenhuma vaga em aberto no momento. 🎉</div>`}`;
       })()}
     </div>
@@ -2357,22 +2682,230 @@ async function abrirModuloUniversidade(programa, chave, titulo) {
   `);
 }
 
-async function renderUniversidade() {
-  setMain(`
-    <div class="page-title"><div><h2>🎓 Universidade Evol</h2><p>Trilhas de desenvolvimento do Grupo Evol. Clique em "Ver conteúdo" para abrir o módulo.</p></div></div>
+/* ============ UNIVERSIDADE EVOL — GAMIFICADA ============ */
+const UNI = { colab: "", progresso: {}, xp: 0, ranking: [] };
 
-    <div class="card">
-      <h3>🎓 Academia de Novos Talentos <span class="badge info">Para Colaboradores</span></h3>
-      <p class="card-subtitle">Trilha de base para os colaboradores, do autoconhecimento ao projeto de crescimento pessoal.</p>
-      ${tabelaModulos(ACADEMIA_NOVOS_TALENTOS, "Módulo", "TALENTOS", "Módulo ")}
+async function renderUniversidade() {
+  setMain(`<div class="loading">Carregando Universidade Evol...</div>`);
+  try {
+    const r = await api("listarProgressoUni");
+    UNI.todosProgressos = r.progressoUni || [];
+    const rk = await api("rankingUniversidade");
+    UNI.ranking = rk.ranking || [];
+  } catch (e) { UNI.todosProgressos = []; UNI.ranking = []; }
+  uniRender();
+}
+
+// Progresso do colaborador selecionado
+function uniCarregarProgresso() {
+  const nome = normalize(UNI.colab);
+  UNI.progresso = {};
+  UNI.xp = 0;
+  (UNI.todosProgressos || []).forEach(p => {
+    if (normalize(p.Colaborador) !== nome) return;
+    if (normalize(p.Status).indexOf("CONCLU") === -1) return;
+    UNI.progresso[normalize(p.Modulo)] = { Nota: p.Nota, Data: p.DataConclusao, XP: Number(p.XP) || 100 };
+    UNI.xp += Number(p.XP) || 100;
+  });
+}
+
+function uniNivel(xp) {
+  const N = [
+    { n: 1, nome: "Iniciante", min: 0, icone: "🌱" },
+    { n: 2, nome: "Aprendiz", min: 200, icone: "📗" },
+    { n: 3, nome: "Praticante", min: 500, icone: "📘" },
+    { n: 4, nome: "Avançado", min: 1000, icone: "🎯" },
+    { n: 5, nome: "Especialista", min: 2000, icone: "⭐" },
+    { n: 6, nome: "Mestre Evol", min: 3500, icone: "🏆" },
+    { n: 7, nome: "Lenda Evol", min: 5000, icone: "👑" }
+  ];
+  let a = N[0];
+  N.forEach(x => { if (xp >= x.min) a = x; });
+  const p = N[N.indexOf(a) + 1] || null;
+  return {
+    ...a,
+    proximo: p ? p.nome : "Nível máximo!",
+    falta: p ? p.min - xp : 0,
+    progresso: p ? Math.round((xp - a.min) / (p.min - a.min) * 100) : 100
+  };
+}
+
+function uniRender() {
+  uniCarregarProgresso();
+  const nv = uniNivel(UNI.xp);
+  const temColab = !!UNI.colab;
+
+  // conta conclusão de cada academia
+  const concl = (lista) => lista.filter(m => UNI.progresso[normalize(m[1] || m[0])]).length;
+  const totT = ACADEMIA_NOVOS_TALENTOS.length, totL = ACADEMIA_LIDERES.length;
+  const fT = concl(ACADEMIA_NOVOS_TALENTOS), fL = concl(ACADEMIA_LIDERES);
+  const pctT = totT ? Math.round(fT / totT * 100) : 0;
+  const pctL = totL ? Math.round(fL / totL * 100) : 0;
+
+  // conquistas
+  const badges = [];
+  if (UNI.xp >= 100) badges.push({ i: "🎯", t: "Primeiro passo", d: "Concluiu o 1º módulo" });
+  if (fT >= Math.ceil(totT / 2)) badges.push({ i: "🔥", t: "Meio caminho", d: "50% da Academia de Talentos" });
+  if (pctT === 100) badges.push({ i: "🎓", t: "Talento Formado", d: "Academia de Talentos completa" });
+  if (pctL === 100) badges.push({ i: "👑", t: "Líder Evol", d: "Academia de Líderes completa" });
+  if (UNI.xp >= 1000) badges.push({ i: "⭐", t: "Mil pontos", d: "1000 XP acumulados" });
+  const pos = UNI.ranking.findIndex(x => normalize(x.Nome) === normalize(UNI.colab)) + 1;
+  if (pos === 1) badges.push({ i: "🥇", t: "Líder do ranking", d: "1º lugar na Universidade" });
+
+  setMain(`
+    <div class="page-title">
+      <div><h2>🎓 Universidade Evol</h2><p>Trilhas de desenvolvimento com gamificação. Cada módulo concluído vale XP e sobe seu nível.</p></div>
+      <div style="min-width:260px">
+        <label>Quem está estudando?</label>
+        <input id="uniColab" type="text" list="dl-colaboradores" value="${escapeHtml(UNI.colab)}" placeholder="Escolha o colaborador" onchange="uniTrocarColab(this.value)">
+      </div>
+    </div>
+
+    ${temColab ? `
+    <div class="card" style="background:linear-gradient(135deg,#1e3a8a,#3730a3);color:#fff;border:none">
+      <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
+        <div style="font-size:56px;line-height:1">${nv.icone}</div>
+        <div style="flex:1;min-width:220px">
+          <div style="font-size:13px;opacity:.8">${escapeHtml(UNI.colab)}</div>
+          <div style="font-size:26px;font-weight:800">${escapeHtml(nv.nome)} <span style="opacity:.7;font-size:16px">· Nível ${nv.n}</span></div>
+          <div style="margin-top:10px;background:rgba(255,255,255,.2);border-radius:8px;height:12px;overflow:hidden">
+            <div style="width:${nv.progresso}%;height:100%;background:linear-gradient(90deg,#fbbf24,#f59e0b);transition:width .6s"></div>
+          </div>
+          <div style="font-size:12px;opacity:.85;margin-top:5px">
+            ${nv.falta ? `Faltam <b>${nv.falta} XP</b> para <b>${escapeHtml(nv.proximo)}</b>` : "🎉 Nível máximo alcançado!"}
+          </div>
+        </div>
+        <div style="text-align:center;padding:0 16px">
+          <div style="font-size:34px;font-weight:800;color:#fbbf24">${UNI.xp}</div>
+          <div style="font-size:12px;opacity:.8">XP TOTAL</div>
+        </div>
+        <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,.2)">
+          <div style="font-size:34px;font-weight:800">${fT + fL}</div>
+          <div style="font-size:12px;opacity:.8">MÓDULOS</div>
+        </div>
+        ${pos ? `<div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,.2)">
+          <div style="font-size:34px;font-weight:800">${pos}º</div>
+          <div style="font-size:12px;opacity:.8">NO RANKING</div>
+        </div>` : ""}
+      </div>
+
+      ${badges.length ? `
+      <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.2)">
+        <div style="font-size:12px;opacity:.8;margin-bottom:8px;font-weight:700;letter-spacing:.5px">🏅 CONQUISTAS</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          ${badges.map(b => `<div title="${escapeHtml(b.d)}" style="background:rgba(255,255,255,.15);border-radius:10px;padding:8px 12px;display:flex;align-items:center;gap:8px">
+            <span style="font-size:20px">${b.i}</span>
+            <span style="font-size:12px;font-weight:600">${escapeHtml(b.t)}</span>
+          </div>`).join("")}
+        </div>
+      </div>` : ""}
+    </div>
+    ` : `<div class="msg info">👆 <b>Escolha um colaborador</b> acima para ver o progresso, XP e conquistas dele.</div>`}
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🎓 Academia de Novos Talentos <span class="badge info">Colaboradores</span></h3>
+        ${temColab ? uniBarraProgresso(fT, totT, pctT, "#0369a1") : ""}
+        ${uniTrilha(ACADEMIA_NOVOS_TALENTOS, "TALENTOS", "Módulo ")}
+      </div>
+
+      <div class="card">
+        <h3>👑 Academia de Líderes <span class="badge warn">Liderança</span></h3>
+        ${temColab ? uniBarraProgresso(fL, totL, pctL, "#b45309") : ""}
+        ${uniTrilha(ACADEMIA_LIDERES, "LIDERES", "")}
+      </div>
     </div>
 
     <div class="card">
-      <h3>👑 Academia de Líderes <span class="badge orange">Somente Liderança</span></h3>
-      <p class="card-subtitle">Programa de 12 meses exclusivo para a liderança: do papel do líder moderno à liderança integrada com PDI.</p>
-      ${tabelaModulos(ACADEMIA_LIDERES, "Tema do Mês", "LIDERES", "")}
+      <h3>🏆 Ranking da Universidade</h3>
+      ${(UNI.ranking && UNI.ranking.length) ? `
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:14px">
+          ${UNI.ranking.slice(0, 3).map((x, i) => {
+            const med = ["🥇", "🥈", "🥉"][i], p1 = i === 0;
+            return `<div style="flex:1;min-width:180px;background:${p1 ? "linear-gradient(135deg,#fef3c7,#fde68a)" : "#f8fafc"};border:2px solid ${p1 ? "#f59e0b" : "#e2e8f0"};border-radius:12px;padding:12px">
+              <div style="font-size:${p1 ? "28px" : "22px"}">${med}</div>
+              <div style="font-weight:700;font-size:14px;margin-top:4px">${escapeHtml(x.Nome)}</div>
+              <div style="font-size:12px;color:#64748b">${escapeHtml(x.Icone)} ${escapeHtml(x.NivelNome)} · <b>${escapeHtml(x.XP)} XP</b></div>
+            </div>`;
+          }).join("")}
+        </div>
+        <div class="table-wrap" style="max-height:320px;overflow-y:auto"><table>
+          <thead><tr><th>#</th><th>Colaborador</th><th>Unidade</th><th>Nível</th><th>Módulos</th><th>XP</th></tr></thead>
+          <tbody>${UNI.ranking.map(x => `<tr${normalize(x.Nome) === normalize(UNI.colab) ? ' style="background:#eff6ff;font-weight:600"' : ""}>
+            <td>${["🥇","🥈","🥉"][x.Posicao - 1] || (x.Posicao + "º")}</td>
+            <td>${escapeHtml(x.Nome)}</td>
+            <td>${escapeHtml(x.Unidade)}</td>
+            <td>${escapeHtml(x.Icone)} ${escapeHtml(x.NivelNome)}</td>
+            <td>${escapeHtml(x.Modulos)}</td>
+            <td style="font-weight:700;color:#b45309">${escapeHtml(x.XP)}</td>
+          </tr>`).join("")}</tbody>
+        </table></div>`
+      : `<div class="empty">Ninguém concluiu módulos ainda. Seja o primeiro! 🚀</div>`}
     </div>
   `);
+}
+
+function uniBarraProgresso(feito, total, pct, cor) {
+  return `
+    <div style="margin:10px 0 16px">
+      <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
+        <span class="muted">${feito} de ${total} módulos</span>
+        <span style="font-weight:700;color:${cor}">${pct}%</span>
+      </div>
+      <div style="background:#e2e8f0;border-radius:8px;height:10px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${cor};transition:width .5s"></div>
+      </div>
+    </div>`;
+}
+
+// Trilha visual — cada módulo é um passo, com cadeado, check e XP
+function uniTrilha(lista, programa, prefixo) {
+  return `<div style="display:flex;flex-direction:column;gap:6px">
+    ${lista.map((m, i) => {
+      const chave = m[1] || m[0];
+      const feito = !!UNI.progresso[normalize(chave)];
+      const anterior = i === 0 || !!UNI.progresso[normalize(lista[i - 1][1] || lista[i - 1][0])];
+      const liberado = feito || anterior;
+      const titulo = String(m[1] || "").replace(/'/g, "\\'");
+      return `
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+        background:${feito ? "#f0fdf4" : (liberado ? "#fff" : "#f8fafc")};
+        border:1px solid ${feito ? "#86efac" : "#e2e8f0"};
+        opacity:${liberado ? "1" : ".55"}">
+        <div style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;
+          background:${feito ? "#16a34a" : (liberado ? "#e2e8f0" : "#f1f5f9")};color:${feito ? "#fff" : "#64748b"}">
+          ${feito ? "✓" : (liberado ? (i + 1) : "🔒")}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">${escapeHtml(prefixo)}${escapeHtml(m[0])} — ${escapeHtml(m[1] || "")}</div>
+          <div class="muted" style="font-size:11px">${escapeHtml(m[2] || "")}</div>
+        </div>
+        ${feito
+          ? `<span class="badge ok" style="font-size:10px">+${UNI.progresso[normalize(chave)].XP} XP</span>`
+          : `<button class="btn btn-secondary" style="padding:4px 10px;font-size:11px" onclick="abrirModuloUniversidade('${programa}','${escapeHtml(chave)}','${escapeHtml(titulo)}')">Estudar</button>`}
+        ${(!feito && liberado && UNI.colab)
+          ? `<button class="btn btn-primary" style="padding:4px 10px;font-size:11px" onclick="concluirModulo('${programa}','${escapeHtml(chave)}')">✓ Concluir</button>`
+          : ""}
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function uniTrocarColab(nome) { UNI.colab = (nome || "").trim(); uniRender(); }
+
+// Marca um módulo como concluído (ganha XP)
+async function concluirModulo(programa, modulo) {
+  if (!UNI.colab) return toast("Escolha o colaborador primeiro.", "err");
+  const nota = prompt(`Nota no quiz do módulo (0 a 10)?\nDeixe vazio se não teve quiz.\n\nNota 8+ ganha bônus de 50 XP! 🎁`);
+  if (nota === null) return;
+  try {
+    const r = await api("concluirModuloUni", {
+      colaborador: UNI.colab, programa: programa, modulo: modulo,
+      nota: Number(nota) || 0, xp: 100
+    });
+    toast(r.msg || "Módulo concluído!", "ok");
+    await renderUniversidade();
+  } catch (e) { toast(e.message, "err"); }
 }
 
 function treinarModulo(tema) {
@@ -2702,6 +3235,18 @@ async function carregarDossie(nome) {
   STATE.cache.dossieNome = c.Nome || nome;
 
   cont.innerHTML = `
+    ${(r.sinalizacoes && r.sinalizacoes.length) ? `
+    <div class="card" style="border-left:5px solid ${r.situacao === "ATENÇÃO CRÍTICA" ? "#dc2626" : (r.situacao === "REQUER ATENÇÃO" ? "#d97706" : "#0369a1")};background:${r.situacao === "ATENÇÃO CRÍTICA" ? "#fef2f2" : (r.situacao === "REQUER ATENÇÃO" ? "#fffbeb" : "#f8fafc")}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <span style="font-weight:800;font-size:14px;color:${r.situacao === "ATENÇÃO CRÍTICA" ? "#991b1b" : "#92400e"}">
+          ${r.situacao === "ATENÇÃO CRÍTICA" ? "🔴" : (r.situacao === "REQUER ATENÇÃO" ? "🟡" : "🔵")} ${escapeHtml(r.situacao)}
+        </span>
+        ${r.sinalizacoes.map(s => `<span class="badge ${s.nivel === "critico" ? "bad" : (s.nivel === "alerta" ? "warn" : "info")}" style="font-size:12px">
+          ${s.icone} ${escapeHtml(s.tipo)}: <b>${escapeHtml(s.qtd)}</b>
+        </span>`).join("")}
+      </div>
+    </div>` : ""}
+
     <div class="card">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
@@ -2715,6 +3260,9 @@ async function carregarDossie(nome) {
             ${c.ValeTransporte === "Sim" ? `<span class="badge info">Vale transporte</span>` : ""}
           </div>
         </div>
+        <button class="btn btn-secondary" onclick="abrirDisciplinar('${escapeHtml(String(c.Nome || nome).replace(/'/g, "\\'"))}','${escapeHtml(c.Unidade || "")}')" style="color:#b91c1c;border-color:#fca5a5">
+          ⚠️ Registrar advertência / suspensão
+        </button>
       </div>
 
       <div class="table-wrap" style="margin-top:14px"><table>
@@ -3900,6 +4448,70 @@ const MODULES = {
       { name: "TipoVariavel", label: "Tipo de variável", type: "select", options: ["Bônus", "Premiação", "Comissão", "Participação em resultado", "Outro"] },
       { name: "Valor", label: "Valor pago (R$)", type: "moneyBR", required: true },
       { name: "Pago", label: "Já foi pago?", type: "select", options: ["Sim", "Não"], default: "Sim" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+
+  cargosDescricao: {
+    label: "Descrições de Cargo",
+    note: "Base da trilha de carreira. Defina as competências, os cursos e o PRÓXIMO CARGO — é isso que alimenta o Promotion Score.",
+    listAction: "listarCargosDescricao", listKey: "cargosDescricao",
+    saveAction: "salvarCargoDescricao",
+    columns: ["Cargo", "Nivel", "ProximoCargo", "TempoMinimoMeses", "Setor"],
+    fields: [
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", required: true },
+      { name: "Nivel", label: "Nível", type: "select", options: ["Auxiliar", "Assistente", "Júnior", "Pleno", "Sênior", "Coordenação", "Gerência", "Diretoria"] },
+      { name: "ProximoCargo", label: "Próximo cargo (trilha) *", type: "datalist", list: "dl-cargos", hint: "Para onde essa pessoa cresce" },
+      { name: "Setor", label: "Setor", type: "datalist", list: "dl-setores" },
+      { name: "Missao", label: "Missão do cargo", type: "textarea", col: "g2" },
+      { name: "Responsabilidades", label: "Responsabilidades", type: "textarea", col: "g2", hint: "Separe por vírgula" },
+      { name: "CompetenciasTecnicas", label: "Competências TÉCNICAS", type: "textarea", col: "g2", hint: "Ex.: Recrutamento, Entrevistas, Power BI — separe por vírgula" },
+      { name: "CompetenciasComportamentais", label: "Competências COMPORTAMENTAIS", type: "textarea", col: "g2", hint: "Ex.: Comunicação, Liderança, Organização" },
+      { name: "CompetenciasEliminatorias", label: "Competências ELIMINATÓRIAS", type: "textarea", col: "g2", hint: "Sem estas, a promoção fica BLOQUEADA" },
+      { name: "CursosObrigatorios", label: "Cursos obrigatórios (Universidade Evol)", type: "textarea", col: "g2", hint: "Nomes dos módulos, separados por vírgula" },
+      { name: "TempoMinimoMeses", label: "Tempo mínimo no cargo (meses)", type: "number", min: 0 },
+      { name: "EscolaridadeMinima", label: "Escolaridade mínima", type: "select", options: ["Fundamental", "Médio", "Técnico", "Superior incompleto", "Superior completo", "Pós-graduação"] },
+      { name: "Indicadores", label: "Indicadores de desempenho (KPIs)", type: "textarea", col: "g2" }
+    ]
+  },
+
+  competenciasColab: {
+    label: "Competências do Colaborador",
+    note: "Registre as competências que a pessoa JÁ domina. É isso que o motor compara com o próximo cargo.",
+    filtros: ["Unidade"],
+    listAction: "listarCompetenciasColab", listKey: "competenciasColab",
+    saveAction: "salvarCompetenciaColab",
+    columns: ["Colaborador", "Competencia", "Nivel", "Status", "ValidadoPor", "DataValidacao"],
+    fields: [
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Competencia", label: "Competência", type: "text", required: true, hint: "Escreva igual está na descrição do cargo" },
+      { name: "Nivel", label: "Nível de domínio", type: "select", options: ["Básico", "Intermediário", "Avançado", "Especialista"] },
+      { name: "Status", label: "Status", type: "select", required: true, default: "Validada", options: ["Validada", "Em desenvolvimento", "Pendente"] },
+      { name: "ValidadoPor", label: "Validado por (líder)", type: "datalist", list: "dl-lideres" },
+      { name: "DataValidacao", label: "Data da validação", type: "date" },
+      { name: "Evidencia", label: "Evidência (o que comprova?)", type: "textarea", col: "g2" }
+    ]
+  },
+
+  promocoes: {
+    label: "Promoção Interna",
+    note: "Toda promoção fica registrada com o Promotion Score do momento — é a evidência de que foi por mérito.",
+    filtros: ["Unidade"],
+    listAction: "listarPromocoes", listKey: "promocoes",
+    saveAction: "salvarPromocao",
+    columns: ["Data", "Colaborador", "Unidade", "CargoAnterior", "CargoNovo", "SalarioNovo", "PromotionScore", "AprovadoPor"],
+    fields: [
+      { name: "Data", label: "Data da promoção", type: "date", required: true },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "CargoAnterior", label: "Cargo anterior", type: "datalist", list: "dl-cargos" },
+      { name: "CargoNovo", label: "Cargo NOVO", type: "datalist", list: "dl-cargos", required: true },
+      { name: "SalarioAnterior", label: "Salário anterior (R$)", type: "moneyBR" },
+      { name: "SalarioNovo", label: "Salário novo (R$)", type: "moneyBR" },
+      { name: "Motivo", label: "Motivo", type: "select", options: ["Mérito / Performance", "Trilha de carreira", "Assunção de responsabilidades", "Substituição", "Reestruturação"] },
+      { name: "PromotionScore", label: "Promotion Score", type: "number", hint: "Deixe vazio — o sistema calcula sozinho" },
+      { name: "LiderSolicitante", label: "Líder que solicitou", type: "datalist", list: "dl-lideres" },
+      { name: "AprovadoPor", label: "Aprovado por", type: "datalist", list: "dl-lideres" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },

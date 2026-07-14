@@ -994,16 +994,73 @@ async function salvarDisciplinar(nome, unidade) {
   } catch (e) { toast(e.message, "err"); }
 }
 
+/* ============ NOTIFICAÇÃO NO CELULAR (PWA) ============ */
+// Pede permissão e dispara notificação do sistema (aparece na tela, como WhatsApp)
+// enquanto o app está aberto ou em segundo plano.
+async function pedirPermissaoNotificacao() {
+  if (!("Notification" in window)) {
+    toast("Seu navegador não suporta notificações.", "err");
+    return false;
+  }
+  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "denied") {
+    toast("As notificações foram bloqueadas. Libere nas configurações do navegador.", "err");
+    return false;
+  }
+  const p = await Notification.requestPermission();
+  if (p === "granted") {
+    toast("✅ Notificações ativadas! Você será avisada de testes, aniversários e ocorrências.", "ok");
+    localStorage.setItem("evolNotif", "1");
+    return true;
+  }
+  return false;
+}
+
+// Dispara notificações do sistema para o que é urgente
+function dispararNotificacoesSistema(r) {
+  if (!("Notification" in window) || Notification.permission !== "granted") return;
+  if (!r || !r.notificacoes) return;
+
+  // só as urgentes/festa, e só uma vez por dia (não fica repetindo)
+  const hoje = new Date().toISOString().slice(0, 10);
+  const jaAvisou = JSON.parse(localStorage.getItem("evolNotifEnviadas") || "{}");
+  if (jaAvisou.dia !== hoje) { jaAvisou.dia = hoje; jaAvisou.ids = []; }
+
+  const importantes = r.notificacoes.filter(n => n.nivel === "urgente" || n.nivel === "festa");
+  importantes.forEach(n => {
+    const id = n.tipo + "|" + n.texto;
+    if (jaAvisou.ids.indexOf(id) !== -1) return;
+    jaAvisou.ids.push(id);
+    try {
+      new Notification(n.icone + " " + n.titulo, {
+        body: n.texto + (n.extra ? "\n" + n.extra : ""),
+        icon: "icon-192.png",
+        badge: "icon-192.png",
+        tag: id
+      });
+    } catch (e) { /* alguns navegadores exigem service worker */ }
+  });
+  localStorage.setItem("evolNotifEnviadas", JSON.stringify(jaAvisou));
+}
+
 /* ============ CENTRAL DE NOTIFICAÇÕES ============ */
 async function carregarNotificacoes() {
   try {
     const r = await api("notificacoes", {});
     STATE.notifs = r;
     pintarSino(r);
+    // se a pessoa autorizou, dispara notificação do sistema
+    if (localStorage.getItem("evolNotif") === "1") dispararNotificacoesSistema(r);
   } catch (e) { /* silencioso */ }
 }
 
 function pintarSino(r) {
+  // Colaborador comum não vê o sino
+  if (r && r.semPermissao) {
+    const s = document.getElementById("sinoNotif");
+    if (s) s.remove();
+    return;
+  }
   let sino = document.getElementById("sinoNotif");
   if (!sino) {
     const top = document.querySelector(".top-actions");
@@ -1029,7 +1086,12 @@ function abrirNotificacoes() {
     <div style="background:#fff;border-radius:14px;max-width:600px;width:100%;max-height:80vh;overflow:hidden;display:flex;flex-direction:column">
       <div style="padding:18px 22px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
         <h3 style="margin:0">🔔 Notificações <span class="muted" style="font-weight:400;font-size:13px">(${r.total || 0})</span></h3>
-        <button class="btn btn-secondary" style="padding:4px 10px" onclick="document.getElementById('modalNotif').remove()">✕</button>
+        <div style="display:flex;gap:6px">
+          ${(typeof Notification !== "undefined" && Notification.permission !== "granted")
+            ? `<button class="btn btn-primary" style="padding:5px 10px;font-size:12px" onclick="pedirPermissaoNotificacao()">📱 Ativar no celular</button>`
+            : `<span class="badge ok" style="font-size:11px">📱 Ativado</span>`}
+          <button class="btn btn-secondary" style="padding:4px 10px" onclick="document.getElementById('modalNotif').remove()">✕</button>
+        </div>
       </div>
       <div style="overflow-y:auto;padding:14px 18px">
         ${(r.notificacoes && r.notificacoes.length) ? r.notificacoes.map(n => `

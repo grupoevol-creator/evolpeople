@@ -4,6 +4,40 @@ Reconstrução + correção dos 6 arquivos do sistema (Code.gs, app.js, style.cs
 
 ---
 
+## RODADA 6 — Regras de negócio novas (CMO, Vale-Transporte, Plano de Saúde, Liderança)
+
+Esta rodada não foi "correção de bug" — foram regras de negócio novas que você pediu, 16 itens de uma vez. Resumo do que mudou:
+
+### CMO (Custo Mensal de Operação)
+- **29. CMO por hora removido** — o cálculo e o card de "R$/hora" saíram do sistema (backend e tela).
+- **30. Insalubridade, Horas Extras e Periculosidade removidos do cálculo** — não entram mais na soma do CMO (as colunas continuam existindo na planilha caso você use pra outra coisa, só não somam mais no custo).
+- **31. RAT + FAP + Terceiros agora aparecem somados em um único campo "Patronal"** — você ainda ajusta as taxas separadamente em Parâmetros do CMO (são legalmente distintas), mas o resultado exibido e usado no cálculo é um Patronal único, consolidado.
+- **32. Evol desvinculada do CMO** — a matriz/administrativo não entra mais no cálculo de custo de operação nem no total geral. Julgamento de escopo: também tirei a Evol de fardamento, admissões e variável de liderança quando essas entram no CMO — se você quiser a Evol de volta em algum desses pontos específicos, me avise.
+- **33. Evol removida do ranking das casas** — o "🏆 Saúde de Cada Casa" agora mostra só as 4 operações (Aldeota, Sul, Rio Mar, Eusébio), renumeradas 1-4.
+- **34. Corrigido: Parâmetros do CMO não salvava** — a causa era a tela de editar/excluir linha (lápis/lixeira) tentando editar uma "linha virtual" que não existe de verdade na planilha, o que quebrava ou (pior) sobrescrevia o parâmetro errado. Removi essa edição por linha; o fluxo que já funciona (escolher o parâmetro no menu, digitar o valor novo, Salvar) continua sendo o caminho certo.
+- **35. Campo "Décimo Provento (%)" removido** — some do formulário de Parâmetros e do cálculo.
+
+### Vale-Transporte
+- **36. Desconto de 6% agora incide só sobre o salário fixo** (antes incluía complementar/adicional noturno/comissão).
+- **37. PJ não entra mais no cálculo de VT** — mesmo que a planilha tenha marcado "Sim" em Vale-Transporte por engano, colaborador PJ é automaticamente excluído.
+- **38. Ajuda de custo de R$200 para os 4 PJs indicados** (Larisse e Paulo — Seu Conrado Eusébio; Jennifer — Parrileiro Sul; Valdisio) — aparece como linha própria "Ajuda de custo (PJ)", nunca misturada com "Vale Transporte". **Atenção:** não tenho acesso à sua planilha real, então não consegui confirmar se existe mais de um "Valdisio" cadastrado — se houver ambiguidade, o sistema mostra um aviso na tela de Vale Transporte pedindo confirmação manual.
+- **39. Valores por dia atualizados**: Eusébio fora do município R$19,80/dia; Eusébio dentro do município R$10,80/dia; Fortaleza (Aldeota/Sul/Rio Mar) R$10,80/dia fixo, independente de onde a pessoa mora. Colaborador sem bairro cadastrado é tratado como "de fora" (o valor mais alto, pra não sub-calcular).
+
+### Plano de Saúde
+- **40. Novo campo "Possui Plano de Saúde?" (Sim/Não)** no cadastro de colaborador, aparece no Dossiê e no Headcount. Só marca quem tem — não criei nenhuma fórmula de custo, já que você não pediu isso (achei duas colunas antigas não usadas, Plano_Saude_Titular/Dependente, que já somavam num CMO se estivessem preenchidas — deixei do jeito que estava, sem mexer).
+
+### Rescisão / Processos Trabalhistas
+- **41. Conferido: os valores de Rescisão e de Processos Trabalhistas já são editáveis manualmente** (Valor da Rescisão, Valor Pedido, Valor Provisionado, Valor Pago) — não achei nenhum campo travado ou calculado automaticamente. Se você ainda não consegue digitar algum valor específico na cópia de teste, me diga exatamente qual campo/tela que eu reviso de novo — pode ser que a versão publicada esteja desatualizada.
+- **42. Conferido: Processos Trabalhistas já aceita ex-colaboradores** — a lista de nomes já traz todo mundo (ativo, afastado, desligado), sem filtro de status. Se na prática o nome do ex-colaborador não aparecer, também pode ser versão desatualizada — me avise o nome específico que eu confirmo.
+
+### Liderança — mapa atualizado com o organograma real que você mandou
+- **43.** Usei o organograma completo (Diretoria, líderes por função de cada unidade, relações "fulano lidera fulano") pra preencher o mapa de liderança que o Dossiê usa como respaldo quando o campo Líder do colaborador está vazio.
+- **Casos de coliderança** (duas pessoas liderando a mesma pessoa/função): mantive como texto conjunto "Fulano e Sicrano" — é o mesmo padrão que o sistema já usava antes, não inventei nada novo. Ex.: Jeffany e Luiza aparecem lideradas por "Gustavo Freitas e Lucas Nogueira".
+- **Nomes que vieram só com primeiro nome** (Alan, Cleylson, Leidiana, entre outros) — usei como você escreveu, mas **preciso que você confirme o nome completo de cada um na planilha** se houver mais de uma pessoa com esse primeiro nome na empresa, pra garantir que o sistema não aponte a pessoa errada (foi exatamente esse tipo de erro que corrigimos numa rodada anterior).
+- Times inteiros mencionados só por função (ex.: "toda a equipe da Cozinha do Rio Mar") não têm como ser vinculados um por um sem saber os nomes de cada pessoa do time — esses colaboradores continuam usando o líder padrão da unidade até você (ou o RH) preencher o campo Líder de cada um individualmente.
+
+---
+
 ## CORREÇÕES DA 5ª RODADA (Rio Mar, Detalhe das vagas, CPF/ressalvas)
 
 ### 26. Rio Mar "continuava fixo" mesmo depois de 2 correções — causa era CACHE, não cálculo

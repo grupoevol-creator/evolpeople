@@ -4,6 +4,49 @@ Reconstrução + correção dos 6 arquivos do sistema (Code.gs, app.js, style.cs
 
 ---
 
+## CORREÇÕES DA 4ª RODADA (achado real: por que Indicadores Mensais "não salvava")
+
+Você mandou print mostrando: preencheu Ativos, Admissões, Desligamentos, Absenteísmo, Turnover e Faturamento, mas no final só Absenteísmo e Faturamento apareceram na tabela de Registros — o resto ficou em branco.
+
+### 23. Causa raiz encontrada: editar um registro existente perdia campos "novos"
+Salvar um registro NOVO (`salvarIndicador_`) sempre funcionou certo — conferi campo por campo contra o cabeçalho da planilha, bate 100%. O problema é ao EDITAR um registro já existente (botão ✏️ "Editar" → "Atualizar registro"): essa ação usa uma função genérica (`atualizarRegistroGenerico_`) que só escreve em colunas que JÁ EXISTEM na planilha — ela nunca criava a coluna Ativos/Admissões/Desligamentos se ainda não existisse, então o valor digitado era descartado silenciosamente, sem erro nenhum aparecer. Absenteísmo e Faturamento são colunas mais antigas que já existiam desde o início, por isso sempre funcionaram. Corrigido: agora a edição também garante a criação de qualquer coluna que faltar antes de gravar (mesmo comportamento do "salvar novo").
+**Se você já tem registros de meses anteriores com esses campos vazios por causa desse bug, vai ser preciso reabrir e salvar de novo esses registros específicos depois de publicar esta correção** — a correção impede o bug de se repetir, mas não recupera dados que já foram perdidos.
+
+### 24. Turnover nunca aparecia na tabela (mesmo quando salvava certo)
+A lista de colunas exibidas na tabela de Registros de Indicadores Mensais estava fixa no código e nunca incluía "TurnoverPercentual" — mesmo quando o valor salvava certinho no fundo, não tinha como aparecer na tela. Corrigido: Turnover agora está na lista de colunas exibidas.
+
+### 25. Novo: Faturamento por Colaborador — automático
+Adicionei o cálculo automático de Faturamento ÷ Ativos (headcount) por unidade/mês, direto dos dados que você já preenche em Indicadores Mensais — sem precisar digitar nada a mais. Aparece como coluna extra (somente leitura) na tabela de Registros dessa tela. Se Ativos = 0, mostra 0 em vez de dar erro de divisão.
+
+---
+
+## CORREÇÕES DA 3ª RODADA (a partir de testes reais feitos por você na cópia de teste)
+
+Estas foram encontradas depois que você já tinha publicado a 1ª rodada de correções e testou de verdade — por isso são mais precisas (bugs reais, não hipóteses de leitura de código).
+
+### 16. Vagas "sem cargo" ainda entravam com R$312 de custo
+O aviso "21 vaga(s) com cargo SEM SALÁRIO cadastrado" dizia "entram com custo ZERO", mas o código ainda somava R$312 (refeição estimada) mesmo para vagas sem cargo/salário resolvido. Corrigido em `dashboardCalcular_` (Code.gs): agora, se não há salário resolvido para a vaga, o custo dela é mesmo zero. **Isso não substitui a necessidade de preencher o Cargo dessas 21 vagas na planilha** — só corrige a conta ficar consistente com o aviso.
+
+### 17. Rio Mar "continuava fixo" — achado um SEGUNDO lugar com tabela hardcoded
+Na rodada anterior, corrigi `salariosPorUnidade_` para o Rio Mar ser dinâmico. Mas existe um card SEPARADO no dashboard ("Parrileiro Rio Mar — Salário + Gratificação") com sua PRÓPRIA lógica: quando havia uma regra na tabela `RioMar_Gratificacao` para o cargo, o salário-base exibido vinha dessa tabela fixa, não do colaborador real. Corrigido em `dashboardCalcular_`: o salário-base agora SEMPRE vem do colaborador real; a tabela de gratificação só fornece o teto do bônus (isso é regra de negócio válida, mantida).
+
+### 18. Dossiê "puxava líder errado"
+Causa: um mapa antigo (`LIDERES_DIRETOS`, já existia no sistema original) tentava adivinhar o líder casando só o PRIMEIRO NOME da pessoa (ex.: "Alan", "Saulo"), sem exigir nome completo nem verificar a unidade. Em qualquer base com duas pessoas de primeiro nome igual, isso aponta o líder errado. Removi essa camada de adivinhação (a menos arriscada, `LIDERES_DIRETOS_UNI`, que também checa a unidade, foi mantida). Agora, quando não há líder no cadastro do colaborador, na aba Liderança, nem uma correção exata por nome completo, o sistema mostra o líder PADRÃO da unidade em vez de arriscar um nome errado. **Ainda pode aparecer "líder padrão" em vez do líder de fato para quem não tem o campo Líder preenchido** — o único jeito de resolver 100% é preencher o campo Líder na planilha de Colaboradores ou cadastrar na aba Liderança.
+
+### 19. SLA de Vagas — agora é automático (pedido novo)
+Antes era um lançamento manual (mês/ano/unidade/dias/vagas fechadas). Agora `slaAutomatico_()` (Code.gs) calcula sozinho, direto da aba "Controle de Vagas": pega toda vaga com Status = ENCERRADA, usa "Dias em Aberto" (ou calcula pela Data Abertura/Data Encerramento) e tira a média por Unidade + mês/ano de fechamento. O lançamento manual continua existindo só como ajuste pontual opcional. **Depende de "Controle de Vagas" ter as colunas Status, Data Abertura, Data Encerramento (ou Dias em Aberto) preenchidas** — sem isso o cálculo fica vazio.
+
+### 20. Teste Prático (líder): faltava a checagem de CPF
+Na 1ª rodada o campo de CPF ("consta algo ou não", só para sócios) só tinha sido colocado em "Agendar Teste (RH)". A tela "Teste Prático" (onde o líder registra o resultado) não tinha esse campo — corrigi a listagem (`listarTestes`) para redigir o CPF de não-sócios também aqui, igual já era feito em Testes_RH. **Ainda não adicionei o campo de INPUT do CPF no formulário de "Teste Prático"** (só a proteção de leitura no backend) — se você quiser que o líder também possa preencher esse campo nessa tela (e não só o RH), me avise que eu completo.
+
+### 21. Agendar Teste (RH): não tinha horário início/fim nem múltiplos dias
+Só existiam em "Teste Prático" (tela do líder). Mas quem agenda é o RH — então agora `Testes_RH` também tem HoraInicio/HoraFim/DiasTeste, o formulário de "Agendar Teste (RH)" tem os mesmos campos de dias extensíveis e horário que já existiam do lado do líder, e a tela do líder (`preencherDoTesteRH`) agora PUXA automaticamente o horário e os dias marcados pelo RH ao escolher o candidato.
+
+### 22. Refeição — confirmado que já está correto
+Você reforçou que refeição deve ser o valor CHEIO do mês por casa (ex.: R$14 mil), não por pessoa — conferi de novo o código (`refeicaoDoMes_`) e essa é exatamente a lógica já implementada na 1ª rodada: soma os lançamentos tipo "Refeição" em Custos Mensais por unidade/mês, sem multiplicar por headcount, sem contar em duplicidade em "outros custos". Nenhuma mudança necessária aqui — só confirmando.
+
+---
+
 ## 1. Indicadores mensais não gravam / não aparecem no dashboard
 
 **Causa raiz:** `salvarIndicador_` (Code.gs) recebia `Ativos`, `Admissoes` e `Desligamentos` do formulário, mas nunca gravava esses três campos na planilha — só persistia `Faturamento`/`FaturamentoProjetado`/`AbsenteismoPercentual`. Como o dashboard e o cálculo de turnover automático dependem desses três campos, tudo que dependia deles ficava zerado. Havia também risco de duplicar linhas do mesmo período para o Rio Mar, porque a `Unidade` não era canonicalizada antes de comparar a chave de upsert (ver item 5).

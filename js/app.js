@@ -614,10 +614,27 @@ function ehSocioClient() {
   return ["SOCIO", "SOCIO OPERADOR", "DIRETOR", "DIRETORIA"].indexOf(p) !== -1;
 }
 /* ============ AGENDAR TESTE (RH) ============ */
+// CORREÇÃO (3ª rodada) — item #13 aplicado também na tela do RH: é AQUI que o
+// horário de início/fim e os dias de teste devem ser preenchidos (o RH agenda),
+// para depois aparecerem sozinhos na tela do líder (ver preencherDoTesteRH()).
+let TR_DIAS = [];
+function trAdicionarDia() { TR_DIAS.push(""); trRenderDias(); }
+function trRemoverDia(i) { TR_DIAS.splice(i, 1); trRenderDias(); }
+function trAtualizarDia(i, v) { TR_DIAS[i] = v; }
+function trRenderDias() {
+  const alvo = document.getElementById("trDiasWrap");
+  if (!alvo) return;
+  alvo.innerHTML = TR_DIAS.map((d, i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <input type="date" value="${escapeHtml(d)}" onchange="trAtualizarDia(${i}, this.value)" style="flex:1">
+      <button type="button" class="btn btn-secondary" style="padding:4px 8px;font-size:12px;color:#b91c1c" onclick="trRemoverDia(${i})">✕</button>
+    </div>`).join("") + `<button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:12px" onclick="trAdicionarDia()">+ Adicionar dia de teste</button>`;
+}
 async function renderTesteRH() {
   const vejaCpf = ehSocioClient();
+  TR_DIAS = [""];
   setMain(`
-    <div class="page-title"><div><h2>Agendar Teste (RH)</h2><p>O RH agenda o candidato que vai fazer o teste na casa. O líder dá o parecer depois, em "Teste Prático".</p></div></div>
+    <div class="page-title"><div><h2>Agendar Teste (RH)</h2><p>O RH agenda o candidato que vai fazer o teste na casa. O líder dá o parecer depois, em "Teste Prático" — horário e dias marcados aqui já aparecem prontos lá.</p></div></div>
     <div class="card">
       <h3>Novo candidato para teste</h3>
       <div class="grid g3">
@@ -627,8 +644,12 @@ async function renderTesteRH() {
         <div class="form-row"><label>Setor</label><input id="trSetor" type="text" placeholder="Ex.: Salão"></div>
         <div class="form-row"><label>Unidade *</label><input id="trUni" type="text" list="dl-unidades" placeholder="Unidade do teste"></div>
         <div class="form-row"><label>Líder direto</label><input id="trLider" type="text" list="dl-responsaveis" placeholder="Quem vai avaliar"></div>
-        <div class="form-row"><label>Data do teste</label><input id="trData" type="date"></div>
-        <div class="form-row"><label>Hora do teste</label><input id="trHora" type="time"></div>
+        <div class="form-row"><label>Hora de início</label><input id="trHoraInicio" type="time"></div>
+        <div class="form-row"><label>Hora de fim</label><input id="trHoraFim" type="time"></div>
+      </div>
+      <div class="form-row">
+        <label>Dia(s) de teste <span class="muted" style="font-weight:400;font-size:11px">(pode marcar quantos dias precisar)</span></label>
+        <div id="trDiasWrap"></div>
       </div>
       <h4 style="margin:14px 0 6px">Passagem e fardamento</h4>
       <div class="grid g3">
@@ -670,6 +691,7 @@ async function renderTesteRH() {
       <div id="tabelaTesteRH"><div class="empty">Carregando...</div></div>
     </div>
   `);
+  trRenderDias();
   await carregarTabelaTesteRH();
 }
 async function carregarTabelaTesteRH() {
@@ -715,12 +737,17 @@ async function salvarTesteRH() {
   if (!nome) return toast("Informe o nome completo do candidato.", "err");
   if (!funcao) return toast("Informe a função.", "err");
   if (!uni) return toast("Informe a unidade.", "err");
+  const diasRH = (TR_DIAS || []).filter(Boolean);
   const dados = {
     NomeCompleto: nome, Funcao: funcao, Unidade: uni,
     Setor: (el("#trSetor").value || "").trim(),
     LiderDireto: (el("#trLider").value || "").trim(),
     Telefone: (el("#trFone").value || "").trim(),
-    DataTeste: el("#trData").value, HoraTeste: el("#trHora").value,
+    DataTeste: diasRH[0] || "",
+    DiasTeste: diasRH.join(", "),
+    HoraTeste: el("#trHoraInicio") ? el("#trHoraInicio").value : "",
+    HoraInicio: el("#trHoraInicio") ? el("#trHoraInicio").value : "",
+    HoraFim: el("#trHoraFim") ? el("#trHoraFim").value : "",
     Passagem: el("#trPassagem").value, PassagemEntregue: el("#trPassEnt").value,
     FardamentoEntregue: el("#trFardEnt").value,
     AlinhadoSocio: el("#trAlinhado").value, Socio: (el("#trSocio").value || "").trim(),
@@ -3864,6 +3891,11 @@ function tpRenderDias() {
 }
 async function renderTestePratico() {
   TP_DIAS = [""];
+  // item #9 (correção 2ª rodada): mesma checagem de CPF ("consta algo ou
+  // não") da tela do RH (Agendar Teste (RH)) aplicada aqui na tela do líder
+  // — visível/gravável só para perfil sócio (ehSocioClient espelha
+  // perfilSocio_ do Code.gs).
+  const vejaCpf = ehSocioClient();
   const etapas = ["Teste Prático", "Entrevista RH", "Entrevista Gestor", "Etapa Final"];
   const criterios = [
     ["crit_tecnico", "Conhecimento técnico", "Domínio dos conteúdos específicos da vaga"],
@@ -3927,6 +3959,14 @@ async function renderTestePratico() {
         <div class="form-row"><label>Satisfação do avaliador (1 a 5)</label>
           <select id="tpSatisfacao"><option value="">Selecione...</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
       </div>
+      ${vejaCpf ? `
+      <h4 style="margin:14px 0 6px">🔒 Verificação de CPF <span class="muted" style="font-weight:400;font-size:11px">(visível só para sócios/diretoria)</span></h4>
+      <div class="grid g3">
+        <div class="form-row"><label>CPF já foi verificado?</label>
+          <select id="tpCpfVerificado"><option value="Não">Não</option><option value="Sim">Sim</option></select>
+        </div>
+        <div class="form-row g2"><label>Consta algo no CPF (ou não)?</label><input id="tpCpfConsta" type="text" placeholder="Ex.: Nada consta / consta processo tal..."></div>
+      </div>` : ""}
       <div class="form-row"><label>Observações</label><textarea id="tpObs"></textarea></div>
       <div class="actions">
         <button class="btn btn-primary" onclick="salvarTestePratico()">Salvar Resultado</button>
@@ -3962,8 +4002,15 @@ function preencherDoTesteRH() {
   if (el("#tpCargo") && t.Funcao) { el("#tpCargo").value = t.Funcao; autofillSalarioTeste(t.Funcao); }
   if (el("#tpTelefone") && t.Telefone) el("#tpTelefone").value = t.Telefone;
   if (el("#tpAvaliador") && t.LiderDireto) el("#tpAvaliador").value = t.LiderDireto;
+  // CORREÇÃO (3ª rodada): horário de início/fim e os dias de teste, marcados
+  // pelo RH em "Agendar Teste (RH)", agora vêm prontos para o líder aqui —
+  // antes esses campos só existiam na tela do líder e não eram repassados.
+  if (el("#tpHoraInicio") && t.HoraInicio) el("#tpHoraInicio").value = t.HoraInicio;
+  if (el("#tpHoraFim") && t.HoraFim) el("#tpHoraFim").value = t.HoraFim;
+  const diasVindosDoRH = String(t.DiasTeste || t.DataTeste || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (diasVindosDoRH.length) { TP_DIAS = diasVindosDoRH; tpRenderDias(); }
   if (typeof filtrarAvaliadores === "function") filtrarAvaliadores();
-  toast("Dados do candidato preenchidos automaticamente.", "info");
+  toast("Dados do candidato preenchidos automaticamente (inclusive horário e dias marcados pelo RH).", "info");
 }
 function autofillSalarioTeste(nomeCargo) {
   const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
@@ -4000,6 +4047,8 @@ async function salvarTestePratico() {
     Criterios: criterios,
     Observacoes: el("#tpObs").value
   };
+  if (el("#tpCpfVerificado")) dados.CPFVerificado = el("#tpCpfVerificado").value;
+  if (el("#tpCpfConsta")) dados.CPFConsta = (el("#tpCpfConsta").value || "").trim();
   try {
     const r = await api("salvarTeste", dados);
     toast(r.msg || "Teste salvo.", "ok");
@@ -4492,7 +4541,13 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarIndicadoresMensais", listKey: "indicadores",
     saveAction: "salvarIndicadorMensal",
-    columns: ["Mes", "Ano", "Unidade", "Ativos", "Admissoes", "Desligamentos", "AbsenteismoPercentual", "Faturamento"],
+    // TurnoverPercentual: já era calculado/salvo no backend (ver salvarIndicador_
+    // em Code.gs), mas não aparecia aqui — a lista de colunas simplesmente não
+    // incluía essa coluna, então o valor nunca era exibido (mesmo tendo sido
+    // gravado certinho na planilha). FaturamentoPorColaborador: novo, calculado
+    // automaticamente no backend (enriquecerIndicadores_) = Faturamento ÷ Ativos.
+    columns: ["Mes", "Ano", "Unidade", "Ativos", "Admissoes", "Desligamentos", "TurnoverPercentual",
+      "AbsenteismoPercentual", "Faturamento", "FaturamentoPorColaborador"],
     fields: [
       { name: "Mes", label: "Mês", type: "select", required: true, options: [
         { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
@@ -4532,6 +4587,7 @@ const MODULES = {
   },
   sla: {
     label: "SLA de Vagas",
+    note: "A lista abaixo agora é calculada automaticamente a partir da aba \"Controle de Vagas\" (média de dias em aberto das vagas ENCERRADAS, por unidade/mês). O formulário abaixo só é necessário se precisar lançar um ajuste manual pontual para um mês específico.",
     filtros: ["Unidade"],
     listAction: "listarSLA", listKey: "sla",
     saveAction: "salvarSLA",

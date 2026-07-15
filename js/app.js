@@ -613,6 +613,35 @@ function ehSocioClient() {
   const p = normalize((STATE.user && STATE.user.perfil) || "");
   return ["SOCIO", "SOCIO OPERADOR", "DIRETOR", "DIRETORIA"].indexOf(p) !== -1;
 }
+// CORREÇÃO (rodada CPF/ressalvas): status que o RH pode marcar no candidato
+// agendado em Testes_RH. "EM TESTE" é o valor padrão (candidato ainda em
+// teste). "APROVADO"/"APROVADO COM RESSALVAS" continuam contando como
+// "ainda testando" (a pessoa segue o teste prático normalmente, só que com
+// uma ressalva registrada); só "REPROVADO" tira o candidato da lista de
+// quem está testando.
+const STATUS_TESTE_RH = ["EM TESTE", "APROVADO", "APROVADO COM RESSALVAS", "REPROVADO"];
+const STATUS_TESTE_RH_LABEL = {
+  "EM TESTE": "Em teste", "APROVADO": "Aprovado",
+  "APROVADO COM RESSALVAS": "Aprovado c/ ressalvas", "REPROVADO": "Reprovado"
+};
+function statusTesteRhAindaTestando(status) {
+  const s = normalize(status);
+  return s === "" || s === "EM TESTE" || s === "EM ANDAMENTO" || s === "TESTANDO" ||
+    s === "APROVADO" || s === "APROVADO COM RESSALVAS";
+}
+// Resumo do resultado da checagem de CPF (visível só para sócio — quem não é
+// sócio nem recebe CPFVerificado/CPFConsta, já vêm redigidos pelo backend).
+// CORREÇÃO (rodada CPF/ressalvas): antes, quando verificado e "nada consta"
+// (CPFConsta vazio), a tela só mostrava o badge "Verificado" sem nenhum texto
+// — parecia informação faltando. Agora mostra sempre uma frase clara: "nada
+// consta", "consta — <texto>" ou "ainda não verificado" (nunca em branco).
+function cpfStatusHtml(t) {
+  const verificado = String((t && t.CPFVerificado) || "") === "Sim";
+  const consta = String((t && t.CPFConsta) || "").trim();
+  if (!verificado) return `<span class="badge warn">CPF: ainda não verificado</span>`;
+  if (!consta) return `<span class="badge ok">CPF: nada consta</span>`;
+  return `<span class="badge bad">CPF: consta</span><br><span class="muted" style="font-size:11px">${escapeHtml(consta)}</span>`;
+}
 /* ============ AGENDAR TESTE (RH) ============ */
 // CORREÇÃO (3ª rodada) — item #13 aplicado também na tela do RH: é AQUI que o
 // horário de início/fim e os dias de teste devem ser preenchidos (o RH agenda),
@@ -682,6 +711,11 @@ async function renderTesteRH() {
         </div>
         <div class="form-row g2"><label>Consta algo no CPF (ou não)?</label><input id="trCpfConsta" type="text" placeholder="Ex.: Nada consta / consta processo tal..."></div>
       </div>` : ""}
+      <div class="grid g3">
+        <div class="form-row"><label>Status do candidato</label>
+          <select id="trStatus">${STATUS_TESTE_RH.map(s => `<option value="${s}" ${s === "EM TESTE" ? "selected" : ""}>${STATUS_TESTE_RH_LABEL[s]}</option>`).join("")}</select>
+        </div>
+      </div>
       <div class="form-row g3"><label>Observações</label><textarea id="trObs" rows="2" placeholder="Alguma informação importante..."></textarea></div>
       <div style="margin-top:10px"><button class="btn btn-primary" onclick="salvarTesteRH()">Agendar teste</button></div>
       <p class="muted" style="font-size:12px;margin-top:6px">O candidato aparece na hora em "Quem está testando" (com currículo e telefone) e na lista de parecer do líder.</p>
@@ -717,9 +751,13 @@ async function carregarTabelaTesteRH() {
           <td>${escapeHtml(t.Passagem || "—")}<br><span class="badge ${String(t.PassagemEntregue) === "Sim" ? "ok" : "warn"}">${String(t.PassagemEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
           <td><span class="badge ${String(t.FardamentoEntregue) === "Sim" ? "ok" : "warn"}">${String(t.FardamentoEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
           <td><span class="badge ${String(t.AlinhadoSocio) === "Sim" ? "ok" : "warn"}">${String(t.AlinhadoSocio) === "Sim" ? "Alinhado" : "Pendente"}</span>${t.Socio ? `<br>${escapeHtml(t.Socio)}` : ""}</td>
-          ${vejaCpf ? `<td><span class="badge ${String(t.CPFVerificado) === "Sim" ? "ok" : "warn"}">${String(t.CPFVerificado) === "Sim" ? "Verificado" : "Pendente"}</span>${t.CPFConsta ? `<br><span class="muted" style="font-size:11px">${escapeHtml(t.CPFConsta)}</span>` : ""}</td>` : ""}
-          <td>${formatarCelula("Status", t.Status)}</td>
+          ${vejaCpf ? `<td>${cpfStatusHtml(t)}</td>` : ""}
+          <td>${formatarCelula("Status", t.Status || "EM TESTE")}</td>
           <td style="white-space:nowrap;text-align:right">
+            <select id="trst_${i}" style="padding:3px 4px;font-size:11px;margin-right:4px">
+              ${STATUS_TESTE_RH.map(s => `<option value="${s}" ${normalize(t.Status || "EM TESTE") === normalize(s) ? "selected" : ""}>${STATUS_TESTE_RH_LABEL[s]}</option>`).join("")}
+            </select>
+            <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Salvar status" onclick="salvarStatusTesteRH(${i})">💾</button>
             <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar passagem entregue" onclick="marcarTesteRH(${i},'PassagemEntregue')">🎫</button>
             <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar fardamento entregue" onclick="marcarTesteRH(${i},'FardamentoEntregue')">👕</button>
             <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px;color:#b91c1c" title="Excluir" onclick="excluirTesteRH(${i})">🗑️</button>
@@ -751,7 +789,10 @@ async function salvarTesteRH() {
     Passagem: el("#trPassagem").value, PassagemEntregue: el("#trPassEnt").value,
     FardamentoEntregue: el("#trFardEnt").value,
     AlinhadoSocio: el("#trAlinhado").value, Socio: (el("#trSocio").value || "").trim(),
-    Observacoes: (el("#trObs").value || "").trim(), Status: "EM TESTE"
+    Observacoes: (el("#trObs").value || "").trim(),
+    // CORREÇÃO (rodada CPF/ressalvas): antes ficava fixo em "EM TESTE" — o RH
+    // não conseguia marcar "aprovado com ressalvas" nem no agendamento.
+    Status: el("#trStatus") ? el("#trStatus").value : "EM TESTE"
   };
   if (el("#trCpfVerificado")) dados.CPFVerificado = el("#trCpfVerificado").value;
   if (el("#trCpfConsta")) dados.CPFConsta = (el("#trCpfConsta").value || "").trim();
@@ -787,6 +828,18 @@ async function marcarTesteRH(i, campo) {
   try {
     await api("atualizarTesteRH", { index: i, dados: dados });
     toast((campo === "PassagemEntregue" ? "Passagem" : "Fardamento") + ": " + novo, "ok");
+    await carregarTabelaTesteRH();
+  } catch (e) { toast(e.message, "err"); }
+}
+// CORREÇÃO (rodada CPF/ressalvas): antes não existia NENHUMA forma de mudar o
+// Status de um teste do RH já agendado (só existia o valor fixo "EM TESTE"
+// gravado na criação) — por isso "aprovado com ressalvas" nunca "atualizava".
+async function salvarStatusTesteRH(i) {
+  const sel = document.getElementById("trst_" + i);
+  if (!sel) return;
+  try {
+    await api("atualizarTesteRH", { index: i, dados: { Status: sel.value } });
+    toast("Status atualizado: " + (STATUS_TESTE_RH_LABEL[sel.value] || sel.value), "ok");
     await carregarTabelaTesteRH();
   } catch (e) { toast(e.message, "err"); }
 }
@@ -1397,11 +1450,10 @@ async function renderEmTeste() {
   setMain(`<div class="loading">Carregando testes...</div>`);
   try {
     const r = await api("listarTestesRH", {});
-    // "Testando" = agendado pelo RH e ainda sem parecer final
-    ET.todos = (r.testesRH || []).filter(t => {
-      const s = normalize(t.Status);
-      return s === "" || s === "EM TESTE" || s === "EM ANDAMENTO" || s === "TESTANDO";
-    });
+    // "Testando" = agendado pelo RH e ainda sem parecer final. CORREÇÃO
+    // (rodada CPF/ressalvas): "APROVADO"/"APROVADO COM RESSALVAS" também
+    // continuam testando (só "REPROVADO" tira da lista) — ver statusTesteRhAindaTestando.
+    ET.todos = (r.testesRH || []).filter(t => statusTesteRhAindaTestando(t.Status));
     etRender();
   } catch (e) {
     setMain(`<div class="page-title"><div><h2>Quem está testando</h2></div></div>
@@ -1414,9 +1466,16 @@ function etRender() {
     ? ET.todos.filter(t => normalize(t.Unidade) === normalize(ET.unidade))
     : ET.todos;
   const sim = (v) => String(v) === "Sim";
+  // CORREÇÃO (rodada CPF/ressalvas): esta era a tela "Quem está testando" —
+  // o próprio nome do bug reportado — e NUNCA mostrou o resultado da
+  // checagem de CPF nem o Status (ex.: "aprovado com ressalvas") marcado
+  // pelo RH, mesmo esses dados já vindo prontos (e corretamente redigidos
+  // para quem não é sócio) em listarTestesRH. Adiciona as colunas CPF
+  // (só sócio) e Status (todo mundo, para o líder também enxergar a ressalva).
+  const vejaCpf = ehSocioClient();
   const tabela = linhas.length
     ? `<div class="table-wrap"><table>
-        <thead><tr><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio alinhado</th><th>Líder</th></tr></thead>
+        <thead><tr><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio alinhado</th><th>Líder</th>${vejaCpf ? "<th>CPF</th>" : ""}<th>Status</th></tr></thead>
         <tbody>${linhas.map(t => `<tr>
           <td style="font-weight:600">${escapeHtml(t.NomeCompleto || "—")}</td>
           <td>${escapeHtml(t.Funcao || "—")}</td>
@@ -1427,6 +1486,8 @@ function etRender() {
           <td><span class="badge ${sim(t.FardamentoEntregue) ? "ok" : "warn"}">${sim(t.FardamentoEntregue) ? "Entregue" : "Pendente"}</span></td>
           <td><span class="badge ${sim(t.AlinhadoSocio) ? "ok" : "warn"}">${sim(t.AlinhadoSocio) ? "Sim" : "Não"}</span>${t.Socio ? `<br><span class="muted" style="font-size:12px">${escapeHtml(t.Socio)}</span>` : ""}</td>
           <td>${escapeHtml(t.LiderDireto || "—")}</td>
+          ${vejaCpf ? `<td>${cpfStatusHtml(t)}</td>` : ""}
+          <td>${formatarCelula("Status", t.Status || "EM TESTE")}</td>
         </tr>`).join("")}</tbody></table></div>`
     : `<div class="empty">Ninguém em teste no momento. O RH agenda em "Agendar Teste (RH)".</div>`;
   const pendPass = linhas.filter(t => !sim(t.PassagemEntregue) && normalize(t.Passagem) !== "NAO PRECISA").length;
@@ -3921,7 +3982,7 @@ async function renderTestePratico() {
     <div class="card">
       <div class="grid g3">
         <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..." onchange="filtrarAvaliadores()"></div>
-        <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" list="dl-emteste" placeholder="Escolha quem está testando..." onchange="preencherDoTesteRH()"><datalist id="dl-emteste"></datalist></div>
+        <div class="form-row"><label>Nome do candidato *</label><input id="tpCandidato" type="text" list="dl-emteste" placeholder="Escolha quem está testando..." onchange="preencherDoTesteRH()"><datalist id="dl-emteste"></datalist><div id="tpCandidatoInfo" style="margin-top:4px;font-size:12px"></div></div>
         <div class="form-row"><label>Telefone do candidato</label><input id="tpTelefone" type="text" inputmode="tel" placeholder="(85) 90000-0000"></div>
         <div class="form-row"><label>Currículo (PDF/imagem)</label><input id="tpCurriculo" type="file" accept=".pdf,.doc,.docx,image/*"></div>
         <div class="form-row"><label>Vaga pretendida (cargo)</label><input id="tpCargo" type="text" list="dl-cargos" placeholder="Ex: Cozinheiro JR" onchange="autofillSalarioTeste(this.value)"></div>
@@ -3986,10 +4047,9 @@ async function renderTestePratico() {
 async function carregarEmTesteParaParecer() {
   try {
     const r = await api("listarTestesRH");
-    STATE.emTesteRH = (r.testesRH || []).filter(t => {
-      const s = normalize(t.Status);
-      return s === "" || s === "EM TESTE" || s === "EM ANDAMENTO" || s === "TESTANDO";
-    });
+    // CORREÇÃO (rodada CPF/ressalvas): "APROVADO"/"APROVADO COM RESSALVAS"
+    // também seguem testando (só "REPROVADO" sai da lista do líder).
+    STATE.emTesteRH = (r.testesRH || []).filter(t => statusTesteRhAindaTestando(t.Status));
     setDatalist("dl-emteste", STATE.emTesteRH.map(t => t.NomeCompleto).filter(Boolean));
   } catch (e) { STATE.emTesteRH = []; }
 }
@@ -3997,7 +4057,8 @@ async function carregarEmTesteParaParecer() {
 function preencherDoTesteRH() {
   const nome = normalize((el("#tpCandidato") || {}).value || "");
   const t = (STATE.emTesteRH || []).find(x => normalize(x.NomeCompleto) === nome);
-  if (!t) return;
+  const info = el("#tpCandidatoInfo");
+  if (!t) { if (info) info.innerHTML = ""; return; }
   if (el("#tpUnidade") && t.Unidade) el("#tpUnidade").value = t.Unidade;
   if (el("#tpCargo") && t.Funcao) { el("#tpCargo").value = t.Funcao; autofillSalarioTeste(t.Funcao); }
   if (el("#tpTelefone") && t.Telefone) el("#tpTelefone").value = t.Telefone;
@@ -4010,6 +4071,16 @@ function preencherDoTesteRH() {
   const diasVindosDoRH = String(t.DiasTeste || t.DataTeste || "").split(",").map(s => s.trim()).filter(Boolean);
   if (diasVindosDoRH.length) { TP_DIAS = diasVindosDoRH; tpRenderDias(); }
   if (typeof filtrarAvaliadores === "function") filtrarAvaliadores();
+  // CORREÇÃO (rodada CPF/ressalvas): mostra aqui o Status marcado pelo RH
+  // (ex.: "Aprovado com ressalvas") — antes o líder nunca via essa
+  // informação ao escolher o candidato, mesmo quando o RH já tinha marcado
+  // uma ressalva. CPF só aparece para sócio (mesmo gate de ehSocioClient()
+  // usado no restante do sistema).
+  if (info) {
+    const partes = [`Status (RH): ${formatarCelula("Status", t.Status || "EM TESTE")}`];
+    if (ehSocioClient()) partes.push(cpfStatusHtml(t));
+    info.innerHTML = partes.join(" &nbsp;·&nbsp; ");
+  }
   toast("Dados do candidato preenchidos automaticamente (inclusive horário e dias marcados pelo RH).", "info");
 }
 function autofillSalarioTeste(nomeCargo) {
@@ -5035,7 +5106,9 @@ function formatarCelula(coluna, valor) {
     let cls = "badge";
     if (["ATIVO", "ABERTA", "APROVADO", "EFETIVAR", "OK", "PENDENTE"].includes(v)) cls += " ok";
     else if (["DESLIGADO", "REPROVADO", "NAO EFETIVAR", "CRITICO", "URGENTE", "CANCELADA", "FECHADA"].includes(v)) cls += " bad";
-    else if (["INATIVO", "EM ANALISE", "ACOMPANHAR", "ALTA", "PREVISTA"].includes(v)) cls += " warn";
+    // "APROVADO COM RESSALVAS" (Testes_RH, agendado pelo RH): entra em warn
+    // (amarelo) — segue aprovado/em teste, mas com uma ressalva registrada.
+    else if (["INATIVO", "EM ANALISE", "ACOMPANHAR", "ALTA", "PREVISTA", "APROVADO COM RESSALVAS"].includes(v)) cls += " warn";
     return `<span class="${cls}">${escapeHtml(valor)}</span>`;
   }
   return escapeHtml(valor);

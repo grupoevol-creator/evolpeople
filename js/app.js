@@ -8,23 +8,26 @@
  *     Quem tem acesso: Qualquer pessoa).
  *  2) Cole a URL terminada em /exec abaixo em CONFIG.API_URL.
  *************************************************************/
-
 const CONFIG = {
   // ↓↓↓ URL /exec da sua implantação (App da Web). Não mexer em mais nada abaixo. ↓↓↓
-  API_URL: "https://script.google.com/macros/s/AKfycbx4FiKAYkn4LBUKUQhs0DofAjySsHSLJb6peqcKRjD_N0y4UkqdrTyRked19S0tR_iG/exec"
+  API_URL: "https://script.google.com/macros/s/AKfycbx4FiKAYkn4LBUKUQhs0DofAjySsHSLJb6peqcKRjD_N0y4UkqdrTyRked19S0tR_iG/exec",
+  // ⚠️ CORREÇÃO #2 (push no celular): chave pública VAPID.
+  // Sem isso, subscribePush() NÃO funciona — o navegador exige uma applicationServerKey
+  // válida para criar a inscrição de push. Gere o par de chaves VAPID (ex.: com a
+  // biblioteca "web-push" do Node: `npx web-push generate-vapid-keys`) e cole a
+  // chave PÚBLICA aqui. A chave PRIVADA fica só no servidor que for enviar os pushes
+  // (Apps Script não consegue enviar Web Push nativamente — ver CHANGELOG item #2).
+  VAPID_PUBLIC_KEY: "COLE_AQUI_A_CHAVE_PUBLICA_VAPID"
 };
-
 const STATE = {
   user: null,
-  init: { unidades: [], cargos: [], colaboradores: [], salarios: [] },
+  init: { unidades: [], cargos: [], colaboradores: [], salarios: [], setores: [] },
   pagina: "dashboard",
   cache: {}, // cache simples por módulo: { colaboradores: [...], vagas: [...] }
   cacheTodos: {}, // lista completa (antes do filtro)
   filtroModulo: { unidade: "", busca: "" }
 };
-
 /* ===================== JSONP (chamada ao backend) ===================== */
-
 // Envia ARQUIVOS (base64) por POST de verdade — o api() normal usa URL (JSONP) e
 // estoura o limite de tamanho com PDF/imagem. Aqui conseguimos ler a resposta.
 async function apiUpload(acao, dados) {
@@ -52,7 +55,6 @@ async function apiUpload(acao, dados) {
     }
   }
 }
-
 function apiCall(acao, dados) {
   return new Promise((resolve, reject) => {
     if (!CONFIG.API_URL || CONFIG.API_URL.indexOf("COLE_AQUI") !== -1) {
@@ -62,13 +64,11 @@ function apiCall(acao, dados) {
     const cbName = "cb_" + Date.now() + "_" + Math.floor(Math.random() * 1e6);
     const script = document.createElement("script");
     let timeoutId;
-
     function limpar() {
       clearTimeout(timeoutId);
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
     }
-
     window[cbName] = function (res) {
       limpar();
       resolve(res);
@@ -81,23 +81,19 @@ function apiCall(acao, dados) {
       limpar();
       reject(new Error("Tempo de resposta excedido. O servidor pode estar sobrecarregado — tente novamente."));
     }, 45000);
-
     const payload = Object.assign({}, dados || {});
     if (STATE.user) {
       payload.__user = { nome: STATE.user.nome, perfil: STATE.user.perfil }; // informativo
       payload.__token = STATE.user.token || "";                               // autenticação real
     }
-
     const url = CONFIG.API_URL +
       "?acao=" + encodeURIComponent(acao) +
       "&dados=" + encodeURIComponent(JSON.stringify(payload)) +
       "&callback=" + cbName;
-
     script.src = url;
     document.body.appendChild(script);
   });
 }
-
 async function api(acao, dados) {
   toggleLoading(true);
   try {
@@ -119,9 +115,7 @@ async function api(acao, dados) {
     toggleLoading(false);
   }
 }
-
 /* ===================== UI: toast / loading / helpers ===================== */
-
 function toast(msg, tipo) {
   tipo = tipo || "ok";
   const area = document.getElementById("toastArea");
@@ -131,21 +125,17 @@ function toast(msg, tipo) {
   area.appendChild(el);
   setTimeout(() => el.remove(), 4500);
 }
-
 function toggleLoading(ligado) {
   const main = document.getElementById("main");
   if (!main) return;
   main.classList.toggle("loading-block", !!ligado);
 }
-
 function el(sel) { return document.querySelector(sel); }
 function setMain(html) { document.getElementById("main").innerHTML = html; }
-
 function fmtMoeda(v) {
   const n = Number(v) || 0;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-
 // Converte texto em formato brasileiro para número. Ex.: "1.490.688" -> 1490688 ; "1.490,50" -> 1490.5 ; "5828.95" -> 5828.95
 function parseMoedaBR(s) {
   s = String(s == null ? "" : s).trim();
@@ -164,21 +154,16 @@ function parseMoedaBR(s) {
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
 }
-
 function normalize(s) {
   return String(s || "").trim().toUpperCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    .normalize("NFD").replace(/[̀-ͯ]/g, "");
 }
-
 function escapeHtml(s) {
   return String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
-
 /* ===================== LOGIN / SESSÃO ===================== */
-
 const SESSION_KEY = "evolpeople_user";
-
 function salvarSessao(user) {
   try { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); } catch (e) {}
 }
@@ -191,21 +176,18 @@ function lerSessao() {
 function limparSessao() {
   try { localStorage.removeItem(SESSION_KEY); } catch (e) {}
 }
-
 async function fazerLogin(ev) {
   ev.preventDefault();
   const login = el("#loginUsuario").value.trim();
   const senha = el("#loginSenha").value;
   const msgEl = el("#loginMsg");
   msgEl.style.display = "none";
-
   if (!login || !senha) {
     msgEl.textContent = "Informe usuário e senha.";
     msgEl.className = "msg err";
     msgEl.style.display = "block";
     return;
   }
-
   try {
     const r = await api("login", { login: login, senha: senha });
     STATE.user = r.user;
@@ -217,16 +199,13 @@ async function fazerLogin(ev) {
     msgEl.style.display = "block";
   }
 }
-
 function sair() {
   limparSessao();
   STATE.user = null;
   document.getElementById("appScreen").style.display = "none";
   document.getElementById("loginScreen").style.display = "flex";
 }
-
 /* ===================== BOOT ===================== */
-
 window.addEventListener("load", async () => {
   document.getElementById("loginForm").addEventListener("submit", fazerLogin);
   const sess = lerSessao();
@@ -241,20 +220,17 @@ window.addEventListener("load", async () => {
   }
   document.getElementById("loginScreen").style.display = "flex";
 });
-
 async function iniciarApp() {
   document.getElementById("loginScreen").style.display = "none";
   document.getElementById("appScreen").style.display = "grid";
   el("#userNome").textContent = STATE.user.nome || STATE.user.login || "";
   el("#userInfo").textContent = [STATE.user.perfil, STATE.user.unidade].filter(Boolean).join(" · ");
-
   await carregarInit();
   montarSidebar();
   carregarNotificacoes();
   navegar("dashboard");
   mostrarAvisosLogin();
 }
-
 async function carregarInit() {
   try {
     const r = await api("getInit");
@@ -270,15 +246,25 @@ async function carregarInit() {
     }));
     STATE.init.salarios = r.salarios || [];
     STATE.init.lideranca = r.lideranca || [];
+    // CORREÇÃO #12 (filtro de Setor/Unidade no Dossiê não filtrava nada de verdade):
+    // a causa raiz é que STATE.init.setores NUNCA era preenchido — só unidades/cargos/
+    // colaboradores/salarios/lideranca eram carregados aqui. Sem essa lista, o <select>
+    // "Filtrar por Setor" do Dossiê ficava sempre vazio (só a opção "Todos os setores"),
+    // dando a impressão de que o filtro "não funcionava" quando na real não havia o
+    // que escolher. Preenche com o que o backend mandar (se existir) ou deriva dos
+    // próprios colaboradores como reforço.
+    STATE.init.setores = (r.setores && r.setores.length)
+      ? r.setores
+      : [...new Set(STATE.init.colaboradores.map(c => c.Setor).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt"));
     atualizarDatalists();
   } catch (e) {
     // Não trava o app: mantém listas vazias e segue. As telas mostram o próprio erro.
     STATE.init.unidades = STATE.init.unidades || [];
     STATE.init.colaboradores = STATE.init.colaboradores || [];
+    STATE.init.setores = STATE.init.setores || [];
     if (typeof toast === "function") toast("Não consegui carregar os dados iniciais. Verifique se o Code.gs está publicado.", "err");
   }
 }
-
 function atualizarDatalists() {
   setDatalist("dl-unidades", STATE.init.unidades);
   setDatalist("dl-cargos", STATE.init.cargos.map(c => c.Cargo));
@@ -288,7 +274,6 @@ function atualizarDatalists() {
   setDatalist("dl-ministrantes", [...new Set(SOLICITANTES.map(s => s[0]))].sort());
   ativarFiltroColabPorUnidade();
 }
-
 // Filtra o datalist de colaboradores para mostrar só os da unidade escolhida.
 // Se a unidade estiver vazia, mostra todos.
 function filtrarColabPorUnidade(unidade) {
@@ -298,7 +283,6 @@ function filtrarColabPorUnidade(unidade) {
     .map(c => c.Nome).filter(Boolean).sort();
   setDatalist("dl-colaboradores", nomes);
 }
-
 // Liga (uma vez) o comportamento: ao mudar qualquer campo de Unidade,
 // o datalist de colaboradores passa a mostrar só os daquela unidade.
 function ativarFiltroColabPorUnidade() {
@@ -311,7 +295,6 @@ function ativarFiltroColabPorUnidade() {
     }
   });
 }
-
 // Todos os gestores + diretoria (Liderança, Sócio Operador, Diretor, RH),
 // de todas as unidades, mais os líderes cadastrados na aba Liderança.
 function todosGestores() {
@@ -320,7 +303,6 @@ function todosGestores() {
   const daAba = (STATE.init.lideranca || []).map(l => l.Lider);
   return [...new Set(daLista.concat(daAba))].filter(Boolean).sort();
 }
-
 function setDatalist(id, valores) {
   let dl = document.getElementById(id);
   if (!dl) {
@@ -334,9 +316,7 @@ function setDatalist(id, valores) {
     .map(v => `<option value="${escapeHtml(v)}">`)
     .join("");
 }
-
 /* ===================== NAVEGAÇÃO / SIDEBAR ===================== */
-
 const GRUPOS_NAV = [
   { titulo: "Início", icone: "🏠", itens: [
     { key: "dashboard", label: "Dashboard" },
@@ -376,6 +356,7 @@ const GRUPOS_NAV = [
     { key: "indicadores", label: "Indicadores Mensais" },
     { key: "absenteismo", label: "Absenteísmo" },
     { key: "desligamentos", label: "Entrevista de Desligamento" },
+    { key: "processosTrabalhistas", label: "Processos Trabalhistas" },
     { key: "sla", label: "SLA de Vagas" }
   ]},
   { titulo: "Fardamento e EPI", icone: "👕", itens: [
@@ -386,14 +367,12 @@ const GRUPOS_NAV = [
     { key: "assistente", label: "EVA (Assistente)" }
   ]}
 ];
-
 function permitido(key) {
   const mods = STATE.user && STATE.user.modulos;
   if (!mods || mods === "*") return true;
   const lista = String(mods).split(",").map(m => normalize(m));
   return lista.indexOf(normalize(key)) !== -1;
 }
-
 // Abre/fecha um grupo do menu lateral
 function toggleGrupoNav(gi) {
   if (!STATE.navAberto) STATE.navAberto = {};
@@ -405,7 +384,6 @@ function toggleGrupoNav(gi) {
   const seta = div.previousElementSibling && div.previousElementSibling.querySelector("span:last-child");
   if (seta) seta.style.transform = `rotate(${fechado ? "90" : "0"}deg)`;
 }
-
 function montarSidebar() {
   const html = GRUPOS_NAV.map((grupo, gi) => {
     const itens = grupo.itens.filter(i => permitido(i.key));
@@ -427,12 +405,10 @@ function montarSidebar() {
   }).join("");
   document.getElementById("sidebar").innerHTML = html;
 }
-
 async function navegar(key) {
   STATE.pagina = key;
   document.querySelectorAll(".nav").forEach(b => b.classList.toggle("active", b.dataset.nav === key));
   if (typeof filtrarColabPorUnidade === "function") filtrarColabPorUnidade(""); // começa com todos até escolher a unidade
-
   try {
     if (key === "dashboard") return renderDashboard();
     if (key === "agenda") return renderAgenda();
@@ -461,11 +437,8 @@ async function navegar(key) {
     setMain(`<div class="msg err">Erro ao carregar página: ${escapeHtml(e.message)}</div>`);
   }
 }
-
 /* ===================== HEADCOUNT ===================== */
-
 const HC = { todos: [], unidade: "", sel: -1, busca: "" };
-
 function hcData_(s) {
   if (!s) return "—";
   const p = String(s).split("-");
@@ -493,12 +466,15 @@ function hcCampo_(obj, nomes) {
   }
   return "";
 }
-
 async function renderHeadcount() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
   try {
     const r = await api("listarHeadcount", {});
     HC.geradoEm = r.geradoEm || "";
+    // CORREÇÃO #10: guarda a série mensal de headcount que o backend agora retorna
+    // (listarHeadcount_ -> headcountMensal), para exibir o histórico completo, não
+    // só a foto atual.
+    HC.mensal = r.headcountMensal || [];
     HC.todos = (r.headcount || []).map(c => Object.assign({}, c, {
       Nome: c.Nome || c["Funcionário"] || c.Funcionario || c.Colaborador || c.NOME || "",
       Unidade: c.Unidade || c.Operacao || c["Operação"] || c.Lotacao || "",
@@ -515,7 +491,6 @@ async function renderHeadcount() {
       <p class="muted">Se aparecer "Ação desconhecida", o servidor (Code.gs) ainda está numa versão antiga — publique a Nova versão no Apps Script.</p></div>`);
   }
 }
-
 function hcFiltrados() {
   const q = normalize(HC.busca);
   let base;
@@ -524,7 +499,28 @@ function hcFiltrados() {
   else base = [];
   return q ? base.filter(c => normalize(c.Nome).indexOf(q) !== -1) : base;
 }
-
+// Tabela com a série histórica mensal de headcount (CORREÇÃO #10)
+function hcTabelaMensal() {
+  // Série mensal do grupo inteiro (listarHeadcount_ no Code.gs monta um ponto por
+  // mês, desde a admissão mais antiga até hoje, com base em quem já tinha sido
+  // admitido/desligado até o fim de cada mês). Não é quebrado por unidade — para
+  // ver por unidade, use o filtro de Unidade na lista de colaboradores acima.
+  const linhas = HC.mensal || [];
+  if (!linhas.length) return `<div class="empty">Ainda não há série histórica de headcount — ela é calculada a partir das datas de admissão/desligamento dos colaboradores.</div>`;
+  let anterior = null;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Período</th><th>Headcount</th><th>Variação</th></tr></thead>
+    <tbody>${linhas.map(l => {
+      const h = Number(l.Headcount) || 0;
+      const variacao = anterior === null ? null : h - anterior;
+      anterior = h;
+      return `<tr>
+      <td>${escapeHtml(l.Periodo || "")}</td>
+      <td style="font-weight:700">${h}</td>
+      <td>${variacao === null ? "—" : `<span class="badge ${variacao > 0 ? "ok" : (variacao < 0 ? "bad" : "")}">${variacao > 0 ? "+" : ""}${variacao}</span>`}</td>
+    </tr>`;
+    }).join("")}</tbody></table></div>`;
+}
 // Monta a "casca" fixa (título + busca + filtro) uma vez, e um contêiner dinâmico.
 function hcRender() {
   const unis = [...new Set(HC.todos.map(c => String(c.Unidade || "").trim()).filter(Boolean))].sort();
@@ -546,16 +542,18 @@ function hcRender() {
       </div>
     </div>
     <div id="hcDinamico"></div>
+    <div class="card">
+      <h3>📈 Série Histórica de Headcount <span class="muted" style="font-weight:400;font-size:12px">(mês a mês, por unidade)</span></h3>
+      ${hcTabelaMensal()}
+    </div>
   `);
   hcRenderLista();
 }
-
 // Atualiza só a parte dinâmica (KPI + detalhe + lista) sem recriar a busca,
 // pra não perder o foco enquanto você digita.
 function hcRenderLista() {
   const daUni = hcFiltrados();
   const q = normalize(HC.busca);
-
   let detalhe = "";
   if (HC.sel >= 0 && daUni[HC.sel]) {
     const c = daUni[HC.sel];
@@ -572,6 +570,7 @@ function hcRenderLista() {
         <div><small class="muted">Unidade</small><div>${escapeHtml(c.Unidade || "—")}</div></div>
         <div><small class="muted">Cargo</small><div>${escapeHtml(cargo)}</div></div>
         <div><small class="muted">Função</small><div>${escapeHtml(funcao)}</div></div>
+        <div><small class="muted">Modalidade de contratação</small><div>${escapeHtml(c.ModalidadeContratacao || c.TipoContrato || "CLT")}</div></div>
         <div><small class="muted">Admissão</small><div>${hcData_(c.DataAdmissao)}</div></div>
         <div><small class="muted">Aniversário</small><div>${hcAniversario_(c.DataNascimento)}</div></div>
         <div><small class="muted">Salário</small><div><b>${fmtMoeda(salario)}</b></div></div>
@@ -579,45 +578,46 @@ function hcRenderLista() {
       </div>
     </div>`;
   }
-
   const semFiltro = !HC.unidade && !q;
   const lista = semFiltro
     ? `<div class="empty">Escolha uma unidade ou digite um nome para ver os colaboradores.</div>`
     : (daUni.length
       ? `<div class="table-wrap"><table>
-          <thead><tr><th>#</th><th>Nome</th><th>Unidade</th><th>Cargo / Função</th><th>Líder</th><th></th></tr></thead>
+          <thead><tr><th>#</th><th>Nome</th><th>Unidade</th><th>Cargo / Função</th><th>Modalidade</th><th>Líder</th><th></th></tr></thead>
           <tbody>${daUni.map((c, i) => `<tr${i === HC.sel ? ' style="background:rgba(255,140,0,.08)"' : ""}>
             <td>${i + 1}</td>
             <td style="font-weight:600">${escapeHtml(c.Nome || "—")}</td>
             <td>${escapeHtml(c.Unidade || "—")}</td>
             <td>${escapeHtml(c.Cargo || c.Funcao || "—")}</td>
+            <td><span class="badge" style="background:${(c.ModalidadeContratacao || c.TipoContrato) === "PJ" ? "#7c3aed" : "#0369a1"};color:#fff;font-size:10px">${escapeHtml(c.ModalidadeContratacao || c.TipoContrato || "CLT")}</span></td>
             <td>${escapeHtml(c.Lider || "—")}</td>
             <td><button class="btn btn-secondary" onclick="hcSelecionar(${i})">Ver detalhes</button></td>
           </tr>`).join("")}</tbody></table></div>`
       : `<div class="empty">Nenhum colaborador encontrado.</div>`);
-
   const titulo = HC.unidade ? "Colaboradores da unidade" : (q ? "Resultado da busca" : "Colaboradores");
   const kpi = (HC.unidade || q)
     ? `<div class="grid g4"><div class="kpi"><small>${HC.unidade ? "Ativos — " + escapeHtml(HC.unidade) : "Encontrados"}</small><strong>${daUni.length}</strong></div></div>`
     : "";
-
   const alvo = document.getElementById("hcDinamico");
   if (alvo) alvo.innerHTML = `${kpi}${detalhe}<div class="card"><h3>${titulo}</h3>${lista}</div>`;
 }
-
 function hcBuscar(v) { HC.busca = v; HC.sel = -1; hcRenderLista(); }
 function hcMudarUnidade(u) { HC.unidade = u; HC.sel = -1; hcRenderLista(); }
 function hcSelecionar(i) { HC.sel = i; hcRenderLista(); }
-
 /* ===================== QUEM ESTÁ TESTANDO ===================== */
-
 const ET = { todos: [], unidade: "", curriculos: [] };
-
+// CORREÇÃO #9: só sócio/sócio operador/diretor/diretoria podem ver e preencher
+// o campo "CPF consta algo?" do teste do RH. Espelha perfilSocio_ do Code.gs
+// (mais restrito que "é admin" — líder e gestor NÃO entram aqui).
+function ehSocioClient() {
+  const p = normalize((STATE.user && STATE.user.perfil) || "");
+  return ["SOCIO", "SOCIO OPERADOR", "DIRETOR", "DIRETORIA"].indexOf(p) !== -1;
+}
 /* ============ AGENDAR TESTE (RH) ============ */
 async function renderTesteRH() {
+  const vejaCpf = ehSocioClient();
   setMain(`
     <div class="page-title"><div><h2>Agendar Teste (RH)</h2><p>O RH agenda o candidato que vai fazer o teste na casa. O líder dá o parecer depois, em "Teste Prático".</p></div></div>
-
     <div class="card">
       <h3>Novo candidato para teste</h3>
       <div class="grid g3">
@@ -630,7 +630,6 @@ async function renderTesteRH() {
         <div class="form-row"><label>Data do teste</label><input id="trData" type="date"></div>
         <div class="form-row"><label>Hora do teste</label><input id="trHora" type="time"></div>
       </div>
-
       <h4 style="margin:14px 0 6px">Passagem e fardamento</h4>
       <div class="grid g3">
         <div class="form-row"><label>Passagem — como será?</label>
@@ -654,12 +653,18 @@ async function renderTesteRH() {
         <div class="form-row"><label>Sócio operador</label><input id="trSocio" type="text" list="dl-responsaveis" placeholder="Quem foi alinhado"></div>
         <div class="form-row"><label>Currículo (PDF ou imagem)</label><input id="trCurriculo" type="file" accept=".pdf,.doc,.docx,image/*"></div>
       </div>
-
+      ${vejaCpf ? `
+      <h4 style="margin:14px 0 6px">🔒 Verificação de CPF <span class="muted" style="font-weight:400;font-size:11px">(visível só para sócios/diretoria)</span></h4>
+      <div class="grid g3">
+        <div class="form-row"><label>CPF já foi verificado?</label>
+          <select id="trCpfVerificado"><option value="Não">Não</option><option value="Sim">Sim</option></select>
+        </div>
+        <div class="form-row g2"><label>Consta algo no CPF (ou não)?</label><input id="trCpfConsta" type="text" placeholder="Ex.: Nada consta / consta processo tal..."></div>
+      </div>` : ""}
       <div class="form-row g3"><label>Observações</label><textarea id="trObs" rows="2" placeholder="Alguma informação importante..."></textarea></div>
       <div style="margin-top:10px"><button class="btn btn-primary" onclick="salvarTesteRH()">Agendar teste</button></div>
       <p class="muted" style="font-size:12px;margin-top:6px">O candidato aparece na hora em "Quem está testando" (com currículo e telefone) e na lista de parecer do líder.</p>
     </div>
-
     <div class="card">
       <h3>Testes agendados</h3>
       <div id="tabelaTesteRH"><div class="empty">Carregando...</div></div>
@@ -667,19 +672,19 @@ async function renderTesteRH() {
   `);
   await carregarTabelaTesteRH();
 }
-
 async function carregarTabelaTesteRH() {
   try {
     const r = await api("listarTestesRH");
     STATE.testesRHCache = r.testesRH || [];
     const linhas = STATE.testesRHCache;
+    const vejaCpf = ehSocioClient();
     if (!linhas.length) {
       document.getElementById("tabelaTesteRH").innerHTML = `<div class="empty">Nenhum teste agendado ainda.</div>`;
       return;
     }
     document.getElementById("tabelaTesteRH").innerHTML = `
       <div class="table-wrap"><table>
-        <thead><tr><th>Data</th><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio</th><th>Status</th><th style="width:1%">Ações</th></tr></thead>
+        <thead><tr><th>Data</th><th>Candidato</th><th>Função</th><th>Unidade</th><th>Telefone</th><th>Currículo</th><th>Passagem</th><th>Fardamento</th><th>Sócio</th>${vejaCpf ? "<th>CPF</th>" : ""}<th>Status</th><th style="width:1%">Ações</th></tr></thead>
         <tbody>${linhas.map((t, i) => `<tr>
           <td>${formatarCelula("Data", t.DataTeste || t.Data)}</td>
           <td>${escapeHtml(t.NomeCompleto || "")}</td>
@@ -690,6 +695,7 @@ async function carregarTabelaTesteRH() {
           <td>${escapeHtml(t.Passagem || "—")}<br><span class="badge ${String(t.PassagemEntregue) === "Sim" ? "ok" : "warn"}">${String(t.PassagemEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
           <td><span class="badge ${String(t.FardamentoEntregue) === "Sim" ? "ok" : "warn"}">${String(t.FardamentoEntregue) === "Sim" ? "Entregue" : "Pendente"}</span></td>
           <td><span class="badge ${String(t.AlinhadoSocio) === "Sim" ? "ok" : "warn"}">${String(t.AlinhadoSocio) === "Sim" ? "Alinhado" : "Pendente"}</span>${t.Socio ? `<br>${escapeHtml(t.Socio)}` : ""}</td>
+          ${vejaCpf ? `<td><span class="badge ${String(t.CPFVerificado) === "Sim" ? "ok" : "warn"}">${String(t.CPFVerificado) === "Sim" ? "Verificado" : "Pendente"}</span>${t.CPFConsta ? `<br><span class="muted" style="font-size:11px">${escapeHtml(t.CPFConsta)}</span>` : ""}</td>` : ""}
           <td>${formatarCelula("Status", t.Status)}</td>
           <td style="white-space:nowrap;text-align:right">
             <button class="btn btn-secondary" style="padding:4px 8px;font-size:12px" title="Marcar passagem entregue" onclick="marcarTesteRH(${i},'PassagemEntregue')">🎫</button>
@@ -702,7 +708,6 @@ async function carregarTabelaTesteRH() {
     document.getElementById("tabelaTesteRH").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 async function salvarTesteRH() {
   const nome = (el("#trNome").value || "").trim();
   const funcao = (el("#trFuncao").value || "").trim();
@@ -710,7 +715,6 @@ async function salvarTesteRH() {
   if (!nome) return toast("Informe o nome completo do candidato.", "err");
   if (!funcao) return toast("Informe a função.", "err");
   if (!uni) return toast("Informe a unidade.", "err");
-
   const dados = {
     NomeCompleto: nome, Funcao: funcao, Unidade: uni,
     Setor: (el("#trSetor").value || "").trim(),
@@ -722,7 +726,8 @@ async function salvarTesteRH() {
     AlinhadoSocio: el("#trAlinhado").value, Socio: (el("#trSocio").value || "").trim(),
     Observacoes: (el("#trObs").value || "").trim(), Status: "EM TESTE"
   };
-
+  if (el("#trCpfVerificado")) dados.CPFVerificado = el("#trCpfVerificado").value;
+  if (el("#trCpfConsta")) dados.CPFConsta = (el("#trCpfConsta").value || "").trim();
   try {
     toggleLoading(true);
     // 1) sobe o currículo (se houver) e pega o link
@@ -748,7 +753,6 @@ async function salvarTesteRH() {
     toggleLoading(false);
   }
 }
-
 async function marcarTesteRH(i, campo) {
   const t = (STATE.testesRHCache || [])[i]; if (!t) return;
   const novo = String(t[campo]) === "Sim" ? "Não" : "Sim";
@@ -759,7 +763,6 @@ async function marcarTesteRH(i, campo) {
     await carregarTabelaTesteRH();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function excluirTesteRH(i) {
   const t = (STATE.testesRHCache || [])[i]; if (!t) return;
   if (!confirm(`Excluir o teste de "${t.NomeCompleto}"?`)) return;
@@ -769,7 +772,6 @@ async function excluirTesteRH(i) {
     await carregarTabelaTesteRH();
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ============ RELATÓRIO DE CMO ============ */
 async function renderCmoRelatorio() {
   const hoje = new Date();
@@ -797,17 +799,14 @@ async function renderCmoRelatorio() {
   `);
   await gerarCmoRelatorio();
 }
-
 async function gerarCmoRelatorio() {
   const cont = document.getElementById("cmConteudo");
   cont.innerHTML = `<div class="loading">Calculando CMO...</div>`;
   let r;
   try { r = await api("cmoRelatorio", { mes: el("#cmMes").value, ano: el("#cmAno").value }); }
   catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
-
   const p = r.periodo || {}, n = r.cmoNominal || {}, h = r.cmoHora || {}, f = r.cmoFaturamento || {}, m = r.memoria || {};
   const lin = (rot, v, obs) => `<tr><td>${escapeHtml(rot)}${obs ? `<br><span class="muted" style="font-size:11px">${escapeHtml(obs)}</span>` : ""}</td><td style="text-align:right;font-weight:600">${fmtMoeda(v || 0)}</td></tr>`;
-
   cont.innerHTML = `
     ${(r.semSalario && r.semSalario.length) ? `
     <div class="msg err" style="font-size:13px">
@@ -818,7 +817,6 @@ async function gerarCmoRelatorio() {
       </table></div>
       <p style="margin:8px 0 0"><b>Como resolver:</b> edite a pessoa em <b>Cadastro de Colaboradores</b> (✏️) e preencha o salário — ou cadastre o salário do CARGO dela, que o sistema puxa automaticamente.</p>
     </div>` : ""}
-
     ${(r.camposFaltantes && r.camposFaltantes.length) ? `
     <div class="msg warn" style="font-size:13px">
       <b>⚠️ Campos que não existem na sua base</b> (o cálculo segue sem eles):
@@ -826,14 +824,12 @@ async function gerarCmoRelatorio() {
         ${r.camposFaltantes.map(x => `<li><b>${escapeHtml(x.campo)}</b> — ${escapeHtml(x.obs)}</li>`).join("")}
       </ul>
     </div>` : ""}
-
     <div class="grid g4">
       <div class="kpi" style="border-left-color:var(--laranja)"><small>1️⃣ CMO NOMINAL</small><strong>${fmtMoeda(n.valor)}</strong><span class="muted" style="font-size:11px;display:block">por colaborador · ${escapeHtml(n.colaboradores || 0)} ativos</span></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>2️⃣ CMO POR HORA</small><strong>${fmtMoeda(h.valor)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(h.horas || 0)}h no período</span></div>
       <div class="kpi"><small>3️⃣ CUSTO TOTAL</small><strong>${fmtMoeda(n.custoTotal)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(p.nomeMes)}/${escapeHtml(p.ano)}</span></div>
       <div class="kpi" style="border-left-color:${(f.percentual || 0) > 30 ? "var(--warn)" : "var(--info)"}"><small>4️⃣ CMO % DO FATURAMENTO</small><strong>${escapeHtml(f.percentual || 0)}%</strong><span class="muted" style="font-size:11px;display:block">fat. ${fmtMoeda(f.faturamento)}</span></div>
     </div>
-
     <div class="grid g2">
       <div class="card">
         <h3>🧮 Memória de Cálculo</h3>
@@ -864,23 +860,19 @@ async function gerarCmoRelatorio() {
           <tr style="border-top:3px solid #1e293b"><td style="font-weight:800;font-size:15px">CUSTO TOTAL DA MÃO DE OBRA</td><td style="text-align:right;font-weight:800;font-size:16px;color:#b45309">${fmtMoeda(m.total)}</td></tr>
         </tbody></table></div>
       </div>
-
       <div class="card">
         <h3>📐 Fórmulas</h3>
         <div style="font-size:13px;line-height:1.9;color:#475569">
           <p><b>1️⃣ CMO Nominal</b><br>
           <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(n.formula)}</code><br>
           ${fmtMoeda(n.custoTotal)} ÷ ${escapeHtml(n.colaboradores)} = <b>${fmtMoeda(n.valor)}</b></p>
-
           <p><b>2️⃣ CMO por Hora</b><br>
           <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(h.formula)}</code><br>
           ${fmtMoeda(h.custoTotal)} ÷ ${escapeHtml(h.horas)}h = <b>${fmtMoeda(h.valor)}/hora</b></p>
-
           <p><b>4️⃣ CMO % do Faturamento</b><br>
           <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(f.formula)}</code><br>
           (${fmtMoeda(f.custo)} ÷ ${fmtMoeda(f.faturamento)}) × 100 = <b>${escapeHtml(f.percentual)}%</b></p>
         </div>
-
         <h4 style="margin:16px 0 8px">5️⃣ CMO % por Centro de Custo</h4>
         ${(r.porCentroCusto && r.porCentroCusto.length)
           ? `<div class="table-wrap"><table>
@@ -896,7 +888,6 @@ async function gerarCmoRelatorio() {
           : `<div class="empty">Sem centros de custo.</div>`}
       </div>
     </div>
-
     <div class="card">
       <h3>3️⃣ CMO por Colaborador <span class="muted" style="font-weight:400;font-size:12px">(média geral: ${fmtMoeda(r.mediaGeral)})</span></h3>
       <div class="table-wrap" style="max-height:520px;overflow-y:auto"><table>
@@ -920,7 +911,6 @@ async function gerarCmoRelatorio() {
     </div>
   `;
 }
-
 /* ============ ADVERTÊNCIA / SUSPENSÃO ============ */
 function abrirDisciplinar(nome, unidade) {
   const div = document.createElement("div");
@@ -930,7 +920,6 @@ function abrirDisciplinar(nome, unidade) {
     <div style="background:#fff;border-radius:14px;max-width:560px;width:100%;padding:22px;max-height:90vh;overflow-y:auto">
       <h3 style="margin:0 0 4px">⚠️ Registrar Ocorrência Disciplinar</h3>
       <p class="muted" style="font-size:13px;margin-bottom:14px">${escapeHtml(nome)}</p>
-
       <div class="form-row"><label>Tipo *</label>
         <select id="dscTipo" onchange="dscTipoMudou()">
           <option value="">Selecione...</option>
@@ -952,7 +941,6 @@ function abrirDisciplinar(nome, unidade) {
       <div class="form-row"><label>O colaborador assinou?</label>
         <select id="dscAssinou"><option>Não</option><option>Sim</option><option>Recusou assinar</option></select>
       </div>
-
       <div style="display:flex;gap:8px;margin-top:16px">
         <button class="btn btn-primary" onclick="salvarDisciplinar('${escapeHtml(nome.replace(/'/g, "\\'"))}','${escapeHtml(unidade || "")}')" style="flex:1">Registrar</button>
         <button class="btn btn-secondary" onclick="fecharDisciplinar()">Cancelar</button>
@@ -960,18 +948,15 @@ function abrirDisciplinar(nome, unidade) {
     </div>`;
   document.body.appendChild(div);
 }
-
 function dscTipoMudou() {
   const t = el("#dscTipo") ? el("#dscTipo").value : "";
   const box = document.getElementById("dscDiasBox");
   if (box) box.style.display = t === "Suspensão" ? "block" : "none";
 }
-
 function fecharDisciplinar() {
   const m = document.getElementById("modalDisc");
   if (m) m.remove();
 }
-
 async function salvarDisciplinar(nome, unidade) {
   const tipo = el("#dscTipo").value;
   const desc = (el("#dscDesc").value || "").trim();
@@ -980,7 +965,6 @@ async function salvarDisciplinar(nome, unidade) {
   if (!desc) return toast("Descreva o que aconteceu.", "err");
   const dias = el("#dscDias") ? Number(el("#dscDias").value) : 0;
   if (tipo === "Suspensão" && !dias) return toast("Informe os dias de suspensão.", "err");
-
   try {
     const r = await api("salvarOcorrenciaDisciplinar", {
       Colaborador: nome, Unidade: unidade, Tipo: tipo, Data: data,
@@ -993,7 +977,6 @@ async function salvarDisciplinar(nome, unidade) {
     await carregarDossie(nome);
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ============ NOTIFICAÇÃO NO CELULAR (PWA) ============ */
 // Pede permissão e dispara notificação do sistema (aparece na tela, como WhatsApp)
 // enquanto o app está aberto ou em segundo plano.
@@ -1002,7 +985,7 @@ async function pedirPermissaoNotificacao() {
     toast("Seu navegador não suporta notificações.", "err");
     return false;
   }
-  if (Notification.permission === "granted") return true;
+  if (Notification.permission === "granted") { await subscribePush(); return true; }
   if (Notification.permission === "denied") {
     toast("As notificações foram bloqueadas. Libere nas configurações do navegador.", "err");
     return false;
@@ -1011,21 +994,59 @@ async function pedirPermissaoNotificacao() {
   if (p === "granted") {
     toast("✅ Notificações ativadas! Você será avisada de testes, aniversários e ocorrências.", "ok");
     localStorage.setItem("evolNotif", "1");
+    await subscribePush();
     return true;
   }
   return false;
 }
-
+// CORREÇÃO #2 (push no celular não funciona de verdade em segundo plano):
+// isto cadastra o navegador para RECEBER push de verdade via Service Worker +
+// Web Push API. Precisa de CONFIG.VAPID_PUBLIC_KEY preenchida (ver topo do arquivo)
+// e de um servidor externo (Node/Cloud Function com a lib "web-push") capaz de
+// ENVIAR o push assinado com a chave privada — o Apps Script não consegue fazer
+// isso sozinho, então esta função só cuida da METADE do cliente: pedir permissão,
+// registrar o service worker, criar a inscrição (subscription) e mandar pro
+// backend guardar em Push_Subscriptions. Ver CHANGELOG_correcoes.md item #2 para
+// o que falta implementar no servidor de envio.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
+  return outputArray;
+}
+async function subscribePush() {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return; // navegador não suporta push de verdade — segue só com Notification local
+  }
+  if (!CONFIG.VAPID_PUBLIC_KEY || CONFIG.VAPID_PUBLIC_KEY.indexOf("COLE_AQUI") !== -1) {
+    console.warn("Push desativado: preencha CONFIG.VAPID_PUBLIC_KEY em app.js (ver CHANGELOG item #2).");
+    return;
+  }
+  try {
+    const reg = await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if (!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(CONFIG.VAPID_PUBLIC_KEY)
+      });
+    }
+    await api("salvarPushSubscription", { subscription: sub.toJSON ? sub.toJSON() : sub, userAgent: navigator.userAgent });
+  } catch (e) {
+    console.warn("Não consegui criar a inscrição de push:", e.message);
+  }
+}
 // Dispara notificações do sistema para o que é urgente
 function dispararNotificacoesSistema(r) {
   if (!("Notification" in window) || Notification.permission !== "granted") return;
   if (!r || !r.notificacoes) return;
-
   // só as urgentes/festa, e só uma vez por dia (não fica repetindo)
   const hoje = new Date().toISOString().slice(0, 10);
   const jaAvisou = JSON.parse(localStorage.getItem("evolNotifEnviadas") || "{}");
   if (jaAvisou.dia !== hoje) { jaAvisou.dia = hoje; jaAvisou.ids = []; }
-
   const importantes = r.notificacoes.filter(n => n.nivel === "urgente" || n.nivel === "festa");
   importantes.forEach(n => {
     const id = n.tipo + "|" + n.texto;
@@ -1042,7 +1063,6 @@ function dispararNotificacoesSistema(r) {
   });
   localStorage.setItem("evolNotifEnviadas", JSON.stringify(jaAvisou));
 }
-
 /* ============ CENTRAL DE NOTIFICAÇÕES ============ */
 async function carregarNotificacoes() {
   try {
@@ -1053,7 +1073,6 @@ async function carregarNotificacoes() {
     if (localStorage.getItem("evolNotif") === "1") dispararNotificacoesSistema(r);
   } catch (e) { /* silencioso */ }
 }
-
 function pintarSino(r) {
   // Colaborador comum não vê o sino
   if (r && r.semPermissao) {
@@ -1075,7 +1094,6 @@ function pintarSino(r) {
   const urg = (r.resumo && (r.resumo.urgente || 0)) + (r.resumo && (r.resumo.alerta || 0));
   sino.innerHTML = `🔔${r.total ? `<span style="position:absolute;top:-4px;right:-4px;background:${urg ? "#dc2626" : "#0369a1"};color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:2px 6px;min-width:18px">${r.total}</span>` : ""}`;
 }
-
 function abrirNotificacoes() {
   const r = STATE.notifs || { notificacoes: [] };
   const CORES = { urgente: "#dc2626", alerta: "#d97706", festa: "#db2777", info: "#0369a1" };
@@ -1111,7 +1129,6 @@ function abrirNotificacoes() {
     </div>`;
   document.body.appendChild(div);
 }
-
 /* ============ PLANO DE CARREIRA / PROMOÇÃO ============ */
 async function renderCarreira() {
   setMain(`
@@ -1130,20 +1147,16 @@ async function renderCarreira() {
     <div id="carConteudo"></div>
   `);
 }
-
 async function gerarDiagnostico() {
   const nome = (el("#carColab").value || "").trim();
   if (!nome) return toast("Escolha o colaborador.", "err");
   const cont = document.getElementById("carConteudo");
   cont.innerHTML = `<div class="loading">Analisando carreira...</div>`;
-
   let r;
   try { r = await api("diagnosticoCarreira", { colaborador: nome }); }
   catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
-
   const c = r.colaborador || {}, comp = r.competencias || {}, uni = r.universidade || {}, nv = uni.nivel || {};
   const ind = r.indicadores || {}, hist = r.historico || {};
-
   if (r.semDescricao) {
     cont.innerHTML = `<div class="card"><div class="msg warn">
       <b>⚠️ O cargo "${escapeHtml(c.Cargo)}" ainda não tem descrição cadastrada.</b><br>
@@ -1152,7 +1165,6 @@ async function gerarDiagnostico() {
     </div></div>`;
     return;
   }
-
   const barra = (rot, pct, peso) => `
     <div style="margin-bottom:8px">
       <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
@@ -1163,9 +1175,7 @@ async function gerarDiagnostico() {
         <div style="width:${pct}%;height:100%;background:${pct >= 80 ? "#16a34a" : (pct >= 50 ? "#d97706" : "#dc2626")};transition:width .4s"></div>
       </div>
     </div>`;
-
   const W = r.pesos || {};
-
   cont.innerHTML = `
     <div class="card" style="background:linear-gradient(135deg,#f8fafc,#eff6ff);border:2px solid #cbd5e1">
       <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
@@ -1179,13 +1189,11 @@ async function gerarDiagnostico() {
             <span class="badge" style="background:#1e3a8a;color:#fff;font-weight:700">${escapeHtml(r.proximoCargo.Cargo)}</span>
           </div>` : `<div class="msg warn" style="margin-top:10px;font-size:12px">Este cargo não tem "próximo cargo" definido na trilha.</div>`}
         </div>
-
         <div style="text-align:center;min-width:180px">
           <div style="font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Promotion Score</div>
           <div style="font-size:52px;font-weight:800;line-height:1;color:${r.cor === "ok" ? "#16a34a" : (r.cor === "warn" ? "#d97706" : "#dc2626")}">${escapeHtml(r.promotionScore)}</div>
           <span class="badge ${escapeHtml(r.cor)}" style="font-size:12px">${escapeHtml(r.classificacao)}</span>
         </div>
-
         <div style="text-align:center;min-width:150px;border-left:1px solid #cbd5e1;padding-left:20px">
           <div style="font-size:12px;color:#64748b">Aderência ao cargo</div>
           <div style="font-size:32px;font-weight:800;color:#0369a1">${escapeHtml(r.aderencia)}%</div>
@@ -1194,10 +1202,8 @@ async function gerarDiagnostico() {
           <div style="font-size:12px;color:#64748b;margin-top:6px">⏳ ~${escapeHtml(r.tempoEstimadoMeses)} meses</div>
         </div>
       </div>
-
       ${r.bloqueado ? `<div class="msg err" style="margin-top:12px"><b>🚫 Bloqueado:</b> falta competência ELIMINATÓRIA — ${comp.eliminatorias.falta.map(escapeHtml).join(", ")}</div>` : ""}
     </div>
-
     <div class="grid g2">
       <div class="card">
         <h3>📊 Como o score foi calculado</h3>
@@ -1216,7 +1222,6 @@ async function gerarDiagnostico() {
           ${escapeHtml(hist.projetos)} projeto(s)
         </p>
       </div>
-
       <div class="card">
         <h3>✅ Competências</h3>
         <h4 style="margin:10px 0 6px;font-size:13px">Técnicas <span class="muted">(${escapeHtml(comp.tecnicas.pct)}%)</span></h4>
@@ -1225,21 +1230,18 @@ async function gerarDiagnostico() {
           ${comp.tecnicas.falta.map(x => `<span class="badge" style="background:#e2e8f0;color:#64748b">⬜ ${escapeHtml(x)}</span>`).join("")}
           ${!comp.tecnicas.tem.length && !comp.tecnicas.falta.length ? `<span class="muted">Nenhuma cadastrada</span>` : ""}
         </div>
-
         <h4 style="margin:14px 0 6px;font-size:13px">Comportamentais <span class="muted">(${escapeHtml(comp.comportamentais.pct)}%)</span></h4>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${comp.comportamentais.tem.map(x => `<span class="badge ok">✔ ${escapeHtml(x)}</span>`).join("")}
           ${comp.comportamentais.falta.map(x => `<span class="badge" style="background:#e2e8f0;color:#64748b">⬜ ${escapeHtml(x)}</span>`).join("")}
           ${!comp.comportamentais.tem.length && !comp.comportamentais.falta.length ? `<span class="muted">Nenhuma cadastrada</span>` : ""}
         </div>
-
         <h4 style="margin:14px 0 6px;font-size:13px">Cursos obrigatórios <span class="muted">(${escapeHtml(comp.cursos.pct)}%)</span></h4>
         <div style="display:flex;gap:6px;flex-wrap:wrap">
           ${comp.cursos.tem.map(x => `<span class="badge ok">🎓 ${escapeHtml(x)}</span>`).join("")}
           ${comp.cursos.falta.map(x => `<span class="badge warn">📚 ${escapeHtml(x)}</span>`).join("")}
           ${!comp.cursos.tem.length && !comp.cursos.falta.length ? `<span class="muted">Nenhum cadastrado</span>` : ""}
         </div>
-
         <div style="margin-top:16px;padding:12px;background:linear-gradient(135deg,#fef3c7,#fde68a);border-radius:10px">
           <div style="display:flex;align-items:center;gap:10px">
             <span style="font-size:28px">${escapeHtml(nv.icone || "🌱")}</span>
@@ -1258,7 +1260,6 @@ async function gerarDiagnostico() {
         </div>
       </div>
     </div>
-
     <div class="card">
       <h3>🛤️ Trilha de Desenvolvimento <span class="muted" style="font-weight:400;font-size:12px">(gerada automaticamente pelas lacunas)</span></h3>
       ${(r.trilha && r.trilha.length) ? `
@@ -1284,10 +1285,8 @@ async function gerarDiagnostico() {
     </div>
   `;
 }
-
 /* ============ VALE TRANSPORTE (marcar em massa) ============ */
 const VT = { todos: [], unidade: "" };
-
 async function renderValeTransporte() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
   try {
@@ -1299,13 +1298,11 @@ async function renderValeTransporte() {
       <div class="card"><div class="msg err">${escapeHtml(e.message)}</div></div>`);
   }
 }
-
 function vtRender() {
   const unis = [...new Set(VT.todos.map(x => x.Unidade).filter(Boolean))].sort();
   const linhas = VT.unidade ? VT.todos.filter(x => normalize(x.Unidade) === normalize(VT.unidade)) : VT.todos;
   const comVT = VT.todos.filter(x => x.TemVT === "Sim");
   const totalDesconto = comVT.reduce((s, x) => s + (Number(x.ValorVT) || 0), 0);
-
   setMain(`
     <div class="page-title">
       <div><h2>Vale Transporte</h2><p>Marque quem recebe VT. O desconto de 6% é calculado <strong>na hora</strong> e já entra na folha.</p></div>
@@ -1317,13 +1314,11 @@ function vtRender() {
         </select>
       </div>
     </div>
-
     <div class="grid g4">
       <div class="kpi"><small>Colaboradores${VT.unidade ? " — " + escapeHtml(VT.unidade) : ""}</small><strong>${linhas.length}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Recebem VT</small><strong id="vtQtd">${comVT.length}</strong></div>
       <div class="kpi" style="border-left-color:var(--laranja)"><small>Desconto total de VT (6%)</small><strong id="vtTotal">${fmtMoeda(totalDesconto)}</strong></div>
     </div>
-
     <div class="card">
       <p class="muted" style="font-size:13px;margin:0 0 10px">Clique no ✅ de cada pessoa — <strong>salva automaticamente</strong>, não precisa de botão.</p>
       ${linhas.length ? `<div class="table-wrap"><table>
@@ -1345,15 +1340,12 @@ function vtRender() {
     </div>
   `);
 }
-
 function vtMudarUnidade(u) { VT.unidade = u; vtRender(); }
-
 // Marca/desmarca UMA pessoa e salva na hora. O cálculo do VT muda automaticamente.
 async function vtAlternar(idx, marcado) {
   const p = VT.todos[idx]; if (!p) return;
   const antes = p.TemVT;
   p.TemVT = marcado ? "Sim" : "Não";
-
   // atualiza a tela na hora
   const cel = document.getElementById("vtval_" + idx);
   if (cel) {
@@ -1364,7 +1356,6 @@ async function vtAlternar(idx, marcado) {
   const total = comVT.reduce((s, x) => s + (Number(x.ValorVT) || 0), 0);
   if (document.getElementById("vtQtd")) document.getElementById("vtQtd").textContent = comVT.length;
   if (document.getElementById("vtTotal")) document.getElementById("vtTotal").textContent = fmtMoeda(total);
-
   try {
     await api("salvarVTemMassa", { marcacoes: [{ Nome: p.Nome, CPF: p.CPF || "", TemVT: p.TemVT }] });
     toast(`${p.Nome}: VT ${marcado ? "ativado" : "removido"}.`, "ok");
@@ -1374,7 +1365,6 @@ async function vtAlternar(idx, marcado) {
     vtRender();
   }
 }
-
 /* ============ QUEM ESTÁ TESTANDO ============ */
 async function renderEmTeste() {
   setMain(`<div class="loading">Carregando testes...</div>`);
@@ -1391,13 +1381,11 @@ async function renderEmTeste() {
       <div class="card"><div class="msg err">Não consegui carregar: ${escapeHtml(e.message)}</div></div>`);
   }
 }
-
 function etRender() {
   const unis = [...new Set(ET.todos.map(t => String(t.Unidade || "").trim()).filter(Boolean))].sort();
   const linhas = ET.unidade
     ? ET.todos.filter(t => normalize(t.Unidade) === normalize(ET.unidade))
     : ET.todos;
-
   const sim = (v) => String(v) === "Sim";
   const tabela = linhas.length
     ? `<div class="table-wrap"><table>
@@ -1414,11 +1402,9 @@ function etRender() {
           <td>${escapeHtml(t.LiderDireto || "—")}</td>
         </tr>`).join("")}</tbody></table></div>`
     : `<div class="empty">Ninguém em teste no momento. O RH agenda em "Agendar Teste (RH)".</div>`;
-
   const pendPass = linhas.filter(t => !sim(t.PassagemEntregue) && normalize(t.Passagem) !== "NAO PRECISA").length;
   const pendFard = linhas.filter(t => !sim(t.FardamentoEntregue)).length;
   const sangria = linhas.filter(t => normalize(t.Passagem) === "SANGRIA NO CAIXA").length;
-
   setMain(`
     <div class="page-title">
       <div><h2>Quem está testando</h2><p>Candidatos com teste em andamento.</p></div>
@@ -1439,13 +1425,9 @@ function etRender() {
     <div class="card"><h3>🧪 Em teste</h3>${tabela}</div>
   `);
 }
-
 function etMudarUnidade(u) { ET.unidade = u; etRender(); }
-
 /* ===================== ABSENTEÍSMO (lançamento) ===================== */
-
 const AB = { mapaUni: {} };
-
 async function renderAbsenteismo() {
   setMain(`<div class="loading">Carregando...</div>`);
   let cols = [];
@@ -1453,12 +1435,10 @@ async function renderAbsenteismo() {
   AB.mapaUni = {};
   cols.forEach(c => { if (c.Nome) AB.mapaUni[normalize(c.Nome)] = c.Unidade || ""; });
   const nomes = cols.map(c => c.Nome).filter(Boolean).sort();
-
   setMain(`
     <div class="page-title">
       <div><h2>Absenteísmo</h2><p>Lance atestados e faltas por colaborador. Cada lançamento já vai para o dossiê e entra no cálculo do absenteísmo.</p></div>
     </div>
-
     <div class="card">
       <h3>Novo lançamento</h3>
       <div class="grid g3">
@@ -1479,7 +1459,6 @@ async function renderAbsenteismo() {
       <div class="form-row"><label>Observações</label><textarea id="abObs"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="abSalvar()">Lançar</button></div>
     </div>
-
     <div class="card">
       <h3>Lançamentos (acumulado do mês por colaborador)</h3>
       <div id="abTabela"><div class="loading">Carregando...</div></div>
@@ -1488,14 +1467,12 @@ async function renderAbsenteismo() {
   setDatalist("dl-colaboradores", (STATE.init.colaboradores || []).map(c => c.Nome));
   await abCarregarTabela();
 }
-
 function abPreencherUnidade() {
   const nome = el("#abColab").value.trim();
   const uni = AB.mapaUni[normalize(nome)];
   const campo = el("#abUnidade");
   if (uni && campo && !campo.value) campo.value = uni;
 }
-
 // Ao ANEXAR o atestado: sobe pro Drive, lê (OCR) e preenche as datas.
 async function abLerAtestado() {
   const inp = el("#abAtestado");
@@ -1504,7 +1481,6 @@ async function abLerAtestado() {
   const colab = (el("#abColab").value || "").trim();
   if (!colab) { toast("Escolha o colaborador antes de anexar o atestado.", "err"); inp.value = ""; return; }
   if (f.size > 15 * 1024 * 1024) { toast("Atestado muito grande (máx. 15 MB).", "err"); inp.value = ""; return; }
-
   const box = el("#abLeitura");
   if (box) { box.style.display = "block"; box.innerHTML = "⏳ Enviando e lendo o atestado..."; }
   try {
@@ -1515,7 +1491,6 @@ async function abLerAtestado() {
       tipo: f.type || "application/pdf", base64: b64
     });
     STATE.atestadoUrl = (up && up.url) || "";
-
     const L = up && up.leitura;
     if (L && (L.inicio || L.dias || L.cid)) {
       const ini = brParaInput(L.inicio), fim = brParaInput(L.fim);
@@ -1538,7 +1513,6 @@ async function abLerAtestado() {
     if (box) box.innerHTML = `<span style="color:#b91c1c">Não consegui enviar: ${escapeHtml(e.message)}</span>`;
   } finally { toggleLoading(false); }
 }
-
 // Calcula os dias do atestado a partir do início e fim (inclusive)
 function abCalcDias() {
   const i = el("#abInicio") ? el("#abInicio").value : "";
@@ -1550,7 +1524,6 @@ function abCalcDias() {
   if (el("#abDias")) el("#abDias").value = dias;
   if (el("#abData") && !el("#abData").value) el("#abData").value = i;
 }
-
 // Converte dd/mm/aaaa -> aaaa-mm-dd (para os campos de data)
 function brParaInput(s) {
   const m = String(s || "").match(/(\d{1,2})\/(\d{1,2})\/(\d{2,4})/);
@@ -1558,7 +1531,6 @@ function brParaInput(s) {
   let ano = m[3]; if (ano.length === 2) ano = "20" + ano;
   return `${ano}-${String(m[2]).padStart(2, "0")}-${String(m[1]).padStart(2, "0")}`;
 }
-
 async function abSalvar() {
   const colab = el("#abColab").value.trim();
   const data = el("#abData").value;
@@ -1584,7 +1556,6 @@ async function abSalvar() {
     await renderAbsenteismo();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function abCarregarTabela() {
   try {
     const r = await api("listarAbsenteismo");
@@ -1608,18 +1579,14 @@ async function abCarregarTabela() {
     document.getElementById("abTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 /* ===================== TREINAMENTOS ===================== */
-
 const TRN = { unidade: "", nomes: [], sel: {} };
-
 async function renderTreinamentos() {
   setMain(`<div class="loading">Carregando...</div>`);
   TRN.unidade = ""; TRN.nomes = []; TRN.sel = {};
   setDatalist("dl-gestores", todosGestores());
   setMain(`
     <div class="page-title"><div><h2>Treinamentos</h2><p>Escolha a unidade, o líder e o tipo, e marque os colaboradores participantes daquela unidade.</p></div></div>
-
     <div class="card">
       <h3>Novo treinamento</h3>
       <div class="grid g3">
@@ -1638,17 +1605,14 @@ async function renderTreinamentos() {
       <div class="form-row"><label>Observações</label><textarea id="trnObs"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="trnSalvar()">Salvar treinamento</button></div>
     </div>
-
     <div class="card"><h3>Treinamentos registrados</h3><div id="trnTabela"><div class="loading">Carregando...</div></div></div>
   `);
   await trnCarregarTabela();
 }
-
 function trnMudarUnidade(u) {
   TRN.unidade = u; TRN.sel = {};
   trnRenderParticipantes();
 }
-
 function trnRenderParticipantes() {
   const alvo = document.getElementById("trnParticipantes");
   if (!alvo) return;
@@ -1666,14 +1630,12 @@ function trnRenderParticipantes() {
         <input type="checkbox" ${TRN.sel[i] ? "checked" : ""} onchange="trnToggle(${i}, this.checked)"> ${escapeHtml(n)}</label>`).join("")}
     </div>`;
 }
-
 function trnToggle(i, on) { if (on) TRN.sel[i] = true; else delete TRN.sel[i]; }
 function trnMarcarTodos(on) {
   TRN.sel = {};
   if (on) TRN.nomes.forEach((_, i) => TRN.sel[i] = true);
   trnRenderParticipantes();
 }
-
 async function trnSalvar() {
   const uni = el("#trnUni").value.trim();
   const tema = el("#trnTema").value.trim();
@@ -1699,7 +1661,6 @@ async function trnSalvar() {
     await renderTreinamentos();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function trnCarregarTabela() {
   try {
     const r = await api("listarTreinamentos");
@@ -1710,21 +1671,16 @@ async function trnCarregarTabela() {
     document.getElementById("trnTabela").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 /* ===================== DASHBOARD ===================== */
-
 // Salva o quadro ideal de TODAS as casas de uma vez (evita esquecer alguma)
 async function salvarQuadroTodos() {
   const inputs = [...document.querySelectorAll('input[id^="qi_"]')];
   const alvos = inputs
     .map(inp => ({ unidade: inp.getAttribute("data-uni"), valor: Number(inp.value) }))
     .filter(x => x.unidade && x.valor > 0);
-
   if (!alvos.length) return toast("Digite o quadro ideal de pelo menos uma casa.", "err");
-
   const vazias = inputs.filter(inp => !Number(inp.value)).length;
   if (vazias && !confirm(`${alvos.length} casa(s) serão salvas.\n${vazias} casa(s) estão SEM quadro ideal e não vão contar no total.\n\nContinuar mesmo assim?`)) return;
-
   try {
     toggleLoading(true);
     let ok = 0;
@@ -1737,7 +1693,6 @@ async function salvarQuadroTodos() {
   } catch (e) { toast(e.message, "err"); }
   finally { toggleLoading(false); }
 }
-
 // Salva o quadro ideal de uma unidade direto do dashboard
 async function salvarQuadroIdeal(unidade, i) {
   const campo = document.getElementById("qi_" + i);
@@ -1750,7 +1705,6 @@ async function salvarQuadroIdeal(unidade, i) {
     await renderDashboard();
   } catch (e) { toast(e.message, "err"); }
 }
-
 function tabelaIndicadoresMensais(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum indicador lançado ainda. Vá em "Indicadores" e cadastre o mês, admissões e desligamentos por unidade.</div>`;
   return `<div class="table-wrap"><table>
@@ -1765,7 +1719,6 @@ function tabelaIndicadoresMensais(linhas) {
       <td><span class="badge ${l.Absenteismo >= 5 ? "bad" : (l.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(l.Absenteismo)}%</span></td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaTurnover(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
   return `<div class="table-wrap"><table>
@@ -1776,7 +1729,6 @@ function tabelaTurnover(linhas) {
       <td><span class="badge ${l.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(l.Turnover)}%</span></td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaAbsenteismo(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum absenteísmo lançado ainda. Registre em "Absenteísmo".</div>`;
   return `<div class="table-wrap"><table>
@@ -1787,7 +1739,6 @@ function tabelaAbsenteismo(linhas) {
       <td>${escapeHtml(l.Atestados)}</td><td>${escapeHtml(l.FaltasInjustificadas)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaExperiencia(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Ninguém em período de experiência nesta seleção.</div>`;
   return `<div class="table-wrap"><table>
@@ -1803,7 +1754,6 @@ function tabelaExperiencia(linhas) {
       </tr>`;
     }).join("")}</tbody></table></div>`;
 }
-
 function tabelaPorUnidade(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhuma unidade.</div>`;
   return `<div class="table-wrap"><table>
@@ -1817,7 +1767,6 @@ function tabelaPorUnidade(linhas) {
       <td>${l.Faturamento ? fmtMoeda(l.FatPorColab) : "—"}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaSlaMes(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
   return `<div class="table-wrap"><table>
@@ -1827,7 +1776,6 @@ function tabelaSlaMes(linhas) {
       <td>${l.SLADias === "" ? "—" : escapeHtml(l.SLADias) + " dias"}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaSlaUnidade(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem vagas encerradas para calcular SLA.</div>`;
   return `<div class="table-wrap"><table>
@@ -1838,7 +1786,6 @@ function tabelaSlaUnidade(linhas) {
       <td>${l.ForaSLA > 0 ? `<span class="badge bad">${escapeHtml(l.ForaSLA)}</span>` : escapeHtml(l.ForaSLA)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 function tabelaIndicadores(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum indicador cadastrado. Edite em "Indicadores Mensais".</div>`;
   return `<div class="table-wrap"><table>
@@ -1848,7 +1795,6 @@ function tabelaIndicadores(linhas) {
       <td>${escapeHtml(l.Absenteismo)}%</td><td>${escapeHtml(l.Periodo)}</td>
     </tr>`).join("")}</tbody></table></div>`;
 }
-
 // Abas do dashboard (gestão à vista — uma seção de cada vez, sem poluição)
 function ABA(nome) { return (STATE.dashAba || "visao") === nome; }
 async function atualizarDashboard() {
@@ -1864,17 +1810,14 @@ async function atualizarDashboard() {
   } catch (e) { toast(e.message, "err"); }
   finally { toggleLoading(false); }
 }
-
 // Troca de aba: NÃO recarrega do servidor, só redesenha (muito mais rápido)
 function dashAba(nome) {
   STATE.dashAba = nome;
   renderDashboard(undefined, true); // usa o cache
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-
 async function renderDashboard(unidade, usarCache) {
   if (unidade !== undefined) STATE.dashUnidade = unidade;
-
   // Se já temos os dados e é só troca de aba, redesenha na hora (sem ir ao servidor)
   let r;
   if (usarCache && STATE.dashCache && STATE.dashCacheUni === (STATE.dashUnidade || "")) {
@@ -1897,14 +1840,12 @@ async function renderDashboard(unidade, usarCache) {
   const k = dash.kpis || {};
   const unis = dash.unidades || [];
   const sel = dash.filtroUnidade || "";
-
   let aviso = "";
   if (k.folhaTotal === undefined) {
     aviso = `<div class="msg err">⚠️ O backend (Code.gs) está desatualizado. Cole o Code.gs novo e publique <b>Nova versão</b> no Apps Script — sem isso, folha, custo projetado e SLA por mês não funcionam.</div>`;
   } else if (k.folhaTotal === 0) {
     aviso = `<div class="msg warn">⚠️ O backend está atualizado, mas não achei os salários. Provável causa: a coluna de <b>Cargo</b> na aba Colaboradores tem nome diferente, ou os cargos não batem com a tabela de salários. Me manda os cabeçalhos da aba Colaboradores.</div>`;
   }
-
   setMain(`
     <div class="page-title">
       <div><h2>Dashboard</h2><p>Visão geral da operação${sel ? " — " + escapeHtml(sel) : ""}.${dash.geradoEm ? ` <span class="muted" style="font-size:12px">Atualizado em ${escapeHtml(dash.geradoEm)}</span>` : ""}</p></div>
@@ -1917,19 +1858,15 @@ async function renderDashboard(unidade, usarCache) {
         </select>
       </div>
     </div>
-
     ${aviso}
-
     ${(dash.avisos && dash.avisos.length) ? `<div class="card" style="border-left:5px solid var(--laranja)">
       <h3>📢 Avisos</h3>
       ${dash.avisos.map(a => `<div class="msg ${normalize(a.Prioridade) === "URGENTE" || normalize(a.Prioridade) === "CRITICA" ? "err" : "info"}" style="text-align:left"><strong>${escapeHtml(a.Titulo || "")}</strong><br>${escapeHtml(a.Mensagem || "")}</div>`).join("")}
     </div>` : ""}
-
     ${(dash.insights && dash.insights.length) ? `<div class="card" style="border-left:5px solid var(--info)">
       <h3>🤖 Insights da EVA</h3>
       ${dash.insights.map(i => `<div style="padding:6px 0;border-bottom:1px solid var(--border)">${escapeHtml(i)}</div>`).join("")}
     </div>` : ""}
-
     <div class="grid g4">
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
       <div class="kpi" style="border-left-color:var(--laranja);min-width:280px">
@@ -1945,7 +1882,6 @@ async function renderDashboard(unidade, usarCache) {
       <div class="kpi" style="border-left-color:var(--info)"><small>Vagas em Aberto</small><strong>${k.vagasAbertas}</strong><span class="muted" style="font-size:11px;display:block">SLA médio: ${k.slaMedio || 0} dias</span></div>
       <div class="kpi"><small>Em Período de Experiência</small><strong>${k.emExperiencia || 0}</strong><span class="muted" style="font-size:11px;display:block">${k.integradosMes || 0} integrados no mês</span></div>
     </div>
-
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0 0;font-size:12px">
       ${k.aniversariantes ? `<span class="badge info">🎂 ${k.aniversariantes} aniversariante(s)</span>` : ""}
       ${k.candidatosEmTeste ? `<span class="badge info">🧪 ${k.candidatosEmTeste} em teste</span>` : ""}
@@ -1953,22 +1889,18 @@ async function renderDashboard(unidade, usarCache) {
       ${k.treinamentosMes ? `<span class="badge">📚 ${k.treinamentosMes} treinamento(s) · ${k.horasTreinMes || 0}h</span>` : ""}
       ${k.estoqueCritico ? `<span class="badge bad">📦 ${k.estoqueCritico} item(ns) em estoque crítico</span>` : ""}
     </div>
-
     <div style="display:flex;gap:4px;flex-wrap:wrap;border-bottom:2px solid #e2e8f0;margin:20px 0 18px">
       ${[["visao","🏆 Visão Geral"],["custo","💰 Custo (CMO)"],["pessoas","👥 Pessoas"],["recrutamento","🎯 Recrutamento"],["analise","📊 Análises"]].map(([t,rot]) => {
         const on = (STATE.dashAba || "visao") === t;
         return `<button onclick="dashAba('${t}')" style="background:${on ? "#1e3a8a" : "transparent"};color:${on ? "#fff" : "#64748b"};border:none;border-radius:8px 8px 0 0;padding:10px 18px;font-weight:${on ? "700" : "500"};font-size:14px;cursor:pointer;border-bottom:3px solid ${on ? "#ea580c" : "transparent"};transition:all .15s">${rot}</button>`;
       }).join("")}
     </div>
-
-
     ${ABA("visao") ? `
     <div class="card">
       <h3>👥 Headcount, Folha e Faturamento por Unidade</h3>
       ${tabelaPorUnidade(dash.porUnidade)}
     </div>
     ` : ""}
-
     ${ABA("recrutamento") ? `
     <div class="card">
       <h3>🪧 Vagas em Aberto por Motivo <span class="muted" style="font-weight:400;font-size:12px">(por que a vaga existe)</span></h3>
@@ -1988,7 +1920,6 @@ async function renderDashboard(unidade, usarCache) {
           <div class="kpi" style="border-left-color:#0369a1"><small>📈 Aumento de Quadro</small><strong>${escapeHtml(v.aumento || 0)}</strong><span class="muted" style="font-size:11px;display:block">crescimento</span></div>
           <div class="kpi" style="border-left-color:#7c3aed"><small>🎯 Quadro Ideal</small><strong>${escapeHtml(v.quadroIdeal || 0)}</strong><span class="muted" style="font-size:11px;display:block">completar o time</span></div>
         </div>
-
         ${(v.porMotivo && v.porMotivo.length) ? `
         <h4 style="margin:14px 0 6px">Resumo por motivo</h4>
         <div class="table-wrap"><table>
@@ -2000,7 +1931,6 @@ async function renderDashboard(unidade, usarCache) {
             <td class="muted" style="font-size:12px">${escapeHtml(m.Unidades || "—")}</td>
           </tr>`).join("")}</tbody>
         </table></div>
-
         <h4 style="margin:16px 0 6px">Detalhe das vagas</h4>
         <div class="table-wrap"><table>
           <thead><tr><th>Unidade</th><th>Cargo</th><th>Motivo</th><th>Substituindo</th><th>Urgência</th><th>Salário</th></tr></thead>
@@ -2017,13 +1947,11 @@ async function renderDashboard(unidade, usarCache) {
       })()}
     </div>
     ` : ""}
-
     ${ABA("recrutamento") ? `
     <div class="grid g2">
       <div class="card">
         <h3>⏱️ SLA de Vagas por Mês <span class="muted" style="font-weight:400;font-size:12px">(tempo médio de fechamento)</span></h3>
         ${tabelaSlaMes(dash.slaPorMes)}
-
         <h4 style="margin:16px 0 6px">📊 Média do GRUPO por mês <span class="muted" style="font-weight:400;font-size:12px">(todas as unidades juntas)</span></h4>
         ${(dash.slaGrupoPorMes && dash.slaGrupoPorMes.length)
           ? `<div class="table-wrap"><table>
@@ -2035,7 +1963,6 @@ async function renderDashboard(unidade, usarCache) {
               </tr>`).join("")}</tbody>
             </table></div>`
           : `<div class="empty">Nenhuma vaga encerrada ainda.</div>`}
-
         <h4 style="margin:16px 0 6px">🏬 Por mês de cada unidade</h4>
         ${(dash.slaPorMesUnidade && dash.slaPorMesUnidade.length)
           ? `<div class="table-wrap"><table>
@@ -2055,7 +1982,6 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
-
     ${ABA("custo") ? `
     <div class="card">
       <h3>🪑 Vagas em Aberto — Custo Projetado <span class="muted" style="font-weight:400;font-size:12px">(se preencher hoje, quanto pesa até o fim do mês)</span></h3>
@@ -2068,13 +1994,11 @@ async function renderDashboard(unidade, usarCache) {
           <div class="kpi" style="border-left-color:var(--laranja)"><small>💸 Custo proporcional</small><strong>${fmtMoeda(v.CustoProporcional || 0)}</strong><span class="muted" style="font-size:11px;display:block">se contratar agora</span></div>
           <div class="kpi"><small>Custo em mês cheio</small><strong>${fmtMoeda(v.CustoMesCheio || 0)}</strong></div>
         </div>
-
         <div class="kpi" style="border-left-color:#7c3aed;margin-top:12px">
           <small>🎯 CMO PROJETADO (com as vagas preenchidas)</small>
           <strong style="font-size:22px">${fmtMoeda(dash.cmoProjetado || 0)}</strong>
           <span class="muted" style="font-size:11px;display:block">CMO atual ${fmtMoeda((dash.cmo && dash.cmo.total) || 0)} + vagas ${fmtMoeda(v.CustoProporcional || 0)}</span>
         </div>
-
         ${(v.SemSalario && v.SemSalario.length) ? `<div class="msg err" style="margin-top:10px;font-size:13px">
           <b>🚨 ${v.SemSalario.length} vaga(s) com cargo SEM SALÁRIO cadastrado</b> — entram com custo ZERO e distorcem a projeção:
           ${v.SemSalario.map(x => `<span class="badge bad" style="margin:2px">${escapeHtml(x.Cargo)} · ${escapeHtml(x.Unidade)}</span>`).join("")}
@@ -2098,7 +2022,6 @@ async function renderDashboard(unidade, usarCache) {
       })()}
     </div>
     ` : ""}
-
     ${ABA("custo") ? `
     <div class="card">
       <h3>💰 CMO — Custo de Mão de Obra <span class="muted" style="font-weight:400;font-size:12px">(tudo que a empresa gasta, automático)</span></h3>
@@ -2115,14 +2038,12 @@ async function renderDashboard(unidade, usarCache) {
           <div class="kpi"><small>🏥 Plano de saúde</small><strong>${fmtMoeda(m.saude || 0)}</strong></div>
           <div class="kpi"><small>🦷 Plano odontológico</small><strong>${fmtMoeda(m.odonto || 0)}</strong></div>
         </div>
-
         <div class="grid g4" style="margin-bottom:12px">
           <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 CMO TOTAL (mês)</small><strong>${fmtMoeda(m.total || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(m.ativos || 0)} ativos · ${fmtMoeda(m.porColaborador || 0)}/pessoa</span></div>
           <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}%</span></div>
           <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(m.fatRealizado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctRealizado || 0)}%</span></div>
           <div class="kpi"><small>⏳ Ritmo do mês</small><strong>${fmtMoeda(m.fatRitmo || 0)}</strong><span class="muted" style="font-size:11px;display:block">Dia ${escapeHtml(m.diaHoje || 0)} de ${escapeHtml(m.diasNoMes || 0)} (${escapeHtml(m.pctMes || 0)}%)</span></div>
         </div>
-
         <div class="grid g2">
           <div>
             <h4 style="margin:8px 0 6px">Custos de pessoal (automático)</h4>
@@ -2159,7 +2080,6 @@ async function renderDashboard(unidade, usarCache) {
                 <tr style="border-top:2px solid #cbd5e1"><td style="font-weight:700">🎯 CMO TOTAL</td><td style="text-align:right;font-weight:700;color:#b45309;font-size:16px">${fmtMoeda(m.total || 0)}</td></tr>
               </tbody>
             </table></div>
-
             <h4 style="margin:14px 0 6px">Descontos do colaborador <span class="muted" style="font-weight:400;font-size:11px">(não é custo da empresa)</span></h4>
             <div class="table-wrap"><table>
               <tbody>
@@ -2175,7 +2095,6 @@ async function renderDashboard(unidade, usarCache) {
       })()}
     </div>
     ` : ""}
-
     ${ABA("visao") ? `
     <div class="card">
       <h3>🏆 Saúde de Cada Casa <span class="muted" style="font-weight:400;font-size:12px">(comparativo — turnover, absenteísmo, CMO, quadro, SLA e recontratação)</span></h3>
@@ -2214,14 +2133,12 @@ async function renderDashboard(unidade, usarCache) {
             </div>`;
           }).join("")}
         </div>` : ""}
-
         <div class="grid g4" style="margin-bottom:14px">
           <div class="kpi"><small>Nota média do grupo</small><strong style="color:${cor(mg.Score || 0)}">${escapeHtml(mg.Score || 0)}/100</strong></div>
           <div class="kpi"><small>Turnover médio</small><strong>${escapeHtml(mg.Turnover || 0)}%</strong></div>
           <div class="kpi"><small>Absenteísmo médio</small><strong>${escapeHtml(mg.Absenteismo || 0)}%</strong></div>
           <div class="kpi"><small>CMO médio s/ faturamento</small><strong>${escapeHtml(mg.CMOpct || 0)}%</strong></div>
         </div>
-
         <div class="table-wrap"><table>
           <thead><tr>
             <th>#</th><th>Unidade</th><th>Nota</th><th>Situação</th>
@@ -2248,7 +2165,6 @@ async function renderDashboard(unidade, usarCache) {
             <td>${u.RecontratariaPct ? `<span class="badge ${u.RecontratariaPct >= 70 ? "ok" : "warn"}">${escapeHtml(u.RecontratariaPct)}%</span>` : "—"}</td>
           </tr>`).join("")}</tbody>
         </table></div>
-
         ${dash.scorecard.some(u => u.Alertas && u.Alertas.length) ? `
         <h4 style="margin:16px 0 8px">🚨 Pontos de atenção por casa</h4>
         <div class="grid g2">
@@ -2260,7 +2176,6 @@ async function renderDashboard(unidade, usarCache) {
               </ul>
             </div>`).join("")}
         </div>` : `<div class="msg ok" style="margin-top:12px">✅ Nenhum ponto crítico nas casas neste mês.</div>`}
-
         <p class="muted" style="font-size:12px;margin-top:12px">
           <b>Como a nota é calculada:</b> turnover (25%) · absenteísmo (20%) · CMO sobre faturamento (20%) · cobertura do quadro (15%) · SLA de vagas (10%) · % que recontrataria (10%).
           <b>Saudável</b> ≥ 75 · <b>Atenção</b> 55–74 · <b>Crítico</b> &lt; 55.
@@ -2268,7 +2183,6 @@ async function renderDashboard(unidade, usarCache) {
       })() : `<div class="empty">Sem dados suficientes para comparar as casas ainda.</div>`}
     </div>
     ` : ""}
-
     ${ABA("custo") ? `
     <div class="card">
       <h3>🏬 CMO e Faturamento por Casa <span class="muted" style="font-weight:400;font-size:12px">(projetado x realizado — tempo real)</span></h3>
@@ -2299,7 +2213,6 @@ async function renderDashboard(unidade, usarCache) {
         : `<div class="empty">Sem dados por unidade ainda.</div>`}
     </div>
     ` : ""}
-
     ${ABA("custo") && dash.riomar && dash.riomar.Colaboradores ? `
     <div class="card">
       <h3>🍽️ Parrileiro Rio Mar — Salário + Gratificação <span class="muted" style="font-weight:400;font-size:12px">(proporcional ao faturamento)</span></h3>
@@ -2309,9 +2222,7 @@ async function renderDashboard(unidade, usarCache) {
         <div class="kpi" style="border-left-color:${(dash.riomar.Atingimento || 0) >= 100 ? "var(--ok, #16a34a)" : "var(--warn)"}"><small>📊 Atingimento</small><strong>${escapeHtml(dash.riomar.Atingimento || 0)}%</strong><span class="muted" style="font-size:11px;display:block">a gratificação é proporcional a isso</span></div>
         <div class="kpi" style="border-left-color:var(--laranja)"><small>💵 Gratificação a pagar</small><strong>${fmtMoeda(dash.riomar.GratificacaoAPagar || 0)}</strong><span class="muted" style="font-size:11px;display:block">teto: ${fmtMoeda(dash.riomar.TetoGratificacao || 0)}</span></div>
       </div>
-
       ${dash.riomar.SemRegra ? `<div class="msg warn" style="margin-top:10px;font-size:13px">⚠️ ${escapeHtml(dash.riomar.SemRegra)} colaborador(es) sem regra de gratificação cadastrada (o cargo não bateu com a tabela). Eles aparecem com gratificação zero.</div>` : ""}
-
       ${(dash.riomar.Lista && dash.riomar.Lista.length)
         ? `<div class="table-wrap" style="margin-top:12px"><table>
             <thead><tr><th>Colaborador</th><th>Função</th><th>Salário base</th><th>Gratificação (teto)</th><th>Gratificação ganha</th><th>Total a receber</th><th>Total máximo</th></tr></thead>
@@ -2328,7 +2239,6 @@ async function renderDashboard(unidade, usarCache) {
         : `<div class="empty">Nenhum colaborador no Rio Mar.</div>`}
       <p class="muted" style="font-size:12px;margin-top:8px">A gratificação é o <b>teto da função × % de atingimento</b>. Bateu os ${fmtMoeda(dash.riomar.FatProjetado || 0)} → gratificação cheia. Lance o faturamento em <b>Indicadores</b>.</p>
     </div>` : ""}
-
     ${ABA("pessoas") ? `
     <div class="card">
       <h3>👥 Quadro Ideal x Quadro Real <span class="muted" style="font-weight:400;font-size:12px">(edite o ideal direto aqui)</span></h3>
@@ -2357,7 +2267,6 @@ async function renderDashboard(unidade, usarCache) {
         : `<div class="empty">Nenhuma unidade encontrada.</div>`}
     </div>
     ` : ""}
-
     ${ABA("visao") ? `
     <div class="card">
       <h3>🏢 Grupo Evol — Consolidado <span class="muted" style="font-weight:400;font-size:12px">(todas as unidades juntas, mês atual)</span></h3>
@@ -2370,7 +2279,6 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
-
     ${ABA("analise") ? `
     <div class="card">
       <h3>🏬 Turnover e Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(setor dentro de cada unidade)</span></h3>
@@ -2390,7 +2298,6 @@ async function renderDashboard(unidade, usarCache) {
         : `<div class="empty">Sem dados por setor ainda. Preencha o Setor no cadastro dos colaboradores.</div>`}
     </div>
     ` : ""}
-
     ${ABA("custo") ? `
     <div class="card">
       <h3>💵 Variável da Liderança <span class="muted" style="font-weight:400;font-size:12px">(entra na folha real)</span></h3>
@@ -2424,7 +2331,6 @@ async function renderDashboard(unidade, usarCache) {
         : `<div class="empty">Nenhuma variável lançada. Cadastre em "Variável da Liderança".</div>`}
     </div>
     ` : ""}
-
     ${ABA("analise") ? `
     <div class="card">
       <h3>📊 Turnover e Absenteísmo por Mês <span class="muted" style="font-weight:400;font-size:12px">(do que você lança em Indicadores — turnover calculado)</span></h3>
@@ -2435,7 +2341,6 @@ async function renderDashboard(unidade, usarCache) {
       ${tabelaIndicadoresMensais(dash.indicadoresMensais || [])}
     </div>
     ` : ""}
-
     ${ABA("analise") ? `
     <div class="card">
       <h3>🚪 Entrevistas de Desligamento</h3>
@@ -2447,11 +2352,15 @@ async function renderDashboard(unidade, usarCache) {
         <div class="kpi"><small>Fizeram a entrevista</small><strong>${(dash.desligamentos && dash.desligamentos.responderam) || 0}</strong></div>
         <div class="kpi" style="border-left-color:var(--warn)"><small>Recusaram / não localizadas</small><strong>${(dash.desligamentos && dash.desligamentos.recusaram) || 0}</strong></div>
       </div>
-
+      <div class="grid g4" style="margin-top:8px">
+        <div class="kpi" style="border-left-color:var(--warn)"><small>💰 Rescisão paga (mês)</small><strong>${fmtMoeda((dash.desligamentos && dash.desligamentos.valorRescisaoMes) || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:var(--laranja)"><small>💰 Rescisão paga (acumulado)</small><strong>${fmtMoeda((dash.desligamentos && dash.desligamentos.valorRescisaoAcumulado) || 0)}</strong></div>
+        <div class="kpi"><small>Provisão de rescisão (CMO)</small><strong>${fmtMoeda((dash.cmo && dash.cmo.rescisaoProv) || 0)}</strong><span class="muted" style="font-size:11px;display:block">estimativa mensal, não é o valor pago</span></div>
+      </div>
       ${(dash.desligamentos && dash.desligamentos.lista && dash.desligamentos.lista.length)
         ? `<h4 style="margin:14px 0 6px">Pessoas desligadas</h4>
            <div class="table-wrap"><table>
-             <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Líder</th><th>Data</th><th>Tipo</th><th>Motivo(s)</th><th>Fez entrevista?</th><th>Preenchido por</th></tr></thead>
+             <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Líder</th><th>Data</th><th>Tipo</th><th>Motivo(s)</th><th>Valor rescisão</th><th>Fez entrevista?</th><th>Preenchido por</th></tr></thead>
              <tbody>${dash.desligamentos.lista.map(x => `<tr>
                <td style="font-weight:600">${escapeHtml(x.Colaborador || "—")}</td>
                <td>${escapeHtml(x.Unidade || "—")}</td>
@@ -2460,12 +2369,12 @@ async function renderDashboard(unidade, usarCache) {
                <td>${formatarCelula("Data", x.DataDesligamento)}</td>
                <td>${escapeHtml(x.TipoDesligamento || "—")}</td>
                <td>${escapeHtml(x.Motivo || "—")}</td>
+               <td>${x.ValorRescisao ? fmtMoeda(x.ValorRescisao) : "—"}</td>
                <td><span class="badge ${normalize(x.QuisFazerEntrevista).indexOf("NAO") !== -1 ? "warn" : "ok"}">${escapeHtml(x.QuisFazerEntrevista || "Sim")}</span></td>
                <td>${escapeHtml(x.PreenchidoPor || "—")}</td>
              </tr>`).join("")}</tbody>
            </table></div>`
         : `<div class="empty">Nenhuma entrevista de desligamento registrada ainda. Cadastre em "Entrevista de Desligamento".</div>`}
-
       ${(dash.desligamentos && dash.desligamentos.motivosTop && dash.desligamentos.motivosTop.length)
         ? `<h4 style="margin:14px 0 6px">Motivos mais comuns</h4>
            <div class="table-wrap"><table>
@@ -2475,7 +2384,18 @@ async function renderDashboard(unidade, usarCache) {
         : ""}
     </div>
     ` : ""}
-
+    ${ABA("analise") ? `
+    <div class="card">
+      <h3>⚖️ Processos Trabalhistas <span class="muted" style="font-weight:400;font-size:12px">(CORREÇÃO #6 — acompanhamento dedicado)</span></h3>
+      <div class="grid g4">
+        <div class="kpi"><small>Processos abertos</small><strong>${(dash.processosTrabalhistas && dash.processosTrabalhistas.abertos) || 0}</strong></div>
+        <div class="kpi" style="border-left-color:var(--laranja)"><small>Valor provisionado</small><strong>${fmtMoeda((dash.processosTrabalhistas && dash.processosTrabalhistas.provisionado) || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:var(--info)"><small>Pago no mês</small><strong>${fmtMoeda((dash.processosTrabalhistas && dash.processosTrabalhistas.pagoMes) || 0)}</strong></div>
+        <div class="kpi" style="border-left-color:var(--warn)"><small>Pago acumulado</small><strong>${fmtMoeda((dash.processosTrabalhistas && dash.processosTrabalhistas.pagoAcumulado) || 0)}</strong></div>
+      </div>
+      <p class="muted" style="font-size:12px;margin-top:10px">Detalhe processo a processo (colaborador, motivo, status, valores) em <b>Indicadores → Processos Trabalhistas</b>.</p>
+    </div>
+    ` : ""}
     ${ABA("analise") ? `
     <div class="grid g2">
       <div class="card">
@@ -2503,14 +2423,12 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
-
     ${ABA("pessoas") ? `
     <div class="card">
       <h3>🧪 Colaboradores em Período de Experiência ${sel ? `<span class="badge info">${escapeHtml(sel)}</span>` : ""}</h3>
       ${tabelaExperiencia(dash.emExperiencia || [])}
     </div>
     ` : ""}
-
     ${ABA("pessoas") ? `
     <div class="card">
       <h3>📝 Avaliações de Período de Experiência</h3>
@@ -2523,7 +2441,6 @@ async function renderDashboard(unidade, usarCache) {
       ${tabelaComBadge((dash.avaliacoesExp && dash.avaliacoesExp.recentes) || [], ["Colaborador", "Unidade", "Etapa", "Resultado"])}
     </div>
     ` : ""}
-
     ${ABA("pessoas") ? `
     <div class="grid g2">
       <div class="card">
@@ -2536,7 +2453,6 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
-
     ${ABA("recrutamento") ? `
     <div class="card">
       <h3>📦 Estoque Crítico de Fardamento</h3>
@@ -2545,7 +2461,6 @@ async function renderDashboard(unidade, usarCache) {
     ` : ""}
   `);
 }
-
 function tabelaSimples(linhas, colunas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro.</div>`;
   return `
@@ -2559,9 +2474,7 @@ function tabelaSimples(linhas, colunas) {
     </div>
   `;
 }
-
 /* ===================== VALE TRANSPORTE (por bairro/cidade) ===================== */
-
 const BAIRROS_FORTALEZA = ["Aerolândia", "Aeroporto", "Aldeota", "Alagadiço", "Alagadiço Novo", "Alto da Balança",
   "Álvaro Weyne", "Amadeu Furtado", "Ancuri", "Antônio Bezerra", "Aracapé", "Autran Nunes", "Barra do Ceará",
   "Barroso", "Bela Vista", "Benfica", "Bom Futuro", "Bom Jardim", "Bonsucesso", "Cais do Porto", "Cajazeiras",
@@ -2580,11 +2493,9 @@ const BAIRROS_FORTALEZA = ["Aerolândia", "Aeroporto", "Aldeota", "Alagadiço", 
   "Quintino Cunha", "Raquel de Queiroz", "Rodolfo Teófilo", "Sabiaguaba", "Salinas", "Sapiranga", "São Bento",
   "São Gerardo", "São João do Tauape", "Serrinha", "Serviluz", "Siqueira", "Tancredo Neves", "Varjota",
   "Vicente Pinzón", "Vila Ellery", "Vila Peri", "Vila União", "Vila Velha"];
-
 const MUNICIPIOS_RMF = ["Caucaia", "Maracanaú", "Maranguape", "Pacatuba", "Eusébio", "Aquiraz", "Itaitinga",
   "Guaiúba", "Horizonte", "Pacajus", "Chorozinho", "Cascavel", "Pindoretama", "São Gonçalo do Amarante",
   "Paracuru", "Paraipaba", "Trairi", "São Luís do Curu"];
-
 // Valor do VT por dia conforme cidade de moradia x cidade de trabalho.
 // Edite aqui se os valores mudarem.
 function vtPorDia(cidadeMora, cidadeTrabalha) {
@@ -2595,7 +2506,6 @@ function vtPorDia(cidadeMora, cidadeTrabalha) {
   if (m === "EUSEBIO" && t === "FORTALEZA") return 19.80;
   return 0; // combinação ainda não cadastrada
 }
-
 function cidadeDoBairro(bairro) {
   const b = normalize(bairro);
   const muni = MUNICIPIOS_RMF.find(x => normalize(x) === b);
@@ -2603,13 +2513,11 @@ function cidadeDoBairro(bairro) {
   // se está na lista de bairros de Fortaleza (ou qualquer coisa não-município), assume Fortaleza
   return "Fortaleza";
 }
-
 function cidadeDaUnidade(unidade) {
   const u = normalize(unidade);
   if (u.indexOf("EUSEBIO") !== -1 || u.indexOf("CONRADO") !== -1) return "Eusébio";
   return "Fortaleza";
 }
-
 function calcularVT() {
   const bairroEl = document.getElementById("campo_Bairro");
   const uniEl = document.getElementById("campo_Unidade");
@@ -2623,9 +2531,7 @@ function calcularVT() {
   const dia = vtPorDia(cidadeMora, cidadeTrab);
   vtEl.value = dia;
 }
-
 /* ===================== LIDERANÇA AUTOMÁTICA ===================== */
-
 function liderDe(nomeColaborador) {
   const alvo = normalize(nomeColaborador);
   // 1) organograma que já vem em cada colaborador (getInit -> liderDiretoDe_)
@@ -2636,15 +2542,12 @@ function liderDe(nomeColaborador) {
   const achou = lista.find(l => normalize(l.Liderado) === alvo);
   return achou ? achou.Lider : "";
 }
-
 function autofillGestor(nomeColaborador, campoDestinoId) {
   const lider = liderDe(nomeColaborador);
   const campo = document.getElementById(campoDestinoId);
   if (campo && lider) campo.value = lider;
 }
-
 /* ===================== UNIVERSIDADE EVOL ===================== */
-
 const ACADEMIA_NOVOS_TALENTOS = [
   ["01", "Autoconhecimento e Perfil Profissional", "Entender quem você é para crescer com intenção"],
   ["02", "Comunicação e Oratória", "Falar com clareza, confiança e presença"],
@@ -2659,7 +2562,6 @@ const ACADEMIA_NOVOS_TALENTOS = [
   ["11", "Ética, Postura e Imagem Profissional", "Sua reputação é seu maior ativo"],
   ["12", "Projeto de Crescimento Pessoal", "De onde vim, onde estou, para onde vou"]
 ];
-
 const ACADEMIA_LIDERES = [
   ["Mês 1", "🧭 O Papel do Líder Moderno", "Identidade do líder"],
   ["Mês 2", "🧠 Inteligência Emocional na Liderança", "Autorregulação emocional"],
@@ -2674,7 +2576,6 @@ const ACADEMIA_LIDERES = [
   ["Mês 11", "🌐 Gestão de Clima e Cultura de Equipe", "Clima e comportamento"],
   ["Mês 12", "🏆 Liderança Integrada: Plano de Evolução", "Integração e PDI"]
 ];
-
 function tabelaModulos(linhas, colTitulo, programa, keyPrefix) {
   return `<div class="table-wrap"><table>
     <thead><tr><th style="width:80px">#</th><th>${escapeHtml(colTitulo)}</th><th>Foco</th><th style="width:150px"></th></tr></thead>
@@ -2689,7 +2590,6 @@ function tabelaModulos(linhas, colTitulo, programa, keyPrefix) {
     </tr>`;
     }).join("")}</tbody></table></div>`;
 }
-
 async function carregarUniversidadeJson() {
   if (STATE.cache.universidade) return STATE.cache.universidade;
   const r = await fetch("universidade.json");
@@ -2698,11 +2598,9 @@ async function carregarUniversidadeJson() {
   STATE.cache.universidade = data;
   return data;
 }
-
 function aplicaNegritoUni(s) {
   return escapeHtml(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
 }
-
 function formatarConteudoModulo(texto) {
   const linhas = String(texto || "").split("\n");
   let html = "", buf = [];
@@ -2728,7 +2626,6 @@ function formatarConteudoModulo(texto) {
   flush();
   return html;
 }
-
 async function abrirModuloUniversidade(programa, chave, titulo) {
   setMain(`<div class="loading">Carregando conteúdo do módulo...</div>`);
   let data;
@@ -2743,10 +2640,8 @@ async function abrirModuloUniversidade(programa, chave, titulo) {
     <div class="actions"><button class="btn btn-primary" onclick="treinarModulo('${escapeHtml(titulo.replace(/'/g, "\\'"))}')">Registrar treino deste módulo</button></div>
   `);
 }
-
 /* ============ UNIVERSIDADE EVOL — GAMIFICADA ============ */
 const UNI = { colab: "", progresso: {}, xp: 0, ranking: [] };
-
 async function renderUniversidade() {
   setMain(`<div class="loading">Carregando Universidade Evol...</div>`);
   try {
@@ -2757,7 +2652,6 @@ async function renderUniversidade() {
   } catch (e) { UNI.todosProgressos = []; UNI.ranking = []; }
   uniRender();
 }
-
 // Progresso do colaborador selecionado
 function uniCarregarProgresso() {
   const nome = normalize(UNI.colab);
@@ -2770,7 +2664,6 @@ function uniCarregarProgresso() {
     UNI.xp += Number(p.XP) || 100;
   });
 }
-
 function uniNivel(xp) {
   const N = [
     { n: 1, nome: "Iniciante", min: 0, icone: "🌱" },
@@ -2791,19 +2684,16 @@ function uniNivel(xp) {
     progresso: p ? Math.round((xp - a.min) / (p.min - a.min) * 100) : 100
   };
 }
-
 function uniRender() {
   uniCarregarProgresso();
   const nv = uniNivel(UNI.xp);
   const temColab = !!UNI.colab;
-
   // conta conclusão de cada academia
   const concl = (lista) => lista.filter(m => UNI.progresso[normalize(m[1] || m[0])]).length;
   const totT = ACADEMIA_NOVOS_TALENTOS.length, totL = ACADEMIA_LIDERES.length;
   const fT = concl(ACADEMIA_NOVOS_TALENTOS), fL = concl(ACADEMIA_LIDERES);
   const pctT = totT ? Math.round(fT / totT * 100) : 0;
   const pctL = totL ? Math.round(fL / totL * 100) : 0;
-
   // conquistas
   const badges = [];
   if (UNI.xp >= 100) badges.push({ i: "🎯", t: "Primeiro passo", d: "Concluiu o 1º módulo" });
@@ -2813,7 +2703,6 @@ function uniRender() {
   if (UNI.xp >= 1000) badges.push({ i: "⭐", t: "Mil pontos", d: "1000 XP acumulados" });
   const pos = UNI.ranking.findIndex(x => normalize(x.Nome) === normalize(UNI.colab)) + 1;
   if (pos === 1) badges.push({ i: "🥇", t: "Líder do ranking", d: "1º lugar na Universidade" });
-
   setMain(`
     <div class="page-title">
       <div><h2>🎓 Universidade Evol</h2><p>Trilhas de desenvolvimento com gamificação. Cada módulo concluído vale XP e sobe seu nível.</p></div>
@@ -2822,7 +2711,6 @@ function uniRender() {
         <input id="uniColab" type="text" list="dl-colaboradores" value="${escapeHtml(UNI.colab)}" placeholder="Escolha o colaborador" onchange="uniTrocarColab(this.value)">
       </div>
     </div>
-
     ${temColab ? `
     <div class="card" style="background:linear-gradient(135deg,#1e3a8a,#3730a3);color:#fff;border:none">
       <div style="display:flex;gap:20px;flex-wrap:wrap;align-items:center">
@@ -2841,7 +2729,7 @@ function uniRender() {
           <div style="font-size:34px;font-weight:800;color:#fbbf24">${UNI.xp}</div>
           <div style="font-size:12px;opacity:.8">XP TOTAL</div>
         </div>
-        <div style="text-align:center;padding:0 16px;border-left:1px solid rgba(255,255,255,.2)">
+        <div style="text-align:center;padding:0 16px">
           <div style="font-size:34px;font-weight:800">${fT + fL}</div>
           <div style="font-size:12px;opacity:.8">MÓDULOS</div>
         </div>
@@ -2850,7 +2738,6 @@ function uniRender() {
           <div style="font-size:12px;opacity:.8">NO RANKING</div>
         </div>` : ""}
       </div>
-
       ${badges.length ? `
       <div style="margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.2)">
         <div style="font-size:12px;opacity:.8;margin-bottom:8px;font-weight:700;letter-spacing:.5px">🏅 CONQUISTAS</div>
@@ -2863,21 +2750,18 @@ function uniRender() {
       </div>` : ""}
     </div>
     ` : `<div class="msg info">👆 <b>Escolha um colaborador</b> acima para ver o progresso, XP e conquistas dele.</div>`}
-
     <div class="grid g2">
       <div class="card">
         <h3>🎓 Academia de Novos Talentos <span class="badge info">Colaboradores</span></h3>
         ${temColab ? uniBarraProgresso(fT, totT, pctT, "#0369a1") : ""}
         ${uniTrilha(ACADEMIA_NOVOS_TALENTOS, "TALENTOS", "Módulo ")}
       </div>
-
       <div class="card">
         <h3>👑 Academia de Líderes <span class="badge warn">Liderança</span></h3>
         ${temColab ? uniBarraProgresso(fL, totL, pctL, "#b45309") : ""}
         ${uniTrilha(ACADEMIA_LIDERES, "LIDERES", "")}
       </div>
     </div>
-
     <div class="card">
       <h3>🏆 Ranking da Universidade</h3>
       ${(UNI.ranking && UNI.ranking.length) ? `
@@ -2906,7 +2790,6 @@ function uniRender() {
     </div>
   `);
 }
-
 function uniBarraProgresso(feito, total, pct, cor) {
   return `
     <div style="margin:10px 0 16px">
@@ -2919,7 +2802,6 @@ function uniBarraProgresso(feito, total, pct, cor) {
       </div>
     </div>`;
 }
-
 // Trilha visual — cada módulo é um passo, com cadeado, check e XP
 function uniTrilha(lista, programa, prefixo) {
   return `<div style="display:flex;flex-direction:column;gap:6px">
@@ -2952,9 +2834,7 @@ function uniTrilha(lista, programa, prefixo) {
     }).join("")}
   </div>`;
 }
-
 function uniTrocarColab(nome) { UNI.colab = (nome || "").trim(); uniRender(); }
-
 // Marca um módulo como concluído (ganha XP)
 async function concluirModulo(programa, modulo) {
   if (!UNI.colab) return toast("Escolha o colaborador primeiro.", "err");
@@ -2969,7 +2849,6 @@ async function concluirModulo(programa, modulo) {
     await renderUniversidade();
   } catch (e) { toast(e.message, "err"); }
 }
-
 function treinarModulo(tema) {
   navegar("treinamentos");
   setTimeout(() => {
@@ -2977,9 +2856,7 @@ function treinarModulo(tema) {
     if (campo) { campo.value = tema; campo.focus(); }
   }, 400);
 }
-
 /* ===================== FEEDBACK (avaliação completa) ===================== */
-
 function fbChk(name, opcoes) {
   return `<div class="grid g3">${opcoes.map(o => `<label class="check"><input type="checkbox" data-fb="${name}" value="${escapeHtml(o)}"> ${escapeHtml(o)}</label>`).join("")}</div>`;
 }
@@ -2993,7 +2870,6 @@ function fbColetarRadio(name) {
   const e = document.querySelector(`#main input[name="fb_${name}"]:checked`);
   return e ? e.value : "";
 }
-
 async function renderFeedback() {
   const decisoes = ["Reconhecer desempenho", "Registrar elogio", "Conceder destaque do mês", "Indicar para promoção",
     "Indicar para sucessão", "Delegar novos desafios", "Criar Plano de Desenvolvimento (PDI)", "Realizar treinamento",
@@ -3010,10 +2886,8 @@ async function renderFeedback() {
     "Uso correto de EPI", "Uso correto do uniforme", "Segurança no trabalho", "Redução de retrabalho",
     "Resolução de problemas", "Inovação", "Aprendizado rápido", "Autonomia", "Responsabilidade", "Senso de urgência",
     "Adaptabilidade", "Gestão do tempo", "Proatividade", "Foco em resultados"];
-
   setMain(`
     <div class="page-title"><div><h2>Feedback</h2><p>Avaliação de desempenho — classificação automática por pontuação.</p></div></div>
-
     <div class="card">
       <h3>Identificação</h3>
       <div class="grid g3">
@@ -3026,9 +2900,7 @@ async function renderFeedback() {
       </div>
       <div class="msg" id="fbClassMsg" style="display:none"></div>
     </div>
-
     <div class="card"><h3>Decisão do Gestor</h3>${fbChk("decisao", decisoes)}</div>
-
     <div class="card">
       <h3>Perfil</h3>
       <label style="margin-top:6px">Potencial do colaborador</label>
@@ -3042,22 +2914,17 @@ async function renderFeedback() {
       <label style="margin-top:12px">Evolução desde o último feedback</label>
       ${fbRadio("evolucao", ["Evoluiu muito", "Evoluiu", "Manteve o desempenho", "Oscilou", "Piorou", "Primeiro feedback"])}
     </div>
-
     <div class="card"><h3>Plano de Desenvolvimento — Necessita desenvolver</h3>${fbChk("desenvolver", desenvolver)}</div>
-
     <div class="card">
       <h3>Prazo para Reavaliação</h3>
       ${fbRadio("prazo", ["7 dias", "15 dias", "30 dias", "45 dias", "60 dias", "90 dias", "6 meses", "12 meses"])}
       <div class="form-row" style="max-width:280px;margin-top:12px"><label>Data da próxima avaliação</label><input id="fbDataProx" type="date"></div>
     </div>
-
     <div class="card"><h3>Indicadores Observados</h3>${fbChk("indicadores", indicadores)}</div>
-
     <div class="card">
       <h3>Status Final</h3>
       ${fbRadio("status", ["Feedback concluído", "Aguardando retorno do colaborador", "Aguardando novo acompanhamento", "PDI em andamento", "Em monitoramento", "Encaminhado ao RH", "Encaminhado à Diretoria", "Processo encerrado"])}
     </div>
-
     <div class="card">
       <h3>Comentários</h3>
       <div class="grid g2">
@@ -3067,13 +2934,11 @@ async function renderFeedback() {
       <div class="form-row"><label>Plano de Ação</label><textarea id="fbPlano"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="salvarFeedbackCompleto()">Salvar Feedback</button></div>
     </div>
-
     <div class="card"><h3>Feedbacks Registrados</h3><div id="tabelaFb"><div class="loading">Carregando...</div></div></div>
   `);
   fbAtualizaClass();
   await carregarFbTabela();
 }
-
 function classificaFbLocal(p) {
   if (!p || p <= 0) return "—";
   if (p >= 90) return "🔵 DESTAQUE";
@@ -3087,7 +2952,6 @@ function fbAtualizaClass() {
   const p = Number(raw);
   el("#fbClass").value = (raw === "" || isNaN(p) || p <= 0) ? "—" : classificaFbLocal(p);
 }
-
 async function salvarFeedbackCompleto() {
   const colab = el("#fbColab").value.trim();
   if (!colab) { toast("Selecione o colaborador.", "err"); return; }
@@ -3114,7 +2978,6 @@ async function salvarFeedbackCompleto() {
     await renderFeedback();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function carregarFbTabela() {
   try {
     const r = await api("listarFeedbacks");
@@ -3122,9 +2985,7 @@ async function carregarFbTabela() {
       tabelaComBadge(r.feedbacks || [], ["Data", "Colaborador", "Unidade", "Pontuacao", "Classificacao", "StatusFinal"]);
   } catch (e) { document.getElementById("tabelaFb").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
-
 /* ===================== AVALIAÇÃO DE EXPERIÊNCIA (Nossos Valores) ===================== */
-
 async function renderExperiencia() {
   const sel = (id) => `<select id="${id}"><option value="">Selecione...</option><option>Abaixo</option><option>Atende</option><option>Supera</option></select>`;
   setMain(`
@@ -3145,7 +3006,6 @@ async function renderExperiencia() {
           <option value="2ª AVALIAÇÃO — 90 DIAS">2ª Avaliação — 90 dias</option>
         </select>
       </div>
-
       <h3 style="margin-top:8px">Nossos Valores</h3>
       <p class="card-subtitle">Avalie a conduta do colaborador em cada valor do Grupo Evol (Abaixo, Atende ou Supera).</p>
       <div class="grid g3">
@@ -3155,22 +3015,18 @@ async function renderExperiencia() {
         <div class="form-row"><label>Inovação *</label>${sel("exInov")}</div>
         <div class="form-row"><label>Fazer a diferença *</label>${sel("exDif")}</div>
       </div>
-
       <div class="form-row"><label>Plano de ação</label><textarea id="exPlano"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="salvarExperiencia()">Salvar Avaliação</button></div>
     </div>
-
     <div class="card"><h3>Avaliações Registradas</h3><div id="tabelaExp"><div class="loading">Carregando...</div></div></div>
   `);
   setDatalist("dl-gestores", todosGestores());
   await carregarExpTabela();
 }
-
 function filtrarGestoresExp() {
   // Gestor mostra TODOS os gestores + diretoria (não filtra por unidade).
   setDatalist("dl-gestores", todosGestores());
 }
-
 async function salvarExperiencia() {
   const colab = el("#exColab").value.trim();
   if (!colab) { toast("Selecione o colaborador.", "err"); return; }
@@ -3190,7 +3046,6 @@ async function salvarExperiencia() {
     await renderExperiencia();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function carregarExpTabela() {
   try {
     const r = await api("listarAvaliacoesExperiencia");
@@ -3198,13 +3053,10 @@ async function carregarExpTabela() {
       tabelaComBadge(r.avaliacoes || [], ["Colaborador", "Unidade", "Etapa", "Resultado"]);
   } catch (e) { document.getElementById("tabelaExp").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
-
 /* ===================== DOSSIÊ DO COLABORADOR ===================== */
-
 async function renderDossie() {
   setMain(`
     <div class="page-title"><div><h2>Dossiê do Colaborador</h2><p>Histórico completo: ocorrências, avaliações, feedbacks, treinamentos, fardamentos e EPIs.</p></div></div>
-
     <div class="card">
       <div class="grid g3">
         <div class="form-row">
@@ -3229,33 +3081,27 @@ async function renderDossie() {
       <div id="dsContagem" class="muted" style="font-size:13px;margin:6px 0 10px"></div>
       <div id="dsLista"></div>
     </div>
-
     <div id="dossieConteudo"></div>
   `);
   dsFiltrar();
 }
-
 // Lista os colaboradores conforme os filtros — clique no nome abre o dossiê
 function dsFiltrar() {
   const uni = el("#dsUnidade") ? el("#dsUnidade").value : "";
   const setor = el("#dsSetor") ? el("#dsSetor").value : "";
   const busca = normalize(el("#dsBusca") ? el("#dsBusca").value : "");
-
   const todos = (STATE.init.colaboradores || []).filter(c => {
     const st = normalize(c.Status || "");
     return st.indexOf("DESLIG") === -1 && st.indexOf("DEMIT") === -1;
   });
-
   const lista = todos.filter(c => {
     if (uni && !mesmaUnidade(c.Unidade, uni)) return false;
     if (setor && normalize(c.Setor || "") !== normalize(setor)) return false;
     if (busca && normalize(c.Nome || "").indexOf(busca) === -1) return false;
     return true;
   }).sort((a, b) => String(a.Nome || "").localeCompare(String(b.Nome || ""), "pt"));
-
   const cont = document.getElementById("dsContagem");
   if (cont) cont.textContent = `Mostrando ${lista.length} de ${todos.length} colaboradores. Clique no nome para abrir o dossiê.`;
-
   const div = document.getElementById("dsLista");
   if (!div) return;
   div.innerHTML = lista.length
@@ -3272,31 +3118,52 @@ function dsFiltrar() {
       </table></div>`
     : `<div class="empty">Nenhum colaborador encontrado com esses filtros.</div>`;
 }
-
 // Abre o dossiê de um colaborador específico (clique na lista)
 async function abrirDossieDe(nome) {
   await carregarDossie(nome);
   const alvo = document.getElementById("dossieConteudo");
   if (alvo) alvo.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-
 async function abrirDossie() {
   const nome = (el("#dsBusca") ? el("#dsBusca").value : "").trim();
   if (!nome) { toast("Escolha um colaborador na lista abaixo.", "err"); return; }
   await carregarDossie(nome);
 }
-
+// CORREÇÃO #14: legenda do semáforo (vermelho/laranja/amarelo/verde), calculado
+// no backend (dossie_ -> classificarSemaforo_) a partir de ocorrências
+// (advertência/suspensão/falta injustificada) e absenteísmo (faltas/atestado).
+const SEMAFORO_CORES = { vermelho: "#dc2626", laranja: "#ea580c", amarelo: "#eab308", verde: "#16a34a" };
+const SEMAFORO_LABEL = { vermelho: "🔴 Crítico", laranja: "🟠 Atenção", amarelo: "🟡 Observar", verde: "🟢 Regular" };
+// O backend (dossie_ / classificarSemaforo_) manda `semaforo` como STRING simples
+// ("vermelho"/"laranja"/"amarelo"/"verde") e `legendaSemaforo` como um objeto
+// { vermelho: "descrição...", laranja: "...", ... } com o critério de cada cor —
+// usamos essa legenda vinda do servidor em vez de duplicar o texto no front.
+function renderSemaforo(corSemaforo, legenda) {
+  if (!corSemaforo) return "";
+  const cor = SEMAFORO_CORES[corSemaforo] || "#94a3b8";
+  const label = SEMAFORO_LABEL[corSemaforo] || corSemaforo;
+  legenda = legenda || {};
+  return `
+    <div class="card" style="border-left:5px solid ${cor}">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <span style="font-weight:800;font-size:16px;color:${cor}">${label}</span>
+        ${legenda[corSemaforo] ? `<span class="muted" style="font-size:12px">${escapeHtml(legenda[corSemaforo])}</span>` : ""}
+      </div>
+      <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:#64748b">
+        ${Object.keys(SEMAFORO_CORES).map(c => `<span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEMAFORO_CORES[c]};margin-right:4px"></i>${escapeHtml(SEMAFORO_LABEL[c])} — ${escapeHtml(legenda[c] || "")}</span>`).join("")}
+      </div>
+    </div>`;
+}
 async function carregarDossie(nome) {
   const cont = document.getElementById("dossieConteudo");
   cont.innerHTML = `<div class="loading">Carregando dossiê...</div>`;
   let r;
   try { r = await api("dossie", { colaborador: nome }); }
   catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
-
   const c = r.colaborador || {}, k = r.kpis || {};
   STATE.cache.dossieNome = c.Nome || nome;
-
   cont.innerHTML = `
+    ${renderSemaforo(r.semaforo, r.legendaSemaforo)}
     ${(r.sinalizacoes && r.sinalizacoes.length) ? `
     <div class="card" style="border-left:5px solid ${r.situacao === "ATENÇÃO CRÍTICA" ? "#dc2626" : (r.situacao === "REQUER ATENÇÃO" ? "#d97706" : "#0369a1")};background:${r.situacao === "ATENÇÃO CRÍTICA" ? "#fef2f2" : (r.situacao === "REQUER ATENÇÃO" ? "#fffbeb" : "#f8fafc")}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
@@ -3308,14 +3175,13 @@ async function carregarDossie(nome) {
         </span>`).join("")}
       </div>
     </div>` : ""}
-
     <div class="card">
       <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:220px">
           <h2 style="margin-bottom:6px">${escapeHtml(c.Nome || nome)}</h2>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <span class="badge" style="background:${c.TipoContrato === "PJ" ? "#7c3aed" : "#0369a1"};color:#fff;font-weight:700;font-size:12px">
-              ${escapeHtml(c.TipoContrato || "CLT")}
+            <span class="badge" style="background:${(c.ModalidadeContratacao || c.TipoContrato) === "PJ" ? "#7c3aed" : "#0369a1"};color:#fff;font-weight:700;font-size:12px">
+              ${escapeHtml(c.ModalidadeContratacao || c.TipoContrato || "CLT")}
             </span>
             <span class="badge ${normalize(c.Status).indexOf("ATIVO") !== -1 ? "ok" : (normalize(c.Status).indexOf("AFAST") !== -1 ? "warn" : "bad")}">${escapeHtml(c.Status || "ATIVO")}</span>
             ${c.Integrado === "Sim" ? `<span class="badge ok">Integrado</span>` : ""}
@@ -3326,14 +3192,13 @@ async function carregarDossie(nome) {
           ⚠️ Registrar advertência / suspensão
         </button>
       </div>
-
       <div class="table-wrap" style="margin-top:14px"><table>
         <tbody>
           <tr><td class="muted" style="width:170px">Cargo</td><td style="font-weight:600">${escapeHtml(c.Cargo || "—")}</td>
               <td class="muted" style="width:170px">Setor</td><td style="font-weight:600">${escapeHtml(c.Setor || "—")}</td></tr>
           <tr><td class="muted">Unidade</td><td style="font-weight:600">${escapeHtml(c.Unidade || "—")}</td>
               <td class="muted">Líder direto</td><td style="font-weight:600">${escapeHtml(c.Lider || "—")}</td></tr>
-          <tr><td class="muted">Tipo de contrato</td><td style="font-weight:600">${escapeHtml(c.ContratoDetalhe || c.TipoContrato || "—")}</td>
+          <tr><td class="muted">Modalidade de contratação</td><td style="font-weight:600">${escapeHtml(c.ModalidadeContratacao || c.ContratoDetalhe || c.TipoContrato || "—")}</td>
               <td class="muted">Admissão</td><td style="font-weight:600">${escapeHtml(c.DataAdmissao || "—")}</td></tr>
           <tr><td class="muted">Turno</td><td>${escapeHtml(c.Turno || "—")}</td>
               <td class="muted">Folga</td><td>${escapeHtml(c.Folga || "—")}</td></tr>
@@ -3342,14 +3207,12 @@ async function carregarDossie(nome) {
         </tbody>
       </table></div>
     </div>
-
     <div class="grid g4">
       <div class="kpi" style="border-left-color:var(--warn)"><small>Atrasos registrados</small><strong>${k.atrasos || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--bad)"><small>Faltas injustificadas</small><strong>${k.faltas || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--bad)"><small>Advertências</small><strong>${k.advertencias || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--ok)"><small>Freq. em treinamentos</small><strong>${(k.horasTreinamento || 0)}h</strong></div>
     </div>
-
     <div class="card">
       <h3>Registrar Ocorrência</h3>
       <div class="grid g3">
@@ -3361,7 +3224,6 @@ async function carregarDossie(nome) {
       <div class="form-row"><label>Descrição</label><textarea id="ocDesc"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="salvarOcorrenciaDossie()">Registrar Ocorrência</button></div>
     </div>
-
     <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"])}</div>
     <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"])}</div>
     <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"])}</div>
@@ -3379,7 +3241,6 @@ async function carregarDossie(nome) {
     }</div>
   `;
 }
-
 async function salvarOcorrenciaDossie() {
   const nome = STATE.cache.dossieNome;
   if (!nome) { toast("Abra um dossiê primeiro.", "err"); return; }
@@ -3394,9 +3255,7 @@ async function salvarOcorrenciaDossie() {
     await abrirDossie();
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ===================== MODAL / AVISOS ===================== */
-
 function mostrarModal(titulo, htmlConteudo) {
   let ov = document.getElementById("modalOverlay");
   if (!ov) { ov = document.createElement("div"); ov.id = "modalOverlay"; document.body.appendChild(ov); }
@@ -3409,7 +3268,6 @@ function mostrarModal(titulo, htmlConteudo) {
   ov.onclick = e => { if (e.target === ov) fecharModal(); };
 }
 function fecharModal() { const ov = document.getElementById("modalOverlay"); if (ov) ov.remove(); }
-
 async function mostrarAvisosLogin() {
   try {
     const r = await api("listarAvisos", { perfil: (STATE.user && STATE.user.perfil) || "" });
@@ -3423,7 +3281,6 @@ async function mostrarAvisosLogin() {
     mostrarModal("📢 Avisos", html);
   } catch (e) {}
 }
-
 async function renderAvisos() {
   setMain(`
     <div class="page-title"><div><h2>📢 Avisos e Lembretes</h2><p>Aparecem no login e no Dashboard de sócios e diretoria.</p></div></div>
@@ -3454,7 +3311,6 @@ async function renderAvisos() {
   setDatalist("dl-colaboradores", (STATE.init.colaboradores || []).map(c => c.Nome).filter(Boolean));
   await carregarAvisos();
 }
-
 async function salvarAviso() {
   const dados = {
     Titulo: el("#avsTitulo").value.trim(),
@@ -3470,16 +3326,13 @@ async function salvarAviso() {
   try { const r = await api("salvarAviso", dados); toast(r.msg, "ok"); await renderAvisos(); }
   catch (e) { toast(e.message, "err"); }
 }
-
 async function carregarAvisos() {
   try {
     const r = await api("listarAvisos", { perfil: "" });
     document.getElementById("tabelaAvisos").innerHTML = tabelaSimples(r.avisos || [], ["Data", "Titulo", "Mensagem", "UnidadeDestino", "Colaboradores", "EnviadoPor", "Prioridade"]);
   } catch (e) { document.getElementById("tabelaAvisos").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
-
 /* ===================== AGENDA ===================== */
-
 async function renderAgenda() {
   const hoje = new Date();
   if (!STATE.ag) STATE.ag = { ano: hoje.getFullYear(), mes: hoje.getMonth(), eventos: [] };
@@ -3489,7 +3342,6 @@ async function renderAgenda() {
   `);
   await agCarregar();
 }
-
 async function agCarregar() {
   try {
     const r = await api("listarEventosAgenda", {});
@@ -3501,18 +3353,14 @@ async function agCarregar() {
   }
   agRender();
 }
-
-function agNorm(s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""); }
-
+function agNorm(s) { return String(s || "").toUpperCase().normalize("NFD").replace(/[̀-ͯ]/g, ""); }
 const AG_CORES = {
   "REUNIAO": "#2563eb", "ANIVERSARIO": "#db2777", "INTEGRACAO": "#059669",
   "TREINAMENTO": "#d97706", "ENTREVISTA": "#7c3aed", "FERIAS": "#0891b2",
   "PLANTAO": "#dc2626", "OUTRO": "#64748b"
 };
 const AG_TIPOS = ["Reunião", "Plantão", "Aniversário", "Integração", "Treinamento", "Entrevista", "Férias", "Outro"];
-
 function agCorTipo(tipo) { return AG_CORES[agNorm(tipo)] || AG_CORES["OUTRO"]; }
-
 // Data de um evento -> "YYYY-MM-DD" (aceita ISO ou dd/MM/yyyy)
 function agDataISO(v) {
   v = String(v || "").trim();
@@ -3522,7 +3370,6 @@ function agDataISO(v) {
   if (m) return `${m[3]}-${("0" + m[2]).slice(-2)}-${("0" + m[1]).slice(-2)}`;
   return "";
 }
-
 // Aniversários do mês exibido (derivados dos colaboradores)
 function agAniversarios(ano, mes) {
   const out = [];
@@ -3537,7 +3384,6 @@ function agAniversarios(ano, mes) {
   });
   return out;
 }
-
 function agRender() {
   const { ano, mes } = STATE.ag;
   const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -3545,7 +3391,6 @@ function agRender() {
   const diaSemInicio = primeiro.getDay(); // 0=Dom
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
   const hoje = new Date(); const hojeISO = `${hoje.getFullYear()}-${("0" + (hoje.getMonth() + 1)).slice(-2)}-${("0" + hoje.getDate()).slice(-2)}`;
-
   // eventos por dia (ISO), aplicando o filtro por responsável
   const filtro = STATE.ag.filtro || "";
   const porDia = {};
@@ -3556,7 +3401,6 @@ function agRender() {
   });
   // aniversários
   const aniv = agAniversarios(ano, mes);
-
   const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
   let celulas = "";
   // espaços antes do dia 1
@@ -3580,7 +3424,6 @@ function agRender() {
         <div class="ag-chips">${chips}</div>
       </div>`;
   }
-
   document.getElementById("agWrap").innerHTML = `
     <style>
       .ag-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
@@ -3623,7 +3466,6 @@ function agRender() {
     </div>
   `;
 }
-
 function agMes(delta) {
   STATE.ag.mes += delta;
   if (STATE.ag.mes < 0) { STATE.ag.mes = 11; STATE.ag.ano--; }
@@ -3631,7 +3473,6 @@ function agMes(delta) {
   agRender();
 }
 function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
-
 // Lista para o filtro da agenda: TODOS os colaboradores + os líderes/sócios do organograma + donos de eventos.
 // Lista fixa de responsáveis para o filtro da agenda (definida pela RH).
 const AGENDA_RESPONSAVEIS = [
@@ -3648,7 +3489,6 @@ function agResponsaveis() {
   return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
 }
 function agSetFiltro(v) { STATE.ag.filtro = v || ""; agRender(); }
-
 function agModal(html) {
   agFecharModal();
   const bg = document.createElement("div");
@@ -3658,7 +3498,6 @@ function agModal(html) {
   document.body.appendChild(bg);
 }
 function agFecharModal() { const b = document.getElementById("agModalBg"); if (b) b.remove(); }
-
 function agFormEvento(ev) {
   ev = ev || {};
   const iso = agDataISO(ev.Data) || "";
@@ -3687,13 +3526,11 @@ function agFormEvento(ev) {
     </div>
   `;
 }
-
 function agNovoEvento(iso) { agModal(agFormEvento({ Data: iso || "" })); }
 function agAbrirEvento(id) {
   const ev = (STATE.ag.eventos || []).find(e => String(e.Id) === String(id));
   if (ev) agModal(agFormEvento(ev));
 }
-
 async function agSalvarEvento() {
   const dados = {
     id: el("#evId").value, titulo: el("#evTitulo").value.trim(), data: el("#evData").value,
@@ -3709,7 +3546,6 @@ async function agSalvarEvento() {
     await agCarregar();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function agExcluirEvento(id) {
   if (!confirm("Excluir este evento?")) return;
   try {
@@ -3719,35 +3555,28 @@ async function agExcluirEvento(id) {
     await agCarregar();
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ===================== RECRUTAMENTO / VAGAS ===================== */
-
 async function renderVagas() {
   setMain(`<div class="loading">Carregando recrutamento...</div>`);
   let r;
   try { r = await api("listarVagas"); }
   catch (e) { setMain(`<div class="msg err">${escapeHtml(e.message)}</div>`); return; }
-
   STATE.cache.vagas = r.vagas || [];
   STATE.cache.vagasUnidades = r.unidades || [];
   const k = r.kpis || {};
   const statusOpts = ["SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
-
   setMain(`
     <div class="page-title">
       <div><h2>Recrutamento</h2><p>Vagas do Controle de Vagas — Grupo Evol.</p></div>
       <button class="btn btn-primary" onclick="abrirVagaForm()">+ Abrir Vaga</button>
     </div>
-
     ${r.erroAba ? `<div class="msg warn">${escapeHtml(r.erroAba)}</div>` : ""}
-
     <div class="grid g4">
       <div class="kpi" style="border-left-color:var(--warn)"><small>Em Seleção</small><strong>${k.selecao || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Em Teste</small><strong>${k.teste || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--ok)"><small>Encerradas</small><strong>${k.encerradas || 0}</strong></div>
       <div class="kpi" style="border-left-color:var(--bad)"><small>Canceladas</small><strong>${k.canceladas || 0}</strong></div>
     </div>
-
     <div class="card">
       <div class="grid g3">
         <div class="form-row"><label>Buscar vaga ou candidato</label>
@@ -3770,7 +3599,6 @@ async function renderVagas() {
   `);
   filtrarVagas();
 }
-
 function vagaGet(row, nomes) {
   const limpa = s => normalize(s).replace(/[^A-Z0-9 ]/g, "").replace(/\s+/g, " ").trim();
   for (const n of nomes) {
@@ -3780,13 +3608,11 @@ function vagaGet(row, nomes) {
   }
   return "";
 }
-
 function filtrarVagas() {
   const dados = STATE.cache.vagas || [];
   const busca = normalize(el("#vgBusca") ? el("#vgBusca").value : "");
   const fU = normalize(el("#vgUnidade") ? el("#vgUnidade").value : "");
   const fS = normalize(el("#vgStatus") ? el("#vgStatus").value : "");
-
   const filtradas = dados.filter(v => {
     const uni = normalize(vagaGet(v, ["UNIDADE"]));
     const st = normalize(vagaGet(v, ["STATUS"]));
@@ -3795,7 +3621,6 @@ function filtrarVagas() {
            (!fS || st.indexOf(fS) !== -1) &&
            (!busca || texto.indexOf(busca) !== -1);
   });
-
   const cols = [
     ["ID", ["ID"]], ["VAGA", ["VAGA"]], ["UNIDADE", ["UNIDADE"]], ["SETOR", ["SETOR"]],
     ["MOTIVO", ["MOTIVO"]], ["SUBSTITUÍDO", ["COLAB SUBSTITUIDO", "COLABORADOR SUBSTITUIDO", "SUBSTITUIDO"]],
@@ -3803,7 +3628,6 @@ function filtrarVagas() {
     ["DIAS EM ABERTO", ["DIAS EM ABERTO"]], ["CANDIDATO", ["CANDIDATO"]],
     ["STATUS", ["STATUS"]], ["SLA", ["SLA STATUS", "SLA"]]
   ];
-
   if (!filtradas.length) { el("#tabelaVagas").innerHTML = `<div class="empty">Nenhuma vaga encontrada.</div>`; return; }
   el("#tabelaVagas").innerHTML = `
     <div class="table-wrap"><table>
@@ -3830,7 +3654,6 @@ function filtrarVagas() {
       </tbody>
     </table></div>`;
 }
-
 async function excluirVagaUI(id) {
   if (!confirm("Excluir esta vaga? Esta ação não pode ser desfeita.")) return;
   try {
@@ -3839,7 +3662,6 @@ async function excluirVagaUI(id) {
     await renderVagas();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function salvarVagaLinha(id) {
   const cand = document.getElementById("cand_" + id);
   const stv = document.getElementById("stv_" + id);
@@ -3849,7 +3671,6 @@ async function salvarVagaLinha(id) {
     await renderVagas();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function mudarStatusVagaUI(id, status) {
   try {
     const r = await api("mudarStatusVaga", { id: id, status: status });
@@ -3857,7 +3678,6 @@ async function mudarStatusVagaUI(id, status) {
     await renderVagas();
   } catch (e) { toast(e.message, "err"); }
 }
-
 function formatarVagaCelula(coluna, valor) {
   if (coluna === "STATUS") {
     const v = normalize(valor);
@@ -3877,9 +3697,7 @@ function formatarVagaCelula(coluna, valor) {
   }
   return escapeHtml(valor);
 }
-
 const SETORES = ["Cozinha", "Salão", "Bar", "Almoxarifado", "Administrativo", "Limpeza", "Caixa", "Recepção", "DP", "Compras"];
-
 // Líderes e sócios operadores por unidade (solicitantes de vaga): [nome, unidade, perfil]
 const SOLICITANTES = [
   ["Pablo Macedo", "PARRILEIRO ALDEOTA", "Liderança"],
@@ -3909,7 +3727,6 @@ const SOLICITANTES = [
   ["Victor Farias", "EVOL", "Diretor"],
   ["Lucas Nogueira", "EVOL", "Diretor"]
 ];
-
 // Perfil de um solicitante (opcionalmente dentro de uma unidade).
 function perfilSolicitante(nome, unidade) {
   const n = normalize(nome), u = normalize(unidade);
@@ -3917,14 +3734,12 @@ function perfilSolicitante(nome, unidade) {
   if (!achou) achou = SOLICITANTES.find(s => normalize(s[0]) === n);
   return achou ? achou[2] : "";
 }
-
 function solicitantesDaUnidade(unidade) {
   const u = normalize(unidade);
   const lider = (STATE.init.lideranca || []).map(l => l.Lider).filter(Boolean);
   const base = !u ? SOLICITANTES.map(s => s[0]) : SOLICITANTES.filter(s => normalize(s[1]) === u).map(s => s[0]);
   return [...new Set(base.concat(lider))].filter(Boolean).sort();
 }
-
 // Só os líderes (perfil Liderança + aba Lideranca) de uma unidade.
 // Todos que são LIDERANÇA: quem aparece como líder de alguém no organograma + diretoria/sócios.
 function todosOsLideres() {
@@ -3938,24 +3753,20 @@ function todosOsLideres() {
    "Aline Cardoso", "João Ricardo", "Jeffany Alencar"].forEach(n => set[n] = true);
   return Object.keys(set).filter(Boolean).sort((a, b) => a.localeCompare(b, "pt"));
 }
-
 function lideresDaUnidade(unidade) {
   const u = normalize(unidade);
   const daLista = SOLICITANTES.filter(s => normalize(s[2]) === "LIDERANCA" && (!u || normalize(s[1]) === u)).map(s => s[0]);
   const daAba = (STATE.init.lideranca || []).filter(l => !u || normalize(l.Unidade) === u).map(l => l.Lider);
   return [...new Set(daLista.concat(daAba))].filter(Boolean).sort();
 }
-
 function filtrarAvaliadores() {
   const u = el("#tpUnidade") ? el("#tpUnidade").value : "";
   setDatalist("dl-avaliadores", lideresDaUnidade(u));
 }
-
 function filtrarSolicitantes() {
   const u = el("#avUnidade") ? el("#avUnidade").value : "";
   setDatalist("dl-solicitantes", solicitantesDaUnidade(u));
 }
-
 // Ao escolher o solicitante, já marca o perfil dele automaticamente.
 function autoPerfilSolicitante() {
   const nome = el("#avSolicitante") ? el("#avSolicitante").value : "";
@@ -3968,7 +3779,6 @@ function autoPerfilSolicitante() {
     sel.value = perfil;
   }
 }
-
 function abrirVagaForm() {
   setMain(`
     <div class="page-title"><div><h2>Abrir Vaga</h2><p>A vaga entra no Controle de Vagas com status ABERTA e SLA de 10 dias.</p></div></div>
@@ -4003,7 +3813,6 @@ function abrirVagaForm() {
   // sugestões de solicitantes = líderes/sócios cadastrados + aba Lideranca
   setDatalist("dl-solicitantes", solicitantesDaUnidade(""));
 }
-
 async function submitAbrirVaga() {
   const dados = {
     unidade: el("#avUnidade").value.trim(),
@@ -4028,10 +3837,33 @@ async function submitAbrirVaga() {
     renderVagas();
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ===================== TESTE PRÁTICO ===================== */
-
+// CORREÇÃO #13: HoraTeste virou HoraInicio + HoraFim, e os 3 campos fixos de data
+// (DataTeste/DataTeste2/DataTeste3) viraram uma lista extensível (TP_DIAS) que
+// serializa para o campo DiasTeste (string separada por vírgula) — sem limite de 3 dias.
+let TP_DIAS = [];
+function tpAdicionarDia() {
+  TP_DIAS.push("");
+  tpRenderDias();
+}
+function tpRemoverDia(i) {
+  TP_DIAS.splice(i, 1);
+  tpRenderDias();
+}
+function tpAtualizarDia(i, v) {
+  TP_DIAS[i] = v;
+}
+function tpRenderDias() {
+  const alvo = document.getElementById("tpDiasWrap");
+  if (!alvo) return;
+  alvo.innerHTML = TP_DIAS.map((d, i) => `
+    <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+      <input type="date" value="${escapeHtml(d)}" onchange="tpAtualizarDia(${i}, this.value)" style="flex:1">
+      <button type="button" class="btn btn-secondary" style="padding:4px 8px;font-size:12px;color:#b91c1c" onclick="tpRemoverDia(${i})">✕</button>
+    </div>`).join("") + `<button type="button" class="btn btn-secondary" style="padding:5px 10px;font-size:12px" onclick="tpAdicionarDia()">+ Adicionar dia de teste</button>`;
+}
 async function renderTestePratico() {
+  TP_DIAS = [""];
   const etapas = ["Teste Prático", "Entrevista RH", "Entrevista Gestor", "Etapa Final"];
   const criterios = [
     ["crit_tecnico", "Conhecimento técnico", "Domínio dos conteúdos específicos da vaga"],
@@ -4041,7 +3873,6 @@ async function renderTestePratico() {
     ["crit_cultura", "Aderência à cultura", "Alinhamento de valores e perfil comportamental"],
     ["crit_experiencia", "Experiência prática", "Evidências de vivência real na área"]
   ];
-
   // Vagas em aberto para vincular o teste
   let vagasAbertas = [];
   try {
@@ -4053,10 +3884,8 @@ async function renderTestePratico() {
     const label = [vagaGet(v, ["VAGA"]), vagaGet(v, ["UNIDADE"]), vagaGet(v, ["SETOR"])].filter(Boolean).join(" · ");
     return `<option value="${escapeHtml(id)}">${escapeHtml(id ? "#" + id + " — " : "")}${escapeHtml(label)}</option>`;
   }).join("");
-
   setMain(`
     <div class="page-title"><div><h2>Teste Prático</h2><p>Registro de resultado — Dados do candidato.</p></div></div>
-
     <div class="card">
       <div class="grid g3">
         <div class="form-row"><label>Unidade *</label><input id="tpUnidade" type="text" list="dl-unidades" placeholder="Selecione a unidade..." onchange="filtrarAvaliadores()"></div>
@@ -4069,9 +3898,8 @@ async function renderTestePratico() {
           <select id="tpSetor"><option value="">Selecione...</option>${SETORES.map(s => `<option>${s}</option>`).join("")}</select></div>
         <div class="form-row"><label>Vincular à vaga (Recrutamento)</label>
           <select id="tpVagaId"><option value="">Nenhuma / avulso</option>${vagaOpts}</select></div>
-        <div class="form-row"><label>Teste — Dia 1 *</label><input id="tpData" type="date"></div>
-        <div class="form-row"><label>Teste — Dia 2</label><input id="tpData2" type="date"></div>
-        <div class="form-row"><label>Teste — Dia 3</label><input id="tpData3" type="date"></div>
+        <div class="form-row"><label>Hora de início *</label><input id="tpHoraInicio" type="time"></div>
+        <div class="form-row"><label>Hora de fim</label><input id="tpHoraFim" type="time"></div>
         <div class="form-row"><label>Etapa do processo seletivo</label>
           <select id="tpEtapa"><option value="">Selecione...</option>${etapas.map(s => `<option>${s}</option>`).join("")}</select></div>
         <div class="form-row"><label>Escala *</label>
@@ -4080,7 +3908,10 @@ async function renderTestePratico() {
           <select id="tpFolga"><option value="">Selecione o dia...</option><option>Segunda</option><option>Terça</option><option>Quarta</option><option>Quinta</option><option>Sexta</option><option>Sábado</option><option>Domingo</option><option>Rotativa</option></select></div>
         <div class="form-row"><label>Avaliador responsável *</label><input id="tpAvaliador" type="text" list="dl-avaliadores" placeholder="Líder que aplicou o teste"></div>
       </div>
-
+      <div class="form-row">
+        <label>Dias do teste * <span class="muted" style="font-weight:400;font-size:11px">(pode ter quantos dias precisar, não só 3)</span></label>
+        <div id="tpDiasWrap"></div>
+      </div>
       <h3 style="margin-top:10px">Critérios avaliados</h3>
       <p class="card-subtitle">Marque os critérios em que o candidato foi aprovado.</p>
       <div class="grid g3">
@@ -4090,31 +3921,27 @@ async function renderTestePratico() {
             <span><strong>${escapeHtml(c[1])}</strong><br><span class="muted">${escapeHtml(c[2])}</span></span>
           </label>`).join("")}
       </div>
-
       <div class="grid g3" style="margin-top:12px">
         <div class="form-row"><label>Nota final (0–10)</label><input id="tpNota" type="number" min="0" max="10" step="0.1" value="0"></div>
         <div class="form-row"><label>Nota mínima</label><input id="tpNotaMin" type="number" min="0" max="10" step="0.1" value="0"></div>
         <div class="form-row"><label>Satisfação do avaliador (1 a 5)</label>
           <select id="tpSatisfacao"><option value="">Selecione...</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select></div>
       </div>
-
       <div class="form-row"><label>Observações</label><textarea id="tpObs"></textarea></div>
-
       <div class="actions">
         <button class="btn btn-primary" onclick="salvarTestePratico()">Salvar Resultado</button>
       </div>
     </div>
-
     <div class="card">
       <h3>Testes Registrados</h3>
       <div id="tabelaTestes"><div class="loading">Carregando...</div></div>
     </div>
   `);
+  tpRenderDias();
   setDatalist("dl-avaliadores", lideresDaUnidade(""));
   await carregarEmTesteParaParecer();
   await carregarTestesTabela();
 }
-
 // Puxa os candidatos agendados pelo RH (quem está testando) para o líder dar o parecer.
 async function carregarEmTesteParaParecer() {
   try {
@@ -4126,7 +3953,6 @@ async function carregarEmTesteParaParecer() {
     setDatalist("dl-emteste", STATE.emTesteRH.map(t => t.NomeCompleto).filter(Boolean));
   } catch (e) { STATE.emTesteRH = []; }
 }
-
 // Ao escolher o candidato, preenche unidade/cargo/telefone automaticamente.
 function preencherDoTesteRH() {
   const nome = normalize((el("#tpCandidato") || {}).value || "");
@@ -4139,20 +3965,16 @@ function preencherDoTesteRH() {
   if (typeof filtrarAvaliadores === "function") filtrarAvaliadores();
   toast("Dados do candidato preenchidos automaticamente.", "info");
 }
-
 function autofillSalarioTeste(nomeCargo) {
   const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
   const campo = document.getElementById("tpSalario");
   if (campo && c) campo.value = c.SalarioTotal || ((Number(c.SalarioBase) || 0) + (Number(c.Complementar) || 0));
 }
-
 async function salvarTestePratico() {
   const candidato = el("#tpCandidato").value.trim();
-  const data = el("#tpData").value;
-  if (!candidato || !data) { toast("Preencha ao menos Candidato e Data do teste.", "err"); return; }
-
+  const dias = (TP_DIAS || []).filter(Boolean);
+  if (!candidato || !dias.length) { toast("Preencha ao menos Candidato e um Dia de teste.", "err"); return; }
   const criterios = Array.from(document.querySelectorAll('#main input[id^="crit_"]:checked')).map(i => i.value).join(", ");
-
   const dados = {
     Unidade: el("#tpUnidade").value.trim(),
     Candidato: candidato,
@@ -4161,9 +3983,13 @@ async function salvarTestePratico() {
     Salario: el("#tpSalario").value,
     Setor: el("#tpSetor").value,
     VagaId: el("#tpVagaId").value,
-    DataTeste: data,
-    DataTeste2: el("#tpData2").value,
-    DataTeste3: el("#tpData3").value,
+    // mantém compatibilidade com o modelo antigo (3 primeiras datas) e adiciona a lista completa
+    DataTeste: dias[0] || "",
+    DataTeste2: dias[1] || "",
+    DataTeste3: dias[2] || "",
+    DiasTeste: dias.join(", "),
+    HoraInicio: el("#tpHoraInicio") ? el("#tpHoraInicio").value : "",
+    HoraFim: el("#tpHoraFim") ? el("#tpHoraFim").value : "",
     Etapa: el("#tpEtapa").value,
     Escala: el("#tpEscala").value,
     Folga: el("#tpFolga").value,
@@ -4174,7 +4000,6 @@ async function salvarTestePratico() {
     Criterios: criterios,
     Observacoes: el("#tpObs").value
   };
-
   try {
     const r = await api("salvarTeste", dados);
     toast(r.msg || "Teste salvo.", "ok");
@@ -4211,7 +4036,6 @@ async function salvarTestePratico() {
     await renderTestePratico();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function carregarTestesTabela() {
   try {
     const r = await api("listarTestes");
@@ -4238,7 +4062,6 @@ async function carregarTestesTabela() {
     document.getElementById("tabelaTestes").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 async function excluirTeste(i) {
   const t = (STATE.testesCache || [])[i]; if (!t) return;
   if (!confirm("Excluir este teste? Esta ação não pode ser desfeita.")) return;
@@ -4248,7 +4071,6 @@ async function excluirTeste(i) {
     await carregarTestesTabela();
   } catch (e) { toast(e.message, "err"); }
 }
-
 async function marcarDesistenciaTeste(i) {
   const t = (STATE.testesCache || [])[i]; if (!t) return;
   if (!confirm("Marcar que o candidato DESISTIU deste teste?")) return;
@@ -4258,9 +4080,7 @@ async function marcarDesistenciaTeste(i) {
     await carregarTestesTabela();
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ===================== LIDERANÇA (somente leitura) ===================== */
-
 async function renderLideranca() {
   setMain(`
     <div class="page-title"><div><h2>Liderança</h2><p>Quem lidera quem, por unidade. Dados vêm da aba Lideranca da planilha.</p></div></div>
@@ -4278,7 +4098,6 @@ async function renderLideranca() {
   `);
   await carregarLideranca();
 }
-
 async function carregarLideranca() {
   try {
     const r = await api("listarLideranca");
@@ -4288,7 +4107,6 @@ async function carregarLideranca() {
     document.getElementById("tabelaLideranca").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 function filtrarLideranca() {
   const dados = STATE.cache.lideranca || [];
   const fU = normalize((el("#ldUnidade") && el("#ldUnidade").value) || "");
@@ -4300,9 +4118,7 @@ function filtrarLideranca() {
   document.getElementById("tabelaLideranca").innerHTML =
     tabelaComBadge(filtradas, ["Lider", "Liderado", "Unidade"]);
 }
-
 /* ===================== UNIDADES (somente leitura) ===================== */
-
 async function renderUnidades() {
   setMain(`<div class="loading">Carregando unidades...</div>`);
   let info = [];
@@ -4310,7 +4126,6 @@ async function renderUnidades() {
   const enderecoDe = {};
   info.forEach(u => { if (u.Unidade) enderecoDe[normalize(u.Unidade)] = u.Endereco || ""; });
   const unis = STATE.init.unidades || [];
-
   setMain(`
     <div class="page-title">
       <div><h2>Unidades</h2><p>As unidades são criadas automaticamente. Aqui você define o <b>endereço</b> de cada uma (usado no cabeçalho do ponto).</p></div>
@@ -4327,7 +4142,6 @@ async function renderUnidades() {
     </div>
   `);
 }
-
 async function salvarEnderecoUni(unidade, i) {
   const endereco = el("#endUni_" + i) ? el("#endUni_" + i).value.trim() : "";
   try {
@@ -4335,14 +4149,12 @@ async function salvarEnderecoUni(unidade, i) {
     toast(r.msg || "Endereço salvo.", "ok");
   } catch (e) { toast(e.message, "err"); }
 }
-
 /* ===================== MÓDULOS GENÉRICOS (CRUD) ===================== */
 /*
  * Cada módulo descreve: ação de listar, chave da resposta, ação de salvar,
  * campos do formulário e colunas exibidas na tabela.
  * O restante (renderização, coleta, envio) é genérico — ver renderModulo().
  */
-
 const MODULES = {
   colaboradores: {
     label: "Colaboradores",
@@ -4358,6 +4170,11 @@ const MODULES = {
       { name: "Setor", label: "Setor", type: "text" },
       { name: "Turno", label: "Turno", type: "text" },
       { name: "Folga", label: "Folga", type: "text" },
+      // Nota: Modalidade de Contratação (CLT/PJ) NÃO é editável aqui de propósito —
+      // o backend (modalidadeContratacaoDe_) já deriva isso automaticamente das
+      // colunas legadas Tipo_Contrato/TipoContrato/Contrato (ou do heurístico ehPJ_
+      // quando não há nenhuma), e salvarColaborador_ não grava essa coluna. Ela é
+      // exibida como somente-leitura no Headcount e no Dossiê (itens #11).
       { name: "Telefone", label: "Telefone / Celular", type: "text" },
       { name: "SalarioBase", label: "Salário Base", type: "money" },
       { name: "Complementar", label: "Complementar", type: "money" },
@@ -4383,7 +4200,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   cargos: {
     label: "Cargos",
     listAction: "listarCargos", listKey: "cargos",
@@ -4396,7 +4212,6 @@ const MODULES = {
       { name: "SalarioTotal", label: "Salário Total", type: "money", readonly: true, computed: true }
     ]
   },
-
   treinamentos: {
     label: "Treinamentos",
     filtros: ["Unidade"],
@@ -4415,7 +4230,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   fardamento: {
     label: "Fardamento / Estoque",
     listAction: "listarFardamento", listKey: "fardamento",
@@ -4434,9 +4248,8 @@ const MODULES = {
       { name: "Fornecedor", label: "Fornecedor", type: "text" }
     ]
   },
-
   custosMensais: {
-    label: "Custos do Mês (processos, endomarketing, rescisões)",
+    label: "Custos do Mês (processos, endomarketing, rescisões, refeição)",
     filtros: ["Unidade"],
     listAction: "listarCustosMensais", listKey: "custosMensais",
     saveAction: "salvarCustoMensal",
@@ -4450,7 +4263,10 @@ const MODULES = {
       { name: "Ano", label: "Ano", type: "number", required: true },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
       { name: "Tipo", label: "Tipo de custo", type: "select", required: true, options: [
-        "Processos trabalhistas", "Endomarketing", "Rescisão", "Dobras", "Diárias avulsas",
+        // CORREÇÃO #7: "Refeição" agora é um total mensal por UNIDADE lançado aqui
+        // (em vez de um valor fixo por pessoa multiplicado pelo headcount). Ver
+        // refeicaoDoMes_ no Code.gs e CHANGELOG item #7.
+        "Processos trabalhistas", "Endomarketing", "Rescisão", "Refeição", "Dobras", "Diárias avulsas",
         "Exame / ASO", "Treinamento", "Outros"
       ] },
       { name: "Valor", label: "Valor REALIZADO (R$)", type: "moneyBR", required: true },
@@ -4458,7 +4274,6 @@ const MODULES = {
       { name: "Descricao", label: "Descrição", type: "textarea", col: "g2" }
     ]
   },
-
   parametrosCMO: {
     label: "Parâmetros do CMO",
     note: "Ajuste os percentuais e valores usados no cálculo do custo. Mudou aqui, o dashboard recalcula.",
@@ -4479,9 +4294,12 @@ const MODULES = {
         { v: "ADIC_NOTURNO_PCT", l: "Adicional noturno %" },
         { v: "FERIAS_PROV_PCT", l: "Provisão de férias %" },
         { v: "RESCISAO_PROV_PCT", l: "Provisão de rescisão %" },
-        { v: "REFEICAO_MES", l: "Refeição — custo MENSAL por colaborador (R$)" },
+        { v: "REFEICAO_MES", l: "Refeição — legado: custo MENSAL por colaborador (R$) — só usado se não houver lançamento em Custos do Mês" },
         { v: "DIAS_UTEIS", l: "Dias trabalhados no mês (usado no VT)" },
-        { v: "ADMISSAO_CUSTO", l: "Custo por admissão — CPF + ASO (R$)" },
+        // CORREÇÃO #8: admissão deixou de ser um valor único de R$120 e virou dois
+        // parâmetros somáveis — ASO (R$12) + CPF (R$10) — refletindo o custo real.
+        { v: "ADMISSAO_CUSTO_ASO", l: "Custo por admissão — ASO (R$)" },
+        { v: "ADMISSAO_CUSTO_CPF", l: "Custo por admissão — Consulta de CPF (R$)" },
         { v: "SAL_FAMILIA_TETO", l: "Salário família — teto (R$)" },
         { v: "SAL_FAMILIA_VALOR", l: "Salário família — valor por dependente (R$)" },
         { v: "RIOMAR_FAT_PROJETADO", l: "Rio Mar — faturamento projetado do mês (R$)" }
@@ -4490,7 +4308,6 @@ const MODULES = {
       { name: "Descricao", label: "Observação", type: "text", col: "g2" }
     ]
   },
-
   variavel: {
     label: "Variável da Liderança",
     filtros: ["Unidade"],
@@ -4513,7 +4330,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   cargosDescricao: {
     label: "Descrições de Cargo",
     note: "Base da trilha de carreira. Defina as competências, os cursos e o PRÓXIMO CARGO — é isso que alimenta o Promotion Score.",
@@ -4536,7 +4352,6 @@ const MODULES = {
       { name: "Indicadores", label: "Indicadores de desempenho (KPIs)", type: "textarea", col: "g2" }
     ]
   },
-
   competenciasColab: {
     label: "Competências do Colaborador",
     note: "Registre as competências que a pessoa JÁ domina. É isso que o motor compara com o próximo cargo.",
@@ -4554,7 +4369,6 @@ const MODULES = {
       { name: "Evidencia", label: "Evidência (o que comprova?)", type: "textarea", col: "g2" }
     ]
   },
-
   promocoes: {
     label: "Promoção Interna",
     note: "Toda promoção fica registrada com o Promotion Score do momento — é a evidência de que foi por mérito.",
@@ -4577,7 +4391,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   utensilios: {
     label: "Desconto de Utensílios e Produtos",
     note: "Configure o desconto que incide sobre o COMPLEMENTAR do colaborador. Pode ser por unidade, cargo e mês.",
@@ -4602,7 +4415,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   entregas: {
     label: "Entrega de Fardamento / EPI",
     filtros: ["Unidade"],
@@ -4622,13 +4434,12 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   desligamentos: {
     label: "Entrevista de Desligamento",
     filtros: ["Unidade", "Setor"],
     listAction: "listarDesligamentos", listKey: "desligamentos",
     saveAction: "salvarDesligamento",
-    columns: ["Data", "Unidade", "Colaborador", "Cargo", "LiderDireto", "TipoDesligamento", "MotivoPrincipal", "Recontrataria", "PreenchidoPor"],
+    columns: ["Data", "Unidade", "Colaborador", "Cargo", "LiderDireto", "TipoDesligamento", "MotivoPrincipal", "ValorRescisao", "Recontrataria", "PreenchidoPor"],
     fields: [
       { name: "Data", label: "Data da entrevista", type: "date", required: true },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
@@ -4639,6 +4450,9 @@ const MODULES = {
       { name: "DataAdmissao", label: "Data de admissão", type: "date" },
       { name: "DataDesligamento", label: "Data de desligamento", type: "date" },
       { name: "TipoDesligamento", label: "Tipo de desligamento", type: "select", options: ["Voluntário (pediu demissão)", "Involuntário (empresa desligou)", "Término de contrato", "Justa causa"] },
+      // CORREÇÃO #6a: valor real pago na rescisão — antes só existia a provisão
+      // estimada do CMO (rescisaoProv), sem espaço para lançar o valor de fato pago.
+      { name: "ValorRescisao", label: "Valor pago na rescisão (R$)", type: "moneyBR", hint: "Valor efetivamente pago — entra no dashboard separado da provisão estimada" },
       { name: "QuisFazerEntrevista", label: "A pessoa quis fazer a entrevista?", type: "select", options: ["Sim", "Não (recusou)", "Não localizada"], default: "Sim", required: true },
       { name: "MotivoPrincipal", label: "Motivos (pode marcar mais de um)", type: "multicheck", col: "g2", options: ["Salário / benefícios", "Clima / liderança", "Distância / transporte", "Outra oportunidade", "Motivos pessoais / saúde", "Desempenho", "Fim de contrato", "Outros"] },
       { name: "MotivoDetalhe", label: "Detalhe do motivo", type: "textarea", col: "g2" },
@@ -4647,6 +4461,29 @@ const MODULES = {
       { name: "AvaliacaoLideranca", label: "Nota para a liderança (1-5)", type: "select", options: ["1", "2", "3", "4", "5"] },
       { name: "PontosPositivos", label: "Pontos positivos (o que era bom)", type: "textarea", col: "g2" },
       { name: "PontosMelhoria", label: "Pontos de melhoria (o que faria a pessoa ficar)", type: "textarea", col: "g2" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+  // CORREÇÃO #6c: novo módulo dedicado para acompanhar processos trabalhistas
+  // (antes só existia um valor solto em Custos do Mês, sem histórico por pessoa/status).
+  processosTrabalhistas: {
+    label: "Processos Trabalhistas",
+    note: "Acompanhamento de processos trabalhistas em aberto — status, valores pedidos, provisionados e pagos.",
+    filtros: ["Unidade"],
+    listAction: "listarProcessosTrabalhistas", listKey: "processosTrabalhistas",
+    saveAction: "salvarProcessoTrabalhista",
+    columns: ["DataAbertura", "Colaborador", "Unidade", "Motivo", "Status", "ValorPedido", "ValorProvisionado", "ValorPago"],
+    fields: [
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "CPF", label: "CPF", type: "text" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "DataAbertura", label: "Data de abertura", type: "date", required: true },
+      { name: "Motivo", label: "Motivo do processo", type: "text", col: "g2" },
+      { name: "Status", label: "Status", type: "select", required: true, default: "Em andamento", options: ["Em andamento", "Em acordo", "Encerrado — ganho", "Encerrado — perdido", "Encerrado — acordo"] },
+      { name: "ValorPedido", label: "Valor pedido (R$)", type: "moneyBR" },
+      { name: "ValorProvisionado", label: "Valor provisionado (R$)", type: "moneyBR" },
+      { name: "ValorPago", label: "Valor já pago (R$)", type: "moneyBR" },
+      { name: "Advogado", label: "Advogado responsável", type: "text" },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
@@ -4673,7 +4510,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   absenteismo: {
     label: "Absenteísmo",
     filtros: ["Unidade", "Setor"],
@@ -4694,7 +4530,6 @@ const MODULES = {
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
-
   sla: {
     label: "SLA de Vagas",
     filtros: ["Unidade"],
@@ -4711,19 +4546,16 @@ const MODULES = {
     ]
   }
 };
-
 function campoValorInicial(f) {
   if (f.default !== undefined) return f.default;
   return "";
 }
-
 function campoHtml(f) {
   const idc = "campo_" + f.name;
   const req = f.required ? "required" : "";
   const readonly = f.readonly ? "readonly" : "";
   const val = escapeHtml(campoValorInicial(f));
   const wrapClass = f.col ? f.col : "";
-
   let inputHtml = "";
   const onch = f.onchange ? `onchange="${f.onchange}"` : "";
   if (f.type === "textarea") {
@@ -4761,10 +4593,8 @@ function campoHtml(f) {
   } else {
     inputHtml = `<input id="${idc}" type="text" value="${val}" ${req} ${readonly} ${onch}>`;
   }
-
   return `<div class="form-row ${wrapClass}"><label>${escapeHtml(f.label)}${f.required ? " *" : ""}</label>${inputHtml}</div>`;
 }
-
 function autofillSalarioPorCargo(nomeCargo) {
   const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
   if (!c) return;
@@ -4774,7 +4604,6 @@ function autofillSalarioPorCargo(nomeCargo) {
   if (comp) comp.value = c.Complementar || 0;
   recalcularSalarioTotal();
 }
-
 function recalcularSalarioTotal() {
   const base = document.getElementById("campo_SalarioBase");
   const comp = document.getElementById("campo_Complementar");
@@ -4783,7 +4612,6 @@ function recalcularSalarioTotal() {
     total.value = (Number(base.value) || 0) + (Number(comp.value) || 0);
   }
 }
-
 function coletarCampos(fields) {
   const out = {};
   fields.forEach(f => {
@@ -4798,7 +4626,6 @@ function coletarCampos(fields) {
   });
   return out;
 }
-
 function validarCampos(fields) {
   for (const f of fields) {
     if (f.required) {
@@ -4811,20 +4638,16 @@ function validarCampos(fields) {
   }
   return true;
 }
-
 // Anexa um documento ao colaborador (vai pro Drive e aparece no Dossiê)
 async function anexarDocColab() {
   const colab = (el("#docColab").value || "").trim();
   const tipo = (el("#docTipo").value || "").trim();
   const inp = el("#docArquivo");
   const box = el("#docStatus");
-
   if (!colab) return toast("Escolha o colaborador.", "err");
   if (!inp || !inp.files || !inp.files[0]) return toast("Escolha o arquivo do documento.", "err");
-
   const f = inp.files[0];
   if (f.size > 15 * 1024 * 1024) return toast("Arquivo muito grande (máx. 15 MB).", "err");
-
   if (box) { box.style.display = "block"; box.innerHTML = "⏳ Enviando documento..."; }
   try {
     toggleLoading(true);
@@ -4847,7 +4670,6 @@ async function anexarDocColab() {
     toast(e.message, "err");
   } finally { toggleLoading(false); }
 }
-
 async function renderModulo(key) {
   const cfg = MODULES[key];
   STATE.editModulo = null;
@@ -4858,7 +4680,6 @@ async function renderModulo(key) {
     <div class="page-title">
       <div><h2>${escapeHtml(cfg.label)}</h2>${cfg.note ? `<p>${escapeHtml(cfg.note)}</p>` : ""}</div>
     </div>
-
     <div class="card">
       <h3>Novo Registro</h3>
       <div id="editBanner" style="display:none;background:#fff7ed;border:1px solid #f59e0b;color:#9a3412;padding:8px 12px;border-radius:8px;margin-bottom:10px;font-size:13px">
@@ -4872,7 +4693,6 @@ async function renderModulo(key) {
         <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
       </div>
     </div>
-
     ${key === "colaboradores" ? `
     <div class="card">
       <h3>📎 Anexar Documentos do Colaborador</h3>
@@ -4911,7 +4731,6 @@ async function renderModulo(key) {
       <div id="docStatus" style="display:none;margin-top:10px;font-size:13px"></div>
     </div>
     ` : ""}
-
     <div class="card">
       <h3>Registros</h3>
       ${temFiltro ? `
@@ -4948,13 +4767,11 @@ async function renderModulo(key) {
   `);
   await carregarTabelaModulo(key);
 }
-
 // Filtra a tabela de colaboradores por unidade e/ou nome
 function temFiltroModulo(key) {
   const cfg = MODULES[key];
   return key === "colaboradores" || !!(cfg && cfg.filtros && cfg.filtros.length);
 }
-
 function filtrarModulo(key) {
   STATE.filtroModulo = {
     unidade: el("#fmUnidade") ? el("#fmUnidade").value : "",
@@ -4963,13 +4780,11 @@ function filtrarModulo(key) {
   };
   aplicarFiltroModulo(key);
 }
-
 // Compara unidades tolerando variações ("PARRILEIRO RIO MAR" = "PARRILEIRO RIOMAR")
 function mesmaUnidade(a, b) {
   const limpa = s => normalize(s).replace(/\s+/g, "");
   return limpa(a) === limpa(b);
 }
-
 function aplicarFiltroModulo(key) {
   const cfg = MODULES[key];
   const todos = STATE.cacheTodos[key] || [];
@@ -4977,7 +4792,6 @@ function aplicarFiltroModulo(key) {
   const bu = normalize(f.busca);
   const ehColab = key === "colaboradores";
   const val = (l, campo) => ehColab ? valorCampoColab(l, campo) : (l[campo] || "");
-
   const linhas = todos.filter(l => {
     if (f.unidade && !mesmaUnidade(val(l, "Unidade"), f.unidade)) return false;
     if (f.setor && normalize(val(l, "Setor")) !== normalize(f.setor)) return false;
@@ -4990,13 +4804,11 @@ function aplicarFiltroModulo(key) {
     }
     return true;
   });
-
   STATE.cache[key] = linhas;
   const cont = document.getElementById("fmContagem");
   if (cont) cont.textContent = `Mostrando ${linhas.length} de ${todos.length} registro(s).`;
   document.getElementById("tabelaModulo").innerHTML = tabelaModuloHtml(key, linhas, cfg.columns);
 }
-
 async function carregarTabelaModulo(key) {
   const cfg = MODULES[key];
   try {
@@ -5017,10 +4829,8 @@ async function carregarTabelaModulo(key) {
     document.getElementById("tabelaModulo").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 // Módulos que NÃO recebem editar/excluir genérico (têm fluxo próprio ou lista traduzida)
 function moduloEditavel(key) { return ["ajustes"].indexOf(key) === -1; }
-
 // Mapeia nome do campo do formulário -> possíveis colunas na planilha (dados importados usam Funcionário, Dt_Admissao, etc.)
 // Mapeia campo do formulário -> possíveis colunas na planilha.
 // A planilha importada usa Funcionário, Operacao, Dt_Admissao, Salario_Fixo, Fone_Celular...
@@ -5042,6 +4852,7 @@ const COLAB_MAP = {
   DataAfastamento: ["DataAfastamento"],
   Integrado: ["Integrado"],
   DataIntegracao: ["DataIntegracao"],
+  ModalidadeContratacao: ["ModalidadeContratacao", "TipoContrato", "Contrato"],
   Lider: ["Lider", "Líder"],
   Telefone: ["Telefone", "Fone_Celular", "Celular"],
   Bairro: ["Bairro"],
@@ -5054,7 +4865,6 @@ const COLAB_MAP = {
   ContaItau: ["ContaItau"], Somapay: ["Somapay"], LinkDocumentacao: ["LinkDocumentacao"],
   Observacoes: ["Observacoes", "Observações"]
 };
-
 function valorCampoColab(linha, fieldName) {
   const cols = COLAB_MAP[fieldName] || [fieldName];
   for (const c of cols) {
@@ -5071,7 +4881,6 @@ function valorCampoColab(linha, fieldName) {
   }
   return "";
 }
-
 // Tabela dos módulos com coluna de Ações (Editar/Excluir)
 function tabelaModuloHtml(key, linhas, colunas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
@@ -5093,7 +4902,6 @@ function tabelaModuloHtml(key, linhas, colunas) {
     </div>
   `;
 }
-
 // dd/mm/aaaa (ou ISO) -> aaaa-mm-dd para preencher <input type=date>
 function dataParaInput(v) {
   v = String(v || "").trim(); if (!v) return "";
@@ -5102,7 +4910,6 @@ function dataParaInput(v) {
   if (m) return `${m[3]}-${("0" + m[2]).slice(-2)}-${("0" + m[1]).slice(-2)}`;
   return v;
 }
-
 async function excluirRegistroModulo(key, i) {
   const cfg = MODULES[key];
   const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
@@ -5124,7 +4931,6 @@ async function excluirRegistroModulo(key, i) {
     await carregarTabelaModulo(key);
   } catch (e) { toast(e.message, "err"); }
 }
-
 function editarRegistroModulo(key, i) {
   const cfg = MODULES[key];
   const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
@@ -5149,7 +4955,6 @@ function editarRegistroModulo(key, i) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   toast("Editando — altere os campos e clique em Atualizar.", "info");
 }
-
 function tabelaComBadge(linhas, colunas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
   return `
@@ -5163,9 +4968,8 @@ function tabelaComBadge(linhas, colunas) {
     </div>
   `;
 }
-
 function formatarCelula(coluna, valor) {
-  if (/^(SalarioBase|Complementar|SalarioTotal|CustoProjetado)$/.test(coluna)) {
+  if (/^(SalarioBase|Complementar|SalarioTotal|CustoProjetado|ValorRescisao|ValorPedido|ValorProvisionado|ValorPago)$/.test(coluna)) {
     return fmtMoeda(valor);
   }
   if (coluna === "Status" || coluna === "Resultado" || coluna === "Prioridade") {
@@ -5180,7 +4984,6 @@ function formatarCelula(coluna, valor) {
   }
   return escapeHtml(valor);
 }
-
 async function salvarModulo(key) {
   const cfg = MODULES[key];
   if (!validarCampos(cfg.fields)) return;
@@ -5207,16 +5010,13 @@ async function salvarModulo(key) {
     toast(e.message, "err");
   }
 }
-
 /* ===================== ESCALAS (tela dedicada) ===================== */
-
 function selectTurnoHtml(padrao) {
   const op = [["ABERTURA", "Abertura"], ["INTERMEDIARIO", "Intermediário"], ["FECHAMENTO", "Fechamento"]];
   return `<select class="turno-select" style="width:auto;min-width:150px">
     ${op.map(o => `<option value="${o[0]}" ${o[0] === padrao ? "selected" : ""}>${o[1]}</option>`).join("")}
   </select>`;
 }
-
 function selectEscalaHtml() {
   return `<select class="escala-select" style="width:auto;min-width:95px">
     <option value="6X1">6x1</option><option value="5X2">5x2</option><option value="12X36">12x36</option>
@@ -5229,7 +5029,6 @@ function selectFolgaHtml() {
     ${dias.map(d => `<option value="${d}">Folga: ${d}</option>`).join("")}
   </select>`;
 }
-
 function linhasChecklistEscala(nomes) {
   if (!nomes.length) return `<div class="empty">Nenhum colaborador nesta unidade.</div>`;
   return nomes.map(n => `
@@ -5244,22 +5043,17 @@ function linhasChecklistEscala(nomes) {
       </div>
     </div>`).join("");
 }
-
 function colabsDaUnidade(unidade) {
   const u = normalize(unidade);
   const todos = STATE.init.colaboradores || [];
   const lista = !u ? todos : todos.filter(c => normalize(c.Unidade) === u);
   return lista.map(c => c.Nome).filter(Boolean);
 }
-
 function filtrarColabsEscala() {
   const uni = el("#escUnidade") ? el("#escUnidade").value : "";
   const cont = document.getElementById("escChecklist");
   if (cont) cont.innerHTML = linhasChecklistEscala(colabsDaUnidade(uni));
 }
-
-
-
 function fmtHoraCurta(h) {
   const s = String(h || "").trim();
   if (!s) return "";
@@ -5267,14 +5061,8 @@ function fmtHoraCurta(h) {
   if (!m) return s;
   return m[2] === "00" ? (m[1].padStart(2, "0") + "H") : (m[1].padStart(2, "0") + ":" + m[2]);
 }
-
-
-
-
 /* ===================== PONTO ===================== */
-
 /* ===================== DOCUMENTOS (upload) ===================== */
-
 async function renderDocumentos() {
   setMain(`<div class="loading">Carregando...</div>`);
   const nomes = (STATE.init.colaboradores || []).map(c => c.Nome).filter(Boolean).sort();
@@ -5298,7 +5086,6 @@ async function renderDocumentos() {
     <div class="card"><h3>Documentos do colaborador</h3><div id="docLista"><div class="empty">Escolha um colaborador.</div></div></div>
   `);
 }
-
 function fileToBase64(file) {
   return new Promise((res, rej) => {
     const r = new FileReader();
@@ -5307,7 +5094,6 @@ function fileToBase64(file) {
     r.readAsDataURL(file);
   });
 }
-
 async function docUpload() {
   const nome = el("#docColab").value.trim();
   const f = el("#docFile").files[0];
@@ -5331,7 +5117,6 @@ async function docUpload() {
     el("#docStatus").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
 async function docListar(nome, aviso) {
   nome = (nome || "").trim();
   if (!nome) { el("#docLista").innerHTML = `<div class="empty">Escolha um colaborador.</div>`; return; }
@@ -5351,16 +5136,8 @@ async function docListar(nome, aviso) {
     el("#docLista").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`;
   }
 }
-
-
 // Filtra o datalist de colaboradores do Ponto pela unidade escolhida
-
-
-
-
-
 /* ===================== ASSISTENTE IA ===================== */
-
 async function renderAssistente() {
   setMain(`
     <div class="page-title"><div><h2>🤖 EVA — Evol Virtual Assistant</h2><p>A colaboradora digital do Grupo Evol. Pergunte sobre salários, headcount, folha, vagas, SLA, aniversariantes, turnover, testes, feedbacks, treinamentos e experiência.</p></div></div>
@@ -5373,17 +5150,14 @@ async function renderAssistente() {
     </div>
   `);
 }
-
 async function perguntarAssistente() {
   const input = el("#chatInput");
   const pergunta = input.value.trim();
   if (!pergunta) return;
   input.value = "";
-
   const area = el("#chatArea");
   area.insertAdjacentHTML("beforeend", `<div class="msg info" style="align-self:flex-end;background:#dbeafe;color:#1e40af;">${escapeHtml(pergunta)}</div>`);
   area.scrollTop = area.scrollHeight;
-
   try {
     const r = await api("assistenteIA", { pergunta: pergunta });
     area.insertAdjacentHTML("beforeend", `<div class="msg ok" style="white-space:pre-wrap">${escapeHtml(r.resposta)}</div>`);

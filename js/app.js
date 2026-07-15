@@ -575,6 +575,7 @@ function hcRenderLista() {
         <div><small class="muted">Aniversário</small><div>${hcAniversario_(c.DataNascimento)}</div></div>
         <div><small class="muted">Salário</small><div><b>${fmtMoeda(salario)}</b></div></div>
         <div><small class="muted">Período de experiência</small><div>${escapeHtml(hcExperiencia_(c.FimExperiencia))}</div></div>
+        <div><small class="muted">Plano de saúde</small><div>${c.PlanoSaude === "Sim" ? `<span class="badge ok">Sim</span>` : `<span class="badge">Não</span>`}</div></div>
       </div>
     </div>`;
   }
@@ -885,7 +886,8 @@ async function gerarCmoRelatorio() {
   let r;
   try { r = await api("cmoRelatorio", { mes: el("#cmMes").value, ano: el("#cmAno").value }); }
   catch (e) { cont.innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; return; }
-  const p = r.periodo || {}, n = r.cmoNominal || {}, h = r.cmoHora || {}, f = r.cmoFaturamento || {}, m = r.memoria || {};
+  const p = r.periodo || {}, n = r.cmoNominal || {}, f = r.cmoFaturamento || {}, m = r.memoria || {};
+  const patronalPct = (Number((r.parametros || {}).RAT_FAP_PCT) || 0) + (Number((r.parametros || {}).TERCEIROS_PCT) || 0);
   const lin = (rot, v, obs) => `<tr><td>${escapeHtml(rot)}${obs ? `<br><span class="muted" style="font-size:11px">${escapeHtml(obs)}</span>` : ""}</td><td style="text-align:right;font-weight:600">${fmtMoeda(v || 0)}</td></tr>`;
   cont.innerHTML = `
     ${(r.semSalario && r.semSalario.length) ? `
@@ -904,11 +906,17 @@ async function gerarCmoRelatorio() {
         ${r.camposFaltantes.map(x => `<li><b>${escapeHtml(x.campo)}</b> — ${escapeHtml(x.obs)}</li>`).join("")}
       </ul>
     </div>` : ""}
+    ${(r.ajudaCustoAvisos && r.ajudaCustoAvisos.length) ? `
+    <div class="msg warn" style="font-size:13px">
+      <b>⚠️ Ajuda de custo (PJ) — nomes que precisam de confirmação manual</b>
+      <ul style="margin:6px 0 0;padding-left:18px">
+        ${r.ajudaCustoAvisos.map(a => `<li>${escapeHtml(a)}</li>`).join("")}
+      </ul>
+    </div>` : ""}
     <div class="grid g4">
       <div class="kpi" style="border-left-color:var(--laranja)"><small>1️⃣ CMO NOMINAL</small><strong>${fmtMoeda(n.valor)}</strong><span class="muted" style="font-size:11px;display:block">por colaborador · ${escapeHtml(n.colaboradores || 0)} ativos</span></div>
-      <div class="kpi" style="border-left-color:var(--info)"><small>2️⃣ CMO POR HORA</small><strong>${fmtMoeda(h.valor)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(h.horas || 0)}h no período</span></div>
-      <div class="kpi"><small>3️⃣ CUSTO TOTAL</small><strong>${fmtMoeda(n.custoTotal)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(p.nomeMes)}/${escapeHtml(p.ano)}</span></div>
-      <div class="kpi" style="border-left-color:${(f.percentual || 0) > 30 ? "var(--warn)" : "var(--info)"}"><small>4️⃣ CMO % DO FATURAMENTO</small><strong>${escapeHtml(f.percentual || 0)}%</strong><span class="muted" style="font-size:11px;display:block">fat. ${fmtMoeda(f.faturamento)}</span></div>
+      <div class="kpi"><small>2️⃣ CUSTO TOTAL</small><strong>${fmtMoeda(n.custoTotal)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(p.nomeMes)}/${escapeHtml(p.ano)}</span></div>
+      <div class="kpi" style="border-left-color:${(f.percentual || 0) > 30 ? "var(--warn)" : "var(--info)"}"><small>3️⃣ CMO % DO FATURAMENTO</small><strong>${escapeHtml(f.percentual || 0)}%</strong><span class="muted" style="font-size:11px;display:block">fat. ${fmtMoeda(f.faturamento)}</span></div>
     </div>
     <div class="grid g2">
       <div class="card">
@@ -917,25 +925,21 @@ async function gerarCmoRelatorio() {
           <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">REMUNERAÇÃO</td></tr>
           ${lin("Salários (base + complementar)", m.salarios)}
           ${lin("Adicional noturno", m.adicNoturno)}
-          ${lin("Horas extras", m.horasExtras)}
-          ${lin("Insalubridade", m.insalubridade)}
-          ${lin("Periculosidade", m.periculosidade)}
           ${lin("Comissões", m.comissoes)}
           ${lin("Bonificações (variável liderança)", m.bonificacoes)}
           <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">ENCARGOS PATRONAIS</td></tr>
           ${lin("FGTS", m.fgts, `${(r.parametros || {}).FGTS_PCT}% — exceto PJ`)}
           ${lin("INSS patronal", m.inssPatronal, `${(r.parametros || {}).INSS_PATRONAL_PCT}% — exceto PJ`)}
-          ${lin("RAT / FAP", m.ratFap, `${(r.parametros || {}).RAT_FAP_PCT}%`)}
-          ${lin("Terceiros / Sistema S", m.terceiros, `${(r.parametros || {}).TERCEIROS_PCT}%`)}
+          ${lin("Patronal (RAT/FAP + Terceiros)", m.patronal, `${escapeHtml(patronalPct)}% — RAT/FAP ${(r.parametros || {}).RAT_FAP_PCT}% + Terceiros ${(r.parametros || {}).TERCEIROS_PCT}%`)}
           <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">BENEFÍCIOS</td></tr>
-          ${lin("Vale transporte (custo empresa)", m.vt)}
+          ${lin("Vale transporte (custo empresa)", m.vt, "6% do salário fixo — PJ não entra")}
+          ${lin("Ajuda de custo (PJ)", m.ajudaCustoPJ, "R$200 fixos — nomes definidos pela direção, não é Vale Transporte")}
           ${lin("Refeição", m.refeicao)}
           ${lin("Plano de saúde", m.saude)}
           ${lin("Plano odontológico", m.odonto)}
           ${lin("Salário família", m.salFamilia)}
           <tr><td colspan="2" style="font-weight:700;background:#f1f5f9">PROVISÕES</td></tr>
           ${lin("Férias (1/12 + 1/3)", m.ferias)}
-          ${lin("13º salário", m.decimo)}
           ${lin("Rescisão", m.rescisao)}
           <tr style="border-top:3px solid #1e293b"><td style="font-weight:800;font-size:15px">CUSTO TOTAL DA MÃO DE OBRA</td><td style="text-align:right;font-weight:800;font-size:16px;color:#b45309">${fmtMoeda(m.total)}</td></tr>
         </tbody></table></div>
@@ -946,14 +950,11 @@ async function gerarCmoRelatorio() {
           <p><b>1️⃣ CMO Nominal</b><br>
           <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(n.formula)}</code><br>
           ${fmtMoeda(n.custoTotal)} ÷ ${escapeHtml(n.colaboradores)} = <b>${fmtMoeda(n.valor)}</b></p>
-          <p><b>2️⃣ CMO por Hora</b><br>
-          <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(h.formula)}</code><br>
-          ${fmtMoeda(h.custoTotal)} ÷ ${escapeHtml(h.horas)}h = <b>${fmtMoeda(h.valor)}/hora</b></p>
-          <p><b>4️⃣ CMO % do Faturamento</b><br>
+          <p><b>3️⃣ CMO % do Faturamento</b><br>
           <code style="background:#f1f5f9;padding:2px 6px;border-radius:4px">${escapeHtml(f.formula)}</code><br>
           (${fmtMoeda(f.custo)} ÷ ${fmtMoeda(f.faturamento)}) × 100 = <b>${escapeHtml(f.percentual)}%</b></p>
         </div>
-        <h4 style="margin:16px 0 8px">5️⃣ CMO % por Centro de Custo</h4>
+        <h4 style="margin:16px 0 8px">4️⃣ CMO % por Centro de Custo</h4>
         ${(r.porCentroCusto && r.porCentroCusto.length)
           ? `<div class="table-wrap"><table>
               <thead><tr><th>Centro de Custo</th><th>Colab.</th><th>Custo da equipe</th><th>Custo total</th><th>%</th></tr></thead>
@@ -971,7 +972,7 @@ async function gerarCmoRelatorio() {
     <div class="card">
       <h3>3️⃣ CMO por Colaborador <span class="muted" style="font-weight:400;font-size:12px">(média geral: ${fmtMoeda(r.mediaGeral)})</span></h3>
       <div class="table-wrap" style="max-height:520px;overflow-y:auto"><table>
-        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Departamento</th><th>Centro de Custo</th><th>Contrato</th><th>Dias</th><th>Remuneração</th><th>Encargos</th><th>Benefícios</th><th>Provisões</th><th>Custo Total</th><th>R$/hora</th></tr></thead>
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Departamento</th><th>Centro de Custo</th><th>Contrato</th><th>Dias</th><th>Remuneração</th><th>Encargos</th><th>Benefícios</th><th>Provisões</th><th>Custo Total</th></tr></thead>
         <tbody>${(r.porColaborador || []).map(c => `<tr>
           <td style="font-weight:600">${escapeHtml(c.Nome)}</td>
           <td>${escapeHtml(c.Cargo || "—")}</td>
@@ -984,7 +985,6 @@ async function gerarCmoRelatorio() {
           <td>${fmtMoeda(c.Beneficios)}</td>
           <td>${fmtMoeda(c.Provisoes)}</td>
           <td style="font-weight:700">${fmtMoeda(c.CustoTotal)}</td>
-          <td>${fmtMoeda(c.CustoHora)}</td>
         </tr>`).join("")}</tbody>
       </table></div>
       <p class="muted" style="font-size:12px;margin-top:8px">Admitidos/desligados no mês entram <b>proporcional aos dias</b>. Férias e afastados <b>continuam no custo</b>. Desligados antes do período são ignorados.</p>
@@ -1366,12 +1366,18 @@ async function gerarDiagnostico() {
   `;
 }
 /* ============ VALE TRANSPORTE (marcar em massa) ============ */
-const VT = { todos: [], unidade: "" };
+// item novo: PJ não entra nesse cálculo — o backend (listarVT_) já não devolve
+// PJ na lista "vt". Os PJ nomeados que recebem R$200 de ajuda de custo (em vez
+// do VT) vêm à parte, em "ajudaCusto", e aparecem numa seção PRÓPRIA abaixo,
+// para não serem confundidos com Vale Transporte.
+const VT = { todos: [], unidade: "", ajudaCusto: [], avisos: [] };
 async function renderValeTransporte() {
   setMain(`<div class="loading">Carregando colaboradores...</div>`);
   try {
     const r = await api("listarVT");
     VT.todos = r.vt || [];
+    VT.ajudaCusto = r.ajudaCusto || [];
+    VT.avisos = r.ajudaCustoAvisos || [];
     vtRender();
   } catch (e) {
     setMain(`<div class="page-title"><div><h2>Vale Transporte</h2></div></div>
@@ -1383,9 +1389,10 @@ function vtRender() {
   const linhas = VT.unidade ? VT.todos.filter(x => normalize(x.Unidade) === normalize(VT.unidade)) : VT.todos;
   const comVT = VT.todos.filter(x => x.TemVT === "Sim");
   const totalDesconto = comVT.reduce((s, x) => s + (Number(x.ValorVT) || 0), 0);
+  const totalAjudaCusto = VT.ajudaCusto.reduce((s, x) => s + (Number(x.Valor) || 0), 0);
   setMain(`
     <div class="page-title">
-      <div><h2>Vale Transporte</h2><p>Marque quem recebe VT. O desconto de 6% é calculado <strong>na hora</strong> e já entra na folha.</p></div>
+      <div><h2>Vale Transporte</h2><p>Marque quem recebe VT (colaboradores CLT). O desconto de 6% <strong>sobre o salário fixo</strong> é calculado <strong>na hora</strong> e já entra na folha. PJ não entra neste cálculo.</p></div>
       <div style="min-width:230px">
         <label>Filtrar por Unidade</label>
         <select onchange="vtMudarUnidade(this.value)">
@@ -1394,15 +1401,23 @@ function vtRender() {
         </select>
       </div>
     </div>
+    ${(VT.avisos && VT.avisos.length) ? `
+    <div class="msg warn" style="font-size:13px">
+      <b>⚠️ Ajuda de custo (PJ) — nomes que precisam de confirmação manual</b>
+      <ul style="margin:6px 0 0;padding-left:18px">
+        ${VT.avisos.map(a => `<li>${escapeHtml(a)}</li>`).join("")}
+      </ul>
+    </div>` : ""}
     <div class="grid g4">
       <div class="kpi"><small>Colaboradores${VT.unidade ? " — " + escapeHtml(VT.unidade) : ""}</small><strong>${linhas.length}</strong></div>
       <div class="kpi" style="border-left-color:var(--info)"><small>Recebem VT</small><strong id="vtQtd">${comVT.length}</strong></div>
-      <div class="kpi" style="border-left-color:var(--laranja)"><small>Desconto total de VT (6%)</small><strong id="vtTotal">${fmtMoeda(totalDesconto)}</strong></div>
+      <div class="kpi" style="border-left-color:var(--laranja)"><small>Desconto total de VT (6% do fixo)</small><strong id="vtTotal">${fmtMoeda(totalDesconto)}</strong></div>
+      <div class="kpi" style="border-left-color:#7c3aed"><small>Ajuda de custo (PJ)</small><strong>${fmtMoeda(totalAjudaCusto)}</strong><span class="muted" style="font-size:11px;display:block">${VT.ajudaCusto.length} pessoa(s) — R$200 fixos</span></div>
     </div>
     <div class="card">
       <p class="muted" style="font-size:13px;margin:0 0 10px">Clique no ✅ de cada pessoa — <strong>salva automaticamente</strong>, não precisa de botão.</p>
       ${linhas.length ? `<div class="table-wrap"><table>
-        <thead><tr><th style="width:1%">Recebe VT?</th><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Salário</th><th>Desconto (6%)</th></tr></thead>
+        <thead><tr><th style="width:1%">Recebe VT?</th><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Salário Fixo</th><th>Desconto (6% do fixo)</th></tr></thead>
         <tbody>${linhas.map((x, i) => {
           const idx = VT.todos.indexOf(x);
           return `<tr id="vtrow_${idx}">
@@ -1412,11 +1427,24 @@ function vtRender() {
             <td style="font-weight:600">${escapeHtml(x.Nome)}</td>
             <td>${escapeHtml(x.Unidade || "—")}</td>
             <td>${escapeHtml(x.Cargo || "—")}</td>
-            <td>${fmtMoeda(x.Bruto || 0)}</td>
+            <td>${fmtMoeda(x.SalarioFixo != null ? x.SalarioFixo : x.Bruto || 0)}</td>
             <td id="vtval_${idx}" style="font-weight:600;color:${x.TemVT === "Sim" ? "#b91c1c" : "#94a3b8"}">${x.TemVT === "Sim" ? "− " + fmtMoeda(x.ValorVT || 0) : "—"}</td>
           </tr>`;
         }).join("")}</tbody>
       </table></div>` : `<div class="empty">Nenhum colaborador encontrado.</div>`}
+    </div>
+    <div class="card">
+      <h3>💜 Ajuda de custo (PJ) <span class="muted" style="font-weight:400;font-size:12px">R$200 fixos, em vez do Vale Transporte</span></h3>
+      <p class="muted" style="font-size:13px;margin:0 0 10px">Lista fixa definida pela direção (nome + unidade). PJ não recebe VT — estes 4 recebem essa ajuda de custo à parte.</p>
+      ${VT.ajudaCusto.length ? `<div class="table-wrap"><table>
+        <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Ajuda de custo</th></tr></thead>
+        <tbody>${VT.ajudaCusto.map(x => `<tr>
+          <td style="font-weight:600">${escapeHtml(x.Nome)}</td>
+          <td>${escapeHtml(x.Unidade || "—")}</td>
+          <td>${escapeHtml(x.Cargo || "—")}</td>
+          <td style="font-weight:600;color:#7c3aed">${fmtMoeda(x.Valor || 0)}</td>
+        </tr>`).join("")}</tbody>
+      </table></div>` : `<div class="empty">Nenhum colaborador identificado (verifique os avisos acima, se houver).</div>`}
     </div>
   `);
 }
@@ -2105,7 +2133,7 @@ async function renderDashboard(unidade, usarCache) {
                 <td style="font-weight:600;color:#b45309">${fmtMoeda(x.CustoProporcional)}</td>
               </tr>`).join("")}</tbody>
             </table></div>
-            <p class="muted" style="font-size:12px;margin-top:8px">Inclui salário + FGTS + INSS patronal + RAT/FAP + terceiros + provisão de férias, 13º e rescisão + refeição — proporcional aos <b>${escapeHtml(v.DiasRestantes || 0)} dias</b> que faltam.</p>`
+            <p class="muted" style="font-size:12px;margin-top:8px">Inclui salário + FGTS + INSS patronal + Patronal (RAT/FAP + terceiros) + provisão de férias e rescisão + refeição — proporcional aos <b>${escapeHtml(v.DiasRestantes || 0)} dias</b> que faltam.</p>`
           : `<div class="empty">Nenhuma vaga em aberto no momento. 🎉</div>`}`;
       })()}
     </div>
@@ -2140,7 +2168,8 @@ async function renderDashboard(unidade, usarCache) {
                 ${lin("Salários (fixo + complementar)", m.salarios)}
                 ${lin("Adicional noturno", m.adicNoturno, "#334155", "20% — turno noturno")}
                 ${lin("FGTS (a empresa paga)", m.fgts, "#b45309", "8% — exceto PJ")}
-                ${lin("Vale transporte (custo da empresa)", m.vtCusto, "#b45309", "total − 6% descontado")}
+                ${lin("Vale transporte (custo da empresa)", m.vtCusto, "#b45309", "total − 6% do salário fixo descontado")}
+                ${lin("Ajuda de custo (PJ)", m.ajudaCustoPJ, "#7c3aed", "R$200 fixos — não é Vale Transporte")}
                 ${lin("Plano de saúde", m.saude, "#b45309")}
                 ${lin("Plano odontológico", m.odonto, "#b45309")}
                 ${lin("Provisão de férias", m.ferias, "#b45309", "1/12 + 1/3")}
@@ -2172,7 +2201,7 @@ async function renderDashboard(unidade, usarCache) {
             <div class="table-wrap"><table>
               <tbody>
                 ${lin("INSS (9%)", m.inss, "#b91c1c", "descontado do colaborador — PJ não paga")}
-                ${lin("Vale transporte (6%)", m.vtDesconto, "#b91c1c")}
+                ${lin("Vale transporte (6% do fixo)", m.vtDesconto, "#b91c1c")}
                 ${lin("Utensílios", m.utensilios, "#b91c1c", "só sobre o complementar")}
                 <tr style="border-top:2px solid #cbd5e1"><td style="font-weight:700">Líquido pago aos colaboradores</td><td style="text-align:right;font-weight:700">${fmtMoeda(m.liquido || 0)}</td></tr>
               </tbody>
@@ -2585,14 +2614,21 @@ const MUNICIPIOS_RMF = ["Caucaia", "Maracanaú", "Maranguape", "Pacatuba", "Eus�
   "Guaiúba", "Horizonte", "Pacajus", "Chorozinho", "Cascavel", "Pindoretama", "São Gonçalo do Amarante",
   "Paracuru", "Paraipaba", "Trairi", "São Luís do Curu"];
 // Valor do VT por dia conforme cidade de moradia x cidade de trabalho.
-// Edite aqui se os valores mudarem.
+// Regra da direção (atualizada):
+//  - Unidades de FORTALEZA (Aldeota, Sul, Rio Mar): valor FIXO de R$10,80/dia,
+//    não importa onde o colaborador mora.
+//  - Unidade de EUSÉBIO (Seu Conrado): R$19,80/dia para quem mora FORA do
+//    município de Eusébio; R$10,80/dia para quem mora NO município de Eusébio.
+// Se a cidade de moradia não puder ser determinada (Bairro em branco),
+// cidadeDoBairro() abaixo assume "Fortaleza" por padrão — ou seja, para quem
+// trabalha em Eusébio e não preencheu o Bairro, o sistema assume por
+// segurança que a pessoa mora FORA do município (R$19,80, o valor mais alto),
+// em vez de arriscar pagar a menos. Edite aqui se os valores mudarem.
 function vtPorDia(cidadeMora, cidadeTrabalha) {
   const m = normalize(cidadeMora), t = normalize(cidadeTrabalha);
-  if (m === "FORTALEZA" && t === "FORTALEZA") return 10.80;
-  if (m === "FORTALEZA" && t === "EUSEBIO") return 19.80;
-  if (m === "EUSEBIO" && t === "EUSEBIO") return 10.80;
-  if (m === "EUSEBIO" && t === "FORTALEZA") return 19.80;
-  return 0; // combinação ainda não cadastrada
+  if (t === "FORTALEZA") return 10.80; // fixo, independe de onde mora
+  if (t === "EUSEBIO") return (m === "EUSEBIO") ? 10.80 : 19.80;
+  return 0; // unidade sem cidade de trabalho identificada (nem Fortaleza nem Eusébio)
 }
 function cidadeDoBairro(bairro) {
   const b = normalize(bairro);
@@ -3274,6 +3310,8 @@ async function carregarDossie(nome) {
             <span class="badge ${normalize(c.Status).indexOf("ATIVO") !== -1 ? "ok" : (normalize(c.Status).indexOf("AFAST") !== -1 ? "warn" : "bad")}">${escapeHtml(c.Status || "ATIVO")}</span>
             ${c.Integrado === "Sim" ? `<span class="badge ok">Integrado</span>` : ""}
             ${c.ValeTransporte === "Sim" ? `<span class="badge info">Vale transporte</span>` : ""}
+            ${c.AjudaCustoPJ === "Sim" ? `<span class="badge" style="background:#7c3aed;color:#fff">Ajuda de custo (PJ) — R$200</span>` : ""}
+            ${c.PlanoSaude === "Sim" ? `<span class="badge ok">Plano de saúde</span>` : ""}
           </div>
         </div>
         <button class="btn btn-secondary" onclick="abrirDisciplinar('${escapeHtml(String(c.Nome || nome).replace(/'/g, "\\'"))}','${escapeHtml(c.Unidade || "")}')" style="color:#b91c1c;border-color:#fca5a5">
@@ -4307,6 +4345,9 @@ const MODULES = {
       { name: "CidadeResidencia", label: "Cidade de Residência", type: "text" },
       { name: "QuerValeTransporte", label: "Vale Transporte", type: "select", options: ["Sim", "Não"] },
       { name: "ValeTransporteDia", label: "Vale Transporte por Dia (R$)", type: "money", readonly: true, computed: true },
+      // item novo (pedido da direção): só a marcação de quem tem plano de saúde
+      // (Sim/Não) — sem valor associado, não entra em nenhum cálculo de custo.
+      { name: "PossuiPlanoSaude", label: "Possui Plano de Saúde?", type: "select", options: ["Não", "Sim"] },
       { name: "Integrado", label: "Colaborador foi integrado?", type: "select", options: ["Não", "Sim"] },
       { name: "DataIntegracao", label: "Mês/data da integração", type: "date" },
       { name: "PastaCompleta", label: "Pasta completa?", type: "select", options: ["Não", "Sim"] },
@@ -4396,7 +4437,7 @@ const MODULES = {
   },
   parametrosCMO: {
     label: "Parâmetros do CMO",
-    note: "Ajuste os percentuais e valores usados no cálculo do custo. Mudou aqui, o dashboard recalcula.",
+    note: "Ajuste os percentuais e valores usados no cálculo do custo. Mudou aqui, o dashboard recalcula. Para ALTERAR um parâmetro que já existe, escolha-o de novo na lista abaixo, informe o novo valor e clique em Salvar — não use editar/excluir linha por linha.",
     listAction: "listarParametrosCMO", listKey: "parametrosCMO",
     saveAction: "salvarParametroCMO",
     columns: ["Chave", "Valor", "Descricao"],
@@ -4404,13 +4445,11 @@ const MODULES = {
       { name: "Chave", label: "Parâmetro", type: "select", required: true, options: [
         { v: "FGTS_PCT", l: "FGTS % (empresa paga)" },
         { v: "INSS_PATRONAL_PCT", l: "INSS PATRONAL % (empresa paga)" },
-        { v: "RAT_FAP_PCT", l: "RAT/FAP % (acidente de trabalho)" },
-        { v: "TERCEIROS_PCT", l: "Terceiros / Sistema S %" },
-        { v: "DECIMO_PROV_PCT", l: "Provisão de 13º %" },
-        { v: "JORNADA_MENSAL_H", l: "Jornada mensal (horas)" },
+        { v: "RAT_FAP_PCT", l: "RAT/FAP % (acidente de trabalho) — soma com Terceiros no campo \"Patronal\"" },
+        { v: "TERCEIROS_PCT", l: "Terceiros / Sistema S % — soma com RAT/FAP no campo \"Patronal\"" },
         { v: "INSS_PCT", l: "INSS % (desconto do colaborador)" },
-        { v: "VT_DESC_PCT", l: "Vale transporte — desconto %" },
-        { v: "VT_VALOR_DIA", l: "Vale transporte — valor por dia (R$)" },
+        { v: "VT_DESC_PCT", l: "Vale transporte — desconto % (só sobre o salário fixo)" },
+        { v: "VT_VALOR_DIA", l: "Vale transporte — valor por dia (R$) — fallback; valor real por unidade/residência é calculado em Cadastro de Colaboradores" },
         { v: "ADIC_NOTURNO_PCT", l: "Adicional noturno %" },
         { v: "FERIAS_PROV_PCT", l: "Provisão de férias %" },
         { v: "RESCISAO_PROV_PCT", l: "Provisão de rescisão %" },
@@ -4957,7 +4996,22 @@ async function carregarTabelaModulo(key) {
   }
 }
 // Módulos que NÃO recebem editar/excluir genérico (têm fluxo próprio ou lista traduzida)
-function moduloEditavel(key) { return ["ajustes"].indexOf(key) === -1; }
+// CORREÇÃO (item "atualizar parâmetros do CMO não funciona"): "parametrosCMO"
+// foi incluído aqui porque listarParametrosCMO NÃO devolve as linhas reais da
+// aba Parametros_CMO — devolve uma lista VIRTUAL com todos os parâmetros
+// possíveis (Object.keys(CMO_PADRAO)), na ordem do objeto, misturando padrão +
+// valor salvo. O editar/excluir genérico usa a POSIÇÃO (índice) dessa lista
+// como se fosse a linha física da planilha (atualizarRegistroModulo/
+// excluirRegistroModulo fazem `rowNum = index + 2` direto na aba). Como a
+// ordem/tamanho da lista virtual quase nunca bate com a ordem real das linhas
+// já salvas na aba (que só existem para os parâmetros que ela já alterou
+// alguma vez, na ordem em que foram salvos), clicar em ✏️ ou 🗑️ aqui ou
+// falhava com "Registro não encontrado" ou, pior, atualizava/apagava a linha
+// ERRADA da planilha. O caminho que FUNCIONA corretamente (atualiza por
+// "Chave", não por posição) é o formulário "Novo Registro" acima + o botão
+// Salvar (ação salvarParametroCMO_, que já faz update-or-insert certo pela
+// Chave) — por isso a lista abaixo agora é só para CONSULTA.
+function moduloEditavel(key) { return ["ajustes", "parametrosCMO"].indexOf(key) === -1; }
 // Mapeia nome do campo do formulário -> possíveis colunas na planilha (dados importados usam Funcionário, Dt_Admissao, etc.)
 // Mapeia campo do formulário -> possíveis colunas na planilha.
 // A planilha importada usa Funcionário, Operacao, Dt_Admissao, Salario_Fixo, Fone_Celular...
@@ -4990,6 +5044,7 @@ const COLAB_MAP = {
   ValeTransporteDia: ["ValeTransporteDia"],
   PastaCompleta: ["PastaCompleta"], PagamentoTeste: ["PagamentoTeste"],
   ContaItau: ["ContaItau"], Somapay: ["Somapay"], LinkDocumentacao: ["LinkDocumentacao"],
+  PossuiPlanoSaude: ["PossuiPlanoSaude"],
   Observacoes: ["Observacoes", "Observações"]
 };
 function valorCampoColab(linha, fieldName) {

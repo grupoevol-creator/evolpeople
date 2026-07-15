@@ -4,6 +4,20 @@ Reconstrução + correção dos 6 arquivos do sistema (Code.gs, app.js, style.cs
 
 ---
 
+## CORREÇÕES DA 5ª RODADA (Rio Mar, Detalhe das vagas, CPF/ressalvas)
+
+### 26. Rio Mar "continuava fixo" mesmo depois de 2 correções — causa era CACHE, não cálculo
+Fui atrás de novo, item por item (12 lugares diferentes que mexem com salário do Rio Mar), e as duas correções anteriores estavam corretas e continuavam funcionando — o cálculo já vinha certo do banco. O problema real: o Dashboard guarda o resultado em cache por 3 minutos (`CacheService`) pra não recalcular toda hora, e esse cache não tinha sido invalidado quando as correções anteriores foram publicadas — então quem testasse via o Dashboard normal (sem clicar em "Atualizar") podia continuar vendo o valor antigo por até 3 minutos, parecendo que a correção "não pegou". Corrigido: troquei a chave do cache para uma nova versão, então QUALQUER cache antigo (de antes desta correção) fica automaticamente inválido e o próximo carregamento do Dashboard já recalcula do zero, na hora.
+**Se depois de publicar isso você ainda ver salário fixo no Rio Mar**, os dois próximos passos são: (1) confirmar que você publicou uma NOVA versão de implantação no Apps Script (só salvar o Code.gs não atualiza a URL do app publicado); (2) checar se o campo Salário/Complementar daquele colaborador específico está mesmo preenchido na planilha de Colaboradores — se estiver vazio lá, nenhuma correção de código inventa um valor.
+
+### 27. Detalhe das vagas: Cargo, Salário e Urgência sempre vazios/zerados
+Achei a causa: o código procurava uma coluna chamada "CARGO" na aba Controle de Vagas, mas essa aba não tem essa coluna — o cargo da vaga fica na coluna "VAGA". Por isso o cargo nunca era encontrado, e sem cargo o salário também nunca batia (ficava R$0,00 sempre). A Urgência só aparecia numa vaga porque só ela tinha sido criada pelo próprio sistema (que já preenche "Normal" automaticamente); vagas antigas/importadas direto na planilha não tinham esse campo preenchido. Corrigido: agora, para cada vaga, o cargo é puxado com prioridade (1) do colaborador real que está sendo substituído (se houver um nome em "Substituindo", busca o cargo e o salário reais dessa pessoa), (2) senão, do texto da própria coluna "VAGA". A Urgência agora é calculada automaticamente (Normal / Alta / Crítica) comparando dias em aberto com o prazo de SLA, exatamente como o SLA automático já faz.
+
+### 28. CPF de quem está testando não aparecia + "aprovado com ressalvas" não existia
+Duas coisas distintas: (1) a tela "Quem está testando" nunca tinha sido programada pra mostrar o resultado do CPF — não era um bug de permissão, o campo simplesmente não estava naquela tabela. Corrigido: agora aparece "CPF: nada consta", "CPF: consta — [o que consta]" ou "CPF: ainda não verificado" (só pra sócio, como já era a regra). (2) A opção "Aprovado com ressalvas" nunca tinha sido criada — não existia nenhum status além de "Em teste" fixo. Adicionei um campo de Status pro RH escolher (Em teste / Aprovado / Aprovado com ressalvas / Reprovado), com botão pra atualizar depois de já ter agendado, e esse status (incluindo "com ressalvas") agora aparece pro líder quando ele escolhe o candidato na tela de Teste Prático.
+
+---
+
 ## CORREÇÕES DA 4ª RODADA (achado real: por que Indicadores Mensais "não salvava")
 
 Você mandou print mostrando: preencheu Ativos, Admissões, Desligamentos, Absenteísmo, Turnover e Faturamento, mas no final só Absenteísmo e Faturamento apareceram na tabela de Registros — o resto ficou em branco.

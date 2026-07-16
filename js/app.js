@@ -350,10 +350,12 @@ const GRUPOS_NAV = [
     { key: "variavel", label: "Variável da Liderança" },
     { key: "utensilios", label: "Desconto de Utensílios e Produtos" },
     { key: "valetransporte", label: "Vale Transporte" },
+    { key: "regrasSalariais", label: "Regras Salariais por Cargo" },
     { key: "parametrosCMO", label: "Parâmetros do CMO" }
   ]},
   { titulo: "Indicadores", icone: "📊", itens: [
     { key: "indicadores", label: "Indicadores Mensais" },
+    { key: "faturamentoDiario", label: "📈 Faturamento Diário" },
     { key: "absenteismo", label: "Absenteísmo" },
     { key: "desligamentos", label: "Entrevista de Desligamento" },
     { key: "processosTrabalhistas", label: "Processos Trabalhistas" },
@@ -1006,6 +1008,8 @@ function abrirDisciplinar(nome, unidade) {
           <option>Advertência Verbal</option>
           <option>Advertência Escrita</option>
           <option>Suspensão</option>
+          <option>Medida Disciplinar</option>
+          <option>Termo de Compromisso</option>
           <option>Falta Injustificada</option>
           <option>Falta Justificada</option>
           <option>Atraso</option>
@@ -2212,6 +2216,24 @@ async function renderDashboard(unidade, usarCache) {
       })()}
     </div>
     ` : ""}
+    ${ABA("custo") ? `
+    <div class="card">
+      <h3>📈 Faturamento em Tempo Real <span class="muted" style="font-weight:400;font-size:12px">(calculado a partir do que você lança todo dia em Faturamento Diário)</span></h3>
+      ${(() => {
+        const ft = dash.faturamentoTempoReal || {};
+        return `
+        <div class="grid g4">
+          <div class="kpi" style="border-left-color:var(--info)"><small>💰 Acumulado até hoje</small><strong>${fmtMoeda(ft.faturamentoAcumulado || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(ft.qtdLancamentos || 0)} lançamento(s) no mês</span></div>
+          <div class="kpi"><small>📊 Média diária</small><strong>${fmtMoeda(ft.mediaDiaria || 0)}</strong><span class="muted" style="font-size:11px;display:block">acumulado ÷ ${escapeHtml(ft.diasDecorridos || 0)} dia(s) de calendário</span></div>
+          <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 Projeção para o mês</small><strong>${fmtMoeda(ft.faturamentoProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">${ft.origemProjecao === "manual" ? "sem lançamento diário ainda — usando o Projetado de Indicadores Mensais" : "com base no ritmo diário atual"}</span></div>
+          <div class="kpi"><small>⏳ % do mês decorrido</small><strong>${escapeHtml(ft.pctMesDecorrido || 0)}%</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(ft.diasDecorridos || 0)} de ${escapeHtml(ft.diasNoMes || 0)} dias</span></div>
+        </div>
+        ${!ft.temLancamentos
+          ? `<div style="margin-top:10px;font-size:13px;background:#fff7ed;border:1px solid #f59e0b;color:#9a3412;padding:8px 12px;border-radius:8px">⚠️ Nenhum lançamento diário ainda neste mês${dash.filtroUnidade ? " para esta unidade" : ""}. Lance em <b>Indicadores → Faturamento Diário</b> para essa projeção passar a ser calculada em cima do ritmo real — por enquanto ela está usando o valor Projetado digitado em <b>Indicadores Mensais</b>.</div>`
+          : `<p class="muted" style="font-size:12px;margin-top:10px">Projeção linear simples: média diária × dias do mês. Quanto maior o % do mês decorrido, mais confiável a projeção.</p>`}`;
+      })()}
+    </div>
+    ` : ""}
     ${ABA("visao") ? `
     <div class="card">
       <h3>🏆 Saúde de Cada Casa <span class="muted" style="font-weight:400;font-size:12px">(comparativo — turnover, absenteísmo, CMO, quadro, SLA e recontratação)</span></h3>
@@ -2570,6 +2592,13 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
+    ${ABA("pessoas") ? `
+    <div class="card" style="border-left:5px solid ${(dash.colaboradorMaisCritico && dash.colaboradorMaisCritico.top) ? (SEMAFORO_CORES[dash.colaboradorMaisCritico.top.semaforo] || "#94a3b8") : "var(--border)"}">
+      <h3>🚨 Colaborador Mais Crítico ${sel ? `<span class="badge info">${escapeHtml(sel)}</span>` : ""}</h3>
+      <p class="muted" style="font-size:12px;margin-top:-6px;margin-bottom:12px">Ranking de semáforo (reputação) — vermelho &gt; laranja &gt; amarelo. Mostra até 5 colaboradores em pior situação${sel ? " na unidade filtrada" : " em todas as unidades"}.</p>
+      ${cardColaboradorMaisCritico(dash.colaboradorMaisCritico)}
+    </div>
+    ` : ""}
     ${ABA("recrutamento") ? `
     <div class="card">
       <h3>📦 Estoque Crítico de Fardamento</h3>
@@ -2577,6 +2606,46 @@ async function renderDashboard(unidade, usarCache) {
     </div>
     ` : ""}
   `);
+}
+// NOVO: card "Colaborador Mais Crítico" do Dashboard — recebe
+// dash.colaboradorMaisCritico (vindo de colaboradorMaisCritico_ em Code.gs,
+// já respeitando o filtro de unidade do Dashboard) e mostra até 5
+// colaboradores em pior situação de semáforo, do mais grave pro menos grave.
+// Usa as mesmas cores/labels do semáforo do Dossiê (SEMAFORO_CORES/LABEL)
+// para manter a mesma linguagem visual entre as duas telas.
+function cardColaboradorMaisCritico(cmc) {
+  cmc = cmc || {};
+  const lista = cmc.lista || [];
+  if (!lista.length) return `<div class="empty">Nenhum colaborador com ocorrência disciplinar ou de absenteísmo no momento. 🎉</div>`;
+  const totais = cmc.totalPorCor || {};
+  const resumo = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;font-size:12px">
+      ${totais.vermelho ? `<span class="badge" style="background:${SEMAFORO_CORES.vermelho};color:#fff">${SEMAFORO_LABEL.vermelho} · ${totais.vermelho}</span>` : ""}
+      ${totais.laranja ? `<span class="badge" style="background:${SEMAFORO_CORES.laranja};color:#fff">${SEMAFORO_LABEL.laranja} · ${totais.laranja}</span>` : ""}
+      ${totais.amarelo ? `<span class="badge" style="background:${SEMAFORO_CORES.amarelo};color:#fff">${SEMAFORO_LABEL.amarelo} · ${totais.amarelo}</span>` : ""}
+    </div>`;
+  const linhas = lista.map(x => {
+    const cor = SEMAFORO_CORES[x.semaforo] || "#94a3b8";
+    const label = SEMAFORO_LABEL[x.semaforo] || x.semaforo;
+    const detalhes = [];
+    if (x.advertencias) detalhes.push(x.advertencias + " advertência(s)");
+    if (x.suspensoes) detalhes.push(x.suspensoes + " suspensão(ões)");
+    if (x.faltasInjustificadas) detalhes.push(x.faltasInjustificadas + " falta(s) injustificada(s)");
+    if (x.faltasJustificadas) detalhes.push(x.faltasJustificadas + " falta(s) c/ atestado");
+    if (x.medidaDisciplinar) detalhes.push(x.medidaDisciplinar + " medida(s) disciplinar(es)");
+    if (x.termoCompromisso) detalhes.push(x.termoCompromisso + " termo(s) de compromisso");
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="display:inline-block;width:11px;height:11px;border-radius:50%;background:${cor};flex-shrink:0"></span>
+        <div style="flex:1">
+          <strong>${escapeHtml(x.Nome)}</strong>
+          <span class="muted" style="font-size:12px"> — ${escapeHtml(x.Unidade || "")}${x.Cargo ? " · " + escapeHtml(x.Cargo) : ""}</span>
+          <div class="muted" style="font-size:12px">${escapeHtml(detalhes.join(", ") || "—")}</div>
+        </div>
+        <span class="badge" style="background:${cor};color:#fff;white-space:nowrap">${label}</span>
+      </div>`;
+  }).join("");
+  return resumo + linhas;
 }
 function tabelaSimples(linhas, colunas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro.</div>`;
@@ -3253,9 +3322,17 @@ async function abrirDossie() {
   if (!nome) { toast("Escolha um colaborador na lista abaixo.", "err"); return; }
   await carregarDossie(nome);
 }
-// CORREÇÃO #14: legenda do semáforo (vermelho/laranja/amarelo/verde), calculado
-// no backend (dossie_ -> classificarSemaforo_) a partir de ocorrências
-// (advertência/suspensão/falta injustificada) e absenteísmo (faltas/atestado).
+// CORREÇÃO #14 (e correção posterior do critério): legenda do semáforo
+// (vermelho/laranja/amarelo/verde), calculada no backend
+// (dossie_/dashboardCalcular_ -> classificarSemaforo_) a partir de Ocorrências
+// (advertência/suspensão/medida disciplinar/termo de compromisso) e
+// Absenteísmo (falta injustificada/falta justificada/atestado). Critério
+// atual, do mais grave pro mais leve: vermelho (2+ suspensões, 2+ faltas
+// injustificadas, ou acúmulo de infrações), laranja (2 advertências, 1
+// suspensão ou falta injustificada), amarelo (1-2 faltas com atestado,
+// medida disciplinar, termo de compromisso ou 1 advertência) — ver o
+// comentário de classificarSemaforo_ em Code.gs para o critério completo e a
+// citação literal recebida da direção.
 const SEMAFORO_CORES = { vermelho: "#dc2626", laranja: "#ea580c", amarelo: "#eab308", verde: "#16a34a" };
 const SEMAFORO_LABEL = { vermelho: "🔴 Crítico", laranja: "🟠 Atenção", amarelo: "🟡 Observar", verde: "🟢 Regular" };
 // O backend (dossie_ / classificarSemaforo_) manda `semaforo` como STRING simples
@@ -4435,6 +4512,23 @@ const MODULES = {
       { name: "Descricao", label: "Descrição", type: "textarea", col: "g2" }
     ]
   },
+  regrasSalariais: {
+    label: "Regras Salariais por Cargo",
+    note: "Cadastre uma fórmula de salário específica para um Cargo + Unidade (ex.: Vigia do Parrileiro Sul = salário base + 20% em cima; ASG do Parrileiro Sul/Aldeota = salário base + R$200 fixos de gratificação por assiduidade). Isso só é usado para ESTIMAR o custo de uma vaga em ABERTO ainda sem ninguém contratado (ver \"Vagas em Aberto — Custo Projetado\" no Dashboard) — nunca muda o salário de quem já está contratado.",
+    listAction: "listarRegrasSalariais", listKey: "regrasSalariais",
+    saveAction: "salvarRegraSalarial",
+    columns: ["Cargo", "Unidade", "SalarioBase", "TipoBonificacao", "ValorBonificacao", "Condicao"],
+    fields: [
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", required: true },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "SalarioBase", label: "Salário Base (R$)", type: "moneyBR", required: true },
+      { name: "TipoBonificacao", label: "Tipo de Bonificação", type: "select", required: true, default: "Fixo",
+        options: ["Percentual", "Fixo"] },
+      { name: "ValorBonificacao", label: "Valor da Bonificação", type: "number", step: 0.01,
+        hint: "Se Percentual: informe só o número (ex.: 20 = 20% em cima do salário base). Se Fixo: valor em R$ (ex.: 200)." },
+      { name: "Condicao", label: "Condição / Observação", type: "text", col: "g2", hint: "Ex.: Atrelado à assiduidade" }
+    ]
+  },
   parametrosCMO: {
     label: "Parâmetros do CMO",
     note: "Ajuste os percentuais e valores usados no cálculo do custo. Mudou aqui, o dashboard recalcula. Para ALTERAR um parâmetro que já existe, escolha-o de novo na lista abaixo, informe o novo valor e clique em Salvar — não use editar/excluir linha por linha.",
@@ -4453,7 +4547,7 @@ const MODULES = {
         { v: "ADIC_NOTURNO_PCT", l: "Adicional noturno %" },
         { v: "FERIAS_PROV_PCT", l: "Provisão de férias %" },
         { v: "RESCISAO_PROV_PCT", l: "Provisão de rescisão %" },
-        { v: "REFEICAO_MES", l: "Refeição — legado: custo MENSAL por colaborador (R$) — só usado se não houver lançamento em Custos do Mês" },
+        { v: "REFEICAO_MES", l: "Refeição — valor MENSAL por pessoa (R$), só para ESTIMAR vaga em ABERTO — padrão ZERADO (não é mais R$312); colaborador já ativo usa Custos do Mês" },
         { v: "DIAS_UTEIS", l: "Dias trabalhados no mês (usado no VT)" },
         // CORREÇÃO #8: admissão deixou de ser um valor único de R$120 e virou dois
         // parâmetros somáveis — ASO (R$12) + CPF (R$10) — refletindo o custo real.
@@ -4633,7 +4727,18 @@ const MODULES = {
     saveAction: "salvarProcessoTrabalhista",
     columns: ["DataAbertura", "Colaborador", "Unidade", "Motivo", "Status", "ValorPedido", "ValorProvisionado", "ValorPago"],
     fields: [
-      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      // CORREÇÃO: o campo já era, tecnicamente, um <input type="text" list="..."> que
+      // aceita QUALQUER nome digitado (não valida contra a lista de colaboradores nem
+      // no app.js — coletarCampos/validarCampos só checam obrigatoriedade — nem no
+      // backend, salvarProcessoTrabalhista_ salva d.Colaborador puro, sem lookup).
+      // Só que o rótulo era só "Colaborador", sem placeholder (o branch "datalist" do
+      // campoHtml nem suportava f.placeholder até este ajuste), então visualmente o
+      // input parecia um <select> travado. Ajustado label + placeholder para deixar
+      // explícito que dá pra digitar qualquer nome, inclusive de quem nunca teve
+      // cadastro de colaborador no sistema (ex-funcionário antigo, processo de
+      // reclamante sem vínculo registrado, etc.).
+      { name: "Colaborador", label: "Nome do colaborador ou ex-colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2",
+        placeholder: "Digite o nome completo — pode ser alguém que não está mais na equipe ou nunca teve cadastro" },
       { name: "CPF", label: "CPF", type: "text" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
       { name: "DataAbertura", label: "Data de abertura", type: "date", required: true },
@@ -4672,6 +4777,30 @@ const MODULES = {
       { name: "AbsenteismoPercentual", label: "Absenteísmo (%)", type: "number", step: 0.01 },
       { name: "Faturamento", label: "Faturamento REALIZADO do mês (R$)", type: "moneyBR" },
       { name: "FaturamentoProjetado", label: "Faturamento PROJETADO do mês (R$)", type: "moneyBR", hint: "Meta da casa — usada no acompanhamento em tempo real" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+  // NOVO (pedido do cliente): antes só dava pra lançar UM faturamento por mês
+  // (acima, em "Indicadores Mensais" — normalmente só preenchido no
+  // fechamento). Aqui dá pra lançar TODO DIA — reentrar o mesmo Data+Unidade
+  // ATUALIZA o valor em vez de duplicar (upsert no backend, ver
+  // salvarFaturamentoDiario_ no Code.gs). É esse lançamento que alimenta o
+  // card "📈 Faturamento em Tempo Real" do Dashboard, com a projeção do mês
+  // calculada em cima do ritmo real (ver dashboardCalcular_/
+  // faturamentoDiarioResumo_). Não substitui "Indicadores Mensais" — as duas
+  // telas continuam existindo; o Dashboard só prioriza o lançamento diário
+  // quando ele já existe para o mês, senão cai pro Projetado manual de lá.
+  faturamentoDiario: {
+    label: "Faturamento Diário",
+    note: "Lance o faturamento de HOJE (ou de um dia específico) por unidade — pode atualizar quantas vezes precisar no mesmo dia, o valor mais recente substitui o anterior (não duplica linha). É esse lançamento que alimenta a projeção em tempo real do Dashboard.",
+    filtros: ["Unidade"],
+    listAction: "listarFaturamentoDiario", listKey: "faturamentoDiario",
+    saveAction: "salvarFaturamentoDiario",
+    columns: ["Data", "Unidade", "Valor", "AtualizadoPor"],
+    fields: [
+      { name: "Data", label: "Data", type: "date", required: true, default: new Date().toISOString().slice(0, 10) },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", required: true },
+      { name: "Valor", label: "Faturamento do dia (R$)", type: "moneyBR", required: true },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },
@@ -4742,7 +4871,12 @@ function campoHtml(f) {
       }).join("")}
     </select>`;
   } else if (f.type === "datalist") {
+    // f.placeholder é respeitado aqui (antes esse branch ignorava a propriedade,
+    // então nenhum campo type:"datalist" dos formulários genéricos conseguia
+    // mostrar um texto explicando que dá pra DIGITAR um nome novo, não só
+    // escolher da lista — o input parecia, visualmente, um <select> fechado).
     inputHtml = `<input id="${idc}" type="text" list="${f.list}" value="${val}" autocomplete="off" ${req} ${readonly}
+      ${f.placeholder ? `placeholder="${escapeHtml(f.placeholder)}"` : ""}
       ${f.autofillSalario ? `onchange="autofillSalarioPorCargo(this.value); calcularVT();"` : onch}>`;
   } else if (f.type === "moneyBR") {
     inputHtml = `<input id="${idc}" type="text" inputmode="decimal" class="money" value="${val}" ${req} ${readonly}

@@ -5119,6 +5119,11 @@ async function renderModulo(key) {
         </div>`}
       </div>
       <div id="fmContagem" class="muted" style="font-size:13px;margin-bottom:8px"></div>` : ""}
+      ${permiteExclusaoLote(key) ? `
+      <div id="fmAcoesLote" style="display:none;align-items:center;gap:10px;margin-bottom:8px">
+        <span id="fmContagemSelecionados" class="muted" style="font-size:13px"></span>
+        <button class="btn btn-secondary" style="padding:5px 10px;font-size:13px;color:#b91c1c" onclick="excluirSelecionadosModulo('${key}')">🗑️ Excluir selecionados</button>
+      </div>` : ""}
       <div id="tabelaModulo"><div class="loading">Carregando...</div></div>
     </div>
   `);
@@ -5203,6 +5208,12 @@ async function carregarTabelaModulo(key) {
 // Salvar (ação salvarParametroCMO_, que já faz update-or-insert certo pela
 // Chave) — por isso a lista abaixo agora é só para CONSULTA.
 function moduloEditavel(key) { return ["ajustes", "parametrosCMO"].indexOf(key) === -1; }
+// Pedido do cliente: "selecionar qual quero excluir ou excluir todos" nas
+// telas de lançamento (ex.: Faturamento Diário). Fica de fora "colaboradores"
+// de propósito — dado de RH é sensível demais para exclusão em massa por
+// checkbox; lá a exclusão continua só uma por uma, com a confirmação reforçada
+// que já existe (ver excluirRegistroModulo).
+function permiteExclusaoLote(key) { return moduloEditavel(key) && key !== "colaboradores"; }
 // Mapeia nome do campo do formulário -> possíveis colunas na planilha (dados importados usam Funcionário, Dt_Admissao, etc.)
 // Mapeia campo do formulário -> possíveis colunas na planilha.
 // A planilha importada usa Funcionário, Operacao, Dt_Admissao, Salario_Fixo, Fone_Celular...
@@ -5258,12 +5269,17 @@ function valorCampoColab(linha, fieldName) {
 function tabelaModuloHtml(key, linhas, colunas) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
   const editavel = moduloEditavel(key);
+  const lote = permiteExclusaoLote(key);
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}${editavel ? '<th style="width:1%">Ações</th>' : ""}</tr></thead>
+        <thead><tr>
+          ${lote ? `<th style="width:1%"><input type="checkbox" id="chkTodos_${key}" onchange="alternarTodosModulo('${key}', this.checked)"></th>` : ""}
+          ${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}${editavel ? '<th style="width:1%">Ações</th>' : ""}
+        </tr></thead>
         <tbody>
           ${linhas.map((l, i) => `<tr>
+            ${lote ? `<td><input type="checkbox" class="chkLinha_${key}" data-i="${i}" onchange="atualizarContagemSelecionadosModulo('${key}')"></td>` : ""}
             ${colunas.map(c => `<td>${formatarCelula(c, key === "colaboradores" ? valorCampoColab(l, c) : l[c])}</td>`).join("")}
             ${editavel ? `<td style="white-space:nowrap;text-align:right">
               <button class="btn btn-secondary" style="padding:4px 8px;font-size:13px" title="Editar" onclick="editarRegistroModulo('${key}',${i})">✏️</button>
@@ -5274,6 +5290,39 @@ function tabelaModuloHtml(key, linhas, colunas) {
       </table>
     </div>
   `;
+}
+// Marca/desmarca todos os checkboxes de linha (usado pelo checkbox do cabeçalho).
+function alternarTodosModulo(key, checked) {
+  document.querySelectorAll(".chkLinha_" + key).forEach(c => { c.checked = checked; });
+  atualizarContagemSelecionadosModulo(key);
+}
+// Mostra/esconde a barra "Excluir selecionados" e atualiza a contagem.
+function atualizarContagemSelecionadosModulo(key) {
+  const marcados = document.querySelectorAll(".chkLinha_" + key + ":checked").length;
+  const barra = document.getElementById("fmAcoesLote");
+  const label = document.getElementById("fmContagemSelecionados");
+  if (!barra || !label) return;
+  barra.style.display = marcados ? "flex" : "none";
+  label.textContent = marcados === 1 ? "1 registro selecionado" : `${marcados} registros selecionados`;
+}
+// Exclui todos os registros marcados de uma vez (ou "excluir todos": marque o
+// checkbox do cabeçalho antes). Processa em um único lote no backend.
+async function excluirSelecionadosModulo(key) {
+  const cfg = MODULES[key];
+  const linhas = STATE.cache[key] || [];
+  const marcados = Array.from(document.querySelectorAll(".chkLinha_" + key + ":checked")).map(c => Number(c.dataset.i));
+  if (!marcados.length) return;
+  if (!confirm(`Excluir ${marcados.length} registro(s)? Esta ação não pode ser desfeita.`)) return;
+  const itens = marcados.map(i => {
+    const linha = linhas[i];
+    const confereCol = cfg.columns[0];
+    return { index: i, confereCol: confereCol, confereVal: linha ? linha[confereCol] : "" };
+  });
+  try {
+    const r = await api("excluirRegistrosModuloLote", { sheetKey: cfg.listKey, itens: itens });
+    toast(r.msg || "Registros excluídos.", "ok");
+    await carregarTabelaModulo(key);
+  } catch (e) { toast(e.message, "err"); }
 }
 // dd/mm/aaaa (ou ISO) -> aaaa-mm-dd para preencher <input type=date>
 function dataParaInput(v) {

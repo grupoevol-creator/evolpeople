@@ -1930,6 +1930,31 @@ async function atualizarDashboard() {
   } catch (e) { toast(e.message, "err"); }
   finally { toggleLoading(false); }
 }
+// NOVO (pedido do cliente): "acrescentar um campo para alimentar o
+// faturamento projetado do mês atual" direto no card "📈 Faturamento em Tempo
+// Real" do Dashboard, sem precisar abrir a tela "Indicadores Mensais" só pra
+// digitar essa meta. Usa o contexto (mes/ano/unidade) que o próprio backend
+// já calculou em faturamentoTempoReal (ver dashboardCalcular_ no Code.gs) pra
+// mandar exatamente o Mes/Ano/Unidade certos — evita depender de recalcular
+// isso de novo no front. Exige unidade específica selecionada (a meta é por
+// unidade); com "Todas as unidades" o input nem aparece (ver renderDashboard).
+async function salvarFaturamentoProjetadoRapido() {
+  const dash = (STATE.dashCache && STATE.dashCache.dashboard) || {};
+  const ft = dash.faturamentoTempoReal || {};
+  const uni = ft.unidade || "";
+  if (!uni) { toast("Selecione uma unidade específica para editar a meta.", "err"); return; }
+  const inp = document.getElementById("ftMetaInput");
+  if (!inp) return;
+  const valor = parseMoedaBR(inp.value);
+  const hojeD = new Date();
+  const mes = ft.mes || (hojeD.getMonth() + 1);
+  const ano = ft.ano || hojeD.getFullYear();
+  try {
+    const r = await api("salvarFaturamentoProjetadoRapido", { Unidade: uni, Mes: mes, Ano: ano, FaturamentoProjetado: valor });
+    toast(r.msg || "Meta de faturamento salva.", "ok");
+    await atualizarDashboard();
+  } catch (e) { toast(e.message, "err"); }
+}
 // Troca de aba: NÃO recarrega do servidor, só redesenha (muito mais rápido)
 function dashAba(nome) {
   STATE.dashAba = nome;
@@ -1989,7 +2014,7 @@ async function renderDashboard(unidade, usarCache) {
     </div>` : ""}
     <div class="grid g4">
       <div class="kpi"><small>Headcount Ativo</small><strong>${k.headcount}</strong></div>
-      <div class="kpi" style="border-left-color:var(--laranja);min-width:280px">
+      <div class="kpi" style="border-left-color:var(--laranja)">
         <small>💰 FOLHA REAL (MÊS)</small>
         <strong>${fmtMoeda(k.folhaReal || k.folhaTotal)}</strong>
         <div style="margin-top:8px;padding-top:8px;border-top:1px solid #e2e8f0;font-size:12px;line-height:1.7;color:#64748b">
@@ -2230,7 +2255,17 @@ async function renderDashboard(unidade, usarCache) {
         </div>
         ${!ft.temLancamentos
           ? `<div style="margin-top:10px;font-size:13px;background:#fff7ed;border:1px solid #f59e0b;color:#9a3412;padding:8px 12px;border-radius:8px">⚠️ Nenhum lançamento diário ainda neste mês${dash.filtroUnidade ? " para esta unidade" : ""}. Lance em <b>Indicadores → Faturamento Diário</b> para essa projeção passar a ser calculada em cima do ritmo real — por enquanto ela está usando o valor Projetado digitado em <b>Indicadores Mensais</b>.</div>`
-          : `<p class="muted" style="font-size:12px;margin-top:10px">Projeção linear simples: média diária × dias do mês. Quanto maior o % do mês decorrido, mais confiável a projeção.</p>`}`;
+          : `<p class="muted" style="font-size:12px;margin-top:10px">Projeção linear simples: média diária × dias do mês. Quanto maior o % do mês decorrido, mais confiável a projeção.</p>`}
+        <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+          ${ft.unidade ? `
+          <label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">🎯 Faturamento Projetado (meta do mês) — ${escapeHtml(ft.unidade)}</label>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <input id="ftMetaInput" type="text" inputmode="decimal" class="money" style="max-width:200px" value="${escapeHtml(ft.metaManual || 0)}" placeholder="Ex: 850.000">
+            <button class="btn btn-secondary" style="padding:6px 12px;font-size:12px" onclick="salvarFaturamentoProjetadoRapido()">💾 Salvar meta</button>
+          </div>
+          <span class="muted" style="font-size:11px;display:block;margin-top:4px">Atualiza o mesmo campo "Faturamento Projetado" de Indicadores Mensais para ${escapeHtml(ft.mes || "")}/${escapeHtml(ft.ano || "")} — os outros campos já salvos naquele mês (Ativos, Admissões, Faturamento realizado etc.) não são alterados.</span>
+          ` : `<p class="muted" style="font-size:12px">Selecione uma unidade específica no filtro acima para editar a meta de Faturamento Projetado do mês (é um valor por unidade).</p>`}
+        </div>`;
       })()}
     </div>
     ` : ""}
@@ -3802,6 +3837,12 @@ async function renderVagas() {
   `);
   filtrarVagas();
 }
+// STATUS de vaga pode ter mais de um valor junto, separado por vírgula (ex.:
+// "SELEÇÃO,TESTE" — pedido do cliente para marcar vários status ao mesmo
+// tempo). Use esta função em vez de comparar a string inteira com "===".
+function vagaStatusTem_(valorStatus, alvo) {
+  return String(valorStatus || "").split(",").map(s => normalize(s)).indexOf(normalize(alvo)) !== -1;
+}
 function vagaGet(row, nomes) {
   const limpa = s => normalize(s).replace(/[^A-Z0-9 ]/g, "").replace(/\s+/g, " ").trim();
   for (const n of nomes) {
@@ -3838,17 +3879,20 @@ function filtrarVagas() {
       <tbody>
         ${filtradas.map(v => {
           const id = vagaGet(v, ["ID"]);
-          const st = normalize(vagaGet(v, ["STATUS"]));
+          const statusAtuais = normalize(vagaGet(v, ["STATUS"])).split(",").map(s => s.trim()).filter(Boolean);
           const candAtual = vagaGet(v, ["CANDIDATO"]);
           const opts = ["SELEÇÃO", "TESTE", "ENCERRADA", "CANCELADA"];
           const acao = `
-            <div style="display:flex;flex-direction:column;gap:4px;min-width:150px">
+            <div style="display:flex;flex-direction:column;gap:4px;min-width:170px">
               <input type="text" id="cand_${escapeHtml(id)}" value="${escapeHtml(candAtual)}" placeholder="Nome do candidato" style="padding:5px">
+              <div id="stv_${escapeHtml(id)}" style="display:flex;flex-wrap:wrap;gap:6px 10px;font-size:12px">
+                ${opts.map(o => `
+                  <label style="display:flex;align-items:center;gap:3px;white-space:nowrap">
+                    <input type="checkbox" value="${o}" ${statusAtuais.indexOf(normalize(o)) !== -1 ? "checked" : ""}> ${o}
+                  </label>`).join("")}
+              </div>
               <div style="display:flex;gap:4px">
-                <select id="stv_${escapeHtml(id)}" style="flex:1">
-                  ${opts.map(o => `<option value="${o}" ${normalize(o) === st ? "selected" : ""}>${o}</option>`).join("")}
-                </select>
-                <button class="btn btn-primary" style="padding:5px 8px;min-height:auto" onclick="salvarVagaLinha('${escapeHtml(id)}')">Salvar</button>
+                <button class="btn btn-primary" style="flex:1;padding:5px 8px;min-height:auto" onclick="salvarVagaLinha('${escapeHtml(id)}')">Salvar</button>
                 <button class="btn btn-secondary" style="padding:5px 8px;min-height:auto;color:#b91c1c" title="Excluir vaga" onclick="excluirVagaUI('${escapeHtml(id)}')">🗑️</button>
               </div>
             </div>`;
@@ -3868,8 +3912,15 @@ async function excluirVagaUI(id) {
 async function salvarVagaLinha(id) {
   const cand = document.getElementById("cand_" + id);
   const stv = document.getElementById("stv_" + id);
+  // Junta todos os status marcados (checkboxes) em um texto separado por
+  // vírgula (ex.: "SELEÇÃO,TESTE") — pedido do cliente para poder marcar
+  // vários status ao mesmo tempo em vez de um único valor exclusivo.
+  const statusMarcados = stv
+    ? Array.from(stv.querySelectorAll("input[type=checkbox]:checked")).map(c => c.value)
+    : [];
+  if (stv && !statusMarcados.length) { toast("Marque pelo menos um status.", "err"); return; }
   try {
-    const r = await api("mudarStatusVaga", { id: id, status: stv ? stv.value : "", candidato: cand ? cand.value.trim() : "" });
+    const r = await api("mudarStatusVaga", { id: id, status: statusMarcados.join(","), candidato: cand ? cand.value.trim() : "" });
     toast(r.msg, "ok");
     await renderVagas();
   } catch (e) { toast(e.message, "err"); }
@@ -3883,12 +3934,18 @@ async function mudarStatusVagaUI(id, status) {
 }
 function formatarVagaCelula(coluna, valor) {
   if (coluna === "STATUS") {
-    const v = normalize(valor);
-    let cls = "badge";
-    if (["ABERTA", "ENCERRADA"].includes(v)) cls += " ok";
-    else if (v === "CANCELADA") cls += " bad";
-    else if (["SELECAO", "TESTE"].includes(v)) cls += " warn";
-    return valor ? `<span class="${cls}">${escapeHtml(valor)}</span>` : "";
+    // STATUS pode ter mais de um valor junto, separado por vírgula (ex.:
+    // "SELEÇÃO,TESTE") — mostra um badge para cada um.
+    const partes = String(valor || "").split(",").map(s => s.trim()).filter(Boolean);
+    if (!partes.length) return "";
+    return partes.map(p => {
+      const v = normalize(p);
+      let cls = "badge";
+      if (["ABERTA", "ENCERRADA"].includes(v)) cls += " ok";
+      else if (v === "CANCELADA") cls += " bad";
+      else if (["SELECAO", "TESTE"].includes(v)) cls += " warn";
+      return `<span class="${cls}" style="margin-right:3px">${escapeHtml(p)}</span>`;
+    }).join("");
   }
   if (coluna === "SLA") {
     const v = normalize(valor);
@@ -4085,7 +4142,7 @@ async function renderTestePratico() {
   let vagasAbertas = [];
   try {
     const rv = await api("listarVagas");
-    vagasAbertas = (rv.vagas || []).filter(v => ["ENCERRADA", "CANCELADA"].indexOf(normalize(vagaGet(v, ["STATUS"]))) === -1);
+    vagasAbertas = (rv.vagas || []).filter(v => !vagaStatusTem_(vagaGet(v, ["STATUS"]), "ENCERRADA") && !vagaStatusTem_(vagaGet(v, ["STATUS"]), "CANCELADA"));
   } catch (e) {}
   const vagaOpts = vagasAbertas.map(v => {
     const id = vagaGet(v, ["ID"]);

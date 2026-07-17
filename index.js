@@ -1,88 +1,80 @@
-/*************************************************************
- * EVOLPEOPLE - Servidor de Push (Web Push / VAPID)
- *
- * Este é o pedaço "de fora" do Apps Script que faltava: o Google Apps Script
- * NÃO sabe falar o protocolo Web Push nem assinar mensagens com VAPID, então
- * este pequeno serviço HTTP (feito para rodar como Google Cloud Function)
- * recebe um pedido do Code.gs (função enviarPushNotificacao_) e efetivamente
- * entrega a notificação no navegador/celular do usuário, usando a biblioteca
- * `web-push`.
- *
- * Requisição esperada (POST, JSON):
- *   {
- *     "subscription": { "endpoint": "...", "keys": { "p256dh": "...", "auth": "..." } },
- *     "title": "Título curto",
- *     "body": "Corpo curto da notificação",
- *     "url": "https://.../alguma-tela" (opcional)
- *   }
- *
- * Variáveis de ambiente necessárias (ver README.md para como gerá-las e
- * configurá-las no deploy):
- *   VAPID_PUBLIC_KEY
- *   VAPID_PRIVATE_KEY
- *   VAPID_SUBJECT   (ex.: "mailto:jeffanymorais@gmail.com")
- *************************************************************/
-
-const webpush = require('web-push');
-
-exports.enviarPush = (req, res) => {
-  // Libera CORS básico (o Apps Script chama via UrlFetchApp, então CORS não é
-  // estritamente necessário para esse caminho, mas não custa deixar aberto
-  // caso algo chame direto do navegador no futuro).
-  res.set('Access-Control-Allow-Origin', '*');
-  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.set('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') { res.status(204).send(''); return; }
-
-  if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, erro: 'Use POST.' });
-    return;
-  }
-
-  const body = req.body || {};
-  const subscription = body.subscription;
-  const title = body.title || 'EvolPeople';
-  const notifBody = body.body || '';
-  const url = body.url || '';
-
-  if (!subscription || !subscription.endpoint || !subscription.keys ||
-      !subscription.keys.p256dh || !subscription.keys.auth) {
-    res.status(400).json({ ok: false, erro: 'Campo "subscription" ausente ou incompleto (esperado endpoint + keys.p256dh + keys.auth).' });
-    return;
-  }
-
-  const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
-  const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
-  const VAPID_SUBJECT = process.env.VAPID_SUBJECT;
-
-  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY || !VAPID_SUBJECT) {
-    res.status(500).json({
-      ok: false,
-      erro: 'Variáveis de ambiente VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY / VAPID_SUBJECT não configuradas neste deploy. Veja README.md.'
-    });
-    return;
-  }
-
-  const payload = JSON.stringify({ title: title, body: notifBody, url: url });
-
-  webpush.sendNotification(subscription, payload, {
-    vapidDetails: {
-      subject: VAPID_SUBJECT,
-      publicKey: VAPID_PUBLIC_KEY,
-      privateKey: VAPID_PRIVATE_KEY
-    }
-  })
-    .then(() => {
-      res.status(200).json({ ok: true, msg: 'Push enviado.' });
-    })
-    .catch((err) => {
-      // Erros comuns aqui: inscrição expirada/revogada (410 Gone / 404), que
-      // são normais com o tempo (usuário desinstalou o PWA, trocou de
-      // navegador etc.) — não é motivo de alarme.
-      res.status(200).json({
-        ok: false,
-        erro: 'Falha ao enviar push: ' + (err && err.message ? err.message : String(err)),
-        statusCode: (err && err.statusCode) || null
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EvolPeople</title>
+  <!-- PWA (app instalável) -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1a2b4a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="EvolPeople">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="icon" type="image/png" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;700;800;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <!-- TELA DE LOGIN -->
+  <div id="loginScreen" class="login" style="display:none;">
+    <div class="card">
+      <div class="login-logo" style="overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:6px">
+        <span style="font-size:22px;font-weight:800">EP</span>
+        <span style="font-size:7px;font-weight:700;letter-spacing:.5px;white-space:nowrap;opacity:.85;margin-top:2px">EVOLPEOPLE</span>
+      </div>
+      <h2 style="text-align:center;color:var(--azul);">Entrar</h2>
+      <p class="muted" style="text-align:center;margin-bottom:20px;">Acesse com seu login e senha cadastrados.</p>
+      <form id="loginForm">
+        <div class="form-row">
+          <label>Usuário (nome, CPF ou e-mail)</label>
+          <input id="loginUsuario" type="text" autocomplete="username" required>
+        </div>
+        <div class="form-row">
+          <label>Senha</label>
+          <input id="loginSenha" type="password" autocomplete="current-password" required>
+        </div>
+        <div id="loginMsg" class="msg err" style="display:none;"></div>
+        <button type="submit" class="btn btn-primary" style="width:100%;">Entrar</button>
+      </form>
+    </div>
+  </div>
+  <!-- APLICAÇÃO -->
+  <div id="appScreen" class="app" style="display:none;">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" style="overflow:hidden;display:flex;flex-direction:column;align-items:center;justify-content:center;line-height:1;padding:4px">
+          <span style="font-size:16px;font-weight:800;letter-spacing:0">EP</span>
+          <span style="font-size:5px;font-weight:700;letter-spacing:.5px;white-space:nowrap;opacity:.85;margin-top:1px">EVOLPEOPLE</span>
+        </div>
+        <div>
+          <h1>EvolPeople</h1>
+          <p>Gestão de Pessoas</p>
+        </div>
+      </div>
+      <div class="top-actions">
+        <div class="user">
+          <div>
+            <div id="userNome">—</div>
+            <small id="userInfo"></small>
+          </div>
+        </div>
+        <button class="btn btn-light" onclick="sair()">Sair</button>
+      </div>
+    </header>
+    <aside class="sidebar" id="sidebar"></aside>
+    <main class="main" id="main"></main>
+  </div>
+  <div class="toast-area" id="toastArea"></div>
+  <script src="js/app.js"></script>
+  <!-- PWA: registra o service worker (necessário pra instalar como app) -->
+  <script>
+    if ("serviceWorker" in navigator) {
+      window.addEventListener("load", function () {
+        navigator.serviceWorker.register("sw.js").catch(function () {});
       });
-    });
-};
+    }
+  </script>
+</body>
+</html>

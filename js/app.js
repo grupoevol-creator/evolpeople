@@ -136,6 +136,16 @@ function fmtMoeda(v) {
   const n = Number(v) || 0;
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+// Semáforo do CMO% (pedido do cliente: "dados mensuráveis... pra bater o olho
+// e já saber como está") — Saudável (verde) / Atenção (amarelo) / Crítico
+// (vermelho), calculado no backend (dashboardCalcular_ → cmoStatusPct_)
+// contra a meta configurável em Parâmetros do CMO.
+function badgeCmoStatus(status) {
+  if (!status) return "";
+  const cls = status === "Crítico" ? "badge bad" : status === "Atenção" ? "badge warn" : "badge ok";
+  const emoji = status === "Crítico" ? "🔴" : status === "Atenção" ? "🟡" : "🟢";
+  return `<span class="${cls}" style="display:inline-block;margin-top:4px">${emoji} ${escapeHtml(status)}</span>`;
+}
 // Converte texto em formato brasileiro para número. Ex.: "1.490.688" -> 1490688 ; "1.490,50" -> 1490.5 ; "5828.95" -> 5828.95
 function parseMoedaBR(s) {
   s = String(s == null ? "" : s).trim();
@@ -2185,8 +2195,8 @@ async function renderDashboard(unidade, usarCache) {
         </div>
         <div class="grid g4" style="margin-bottom:12px">
           <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 CMO TOTAL (mês)</small><strong>${fmtMoeda(m.total || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(m.ativos || 0)} ativos · ${fmtMoeda(m.porColaborador || 0)}/pessoa</span></div>
-          <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}%</span></div>
-          <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(m.fatRealizado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctRealizado || 0)}%</span></div>
+          <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}% (meta até ${escapeHtml(m.metaPct || 0)}%)</span>${badgeCmoStatus(m.statusProjetado)}</div>
+          <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(m.fatRealizado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctRealizado || 0)}% (meta até ${escapeHtml(m.metaPct || 0)}%)</span>${badgeCmoStatus(m.statusRealizado)}</div>
           <div class="kpi"><small>⏳ Ritmo do mês</small><strong>${fmtMoeda(m.fatRitmo || 0)}</strong><span class="muted" style="font-size:11px;display:block">Dia ${escapeHtml(m.diaHoje || 0)} de ${escapeHtml(m.diasNoMes || 0)} (${escapeHtml(m.pctMes || 0)}%)</span></div>
         </div>
         <div class="grid g2">

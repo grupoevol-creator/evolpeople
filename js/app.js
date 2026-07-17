@@ -17,7 +17,7 @@ const CONFIG = {
   // biblioteca "web-push" do Node: `npx web-push generate-vapid-keys`) e cole a
   // chave PÚBLICA aqui. A chave PRIVADA fica só no servidor que for enviar os pushes
   // (Apps Script não consegue enviar Web Push nativamente — ver CHANGELOG item #2).
-  VAPID_PUBLIC_KEY: "BGMsL7V4WFE38Pb-KpWtuZQW5AWQF1rSkruEO-xeLD4GT5EB9FMsi7IOIj3dd3XtkzuvPrlTz3j5mhGmlqm4mas""
+  VAPID_PUBLIC_KEY: "BGMsL7V4WFE38Pb-KpWtuZQW5AWQF1rSkruEO-xeLD4GT5EB9FMsi7IOIj3dd3XtkzuvPrlTz3j5mhGmlqm4mas"
 };
 const STATE = {
   user: null,

@@ -602,20 +602,29 @@ hr {
     justify-content: space-between;
     text-align: left;
   }
+  /* CORREÇÃO: o menu lateral (grupos + botões) estava virando uma fileira
+     horizontal (display:flex) no celular, com os títulos dos grupos
+     ("Início", "Pessoas"...) escondidos e os botões abertos (ex.: Dashboard,
+     Agenda) numa coluna estreita ao lado — isso fazia o botão ativo
+     "Dashboard" aparecer flutuando por cima da fileira de títulos, com tudo
+     desalinhado/desorganizado. Agora o menu continua em coluna (como no
+     computador), só que com altura máxima e rolagem própria, para não
+     empurrar o conteúdo da página lá para baixo.
+  */
   .sidebar,
   aside {
-    display: flex;
-    overflow-x: auto;
-    gap: 6px;
+    display: block;
+    max-height: 260px;
+    overflow-y: auto;
+    overflow-x: hidden;
     padding: 10px;
   }
   .nav-title {
-    display: none;
+    margin: 10px 6px 6px;
   }
   .nav {
-    white-space: nowrap;
-    margin-bottom: 0;
-    width: auto;
+    width: 100%;
+    white-space: normal;
   }
   .main,
   main {

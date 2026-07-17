@@ -146,6 +146,17 @@ function badgeCmoStatus(status) {
   const emoji = status === "Crítico" ? "🔴" : status === "Atenção" ? "🟡" : "🟢";
   return `<span class="${cls}" style="display:inline-block;margin-top:4px">${emoji} ${escapeHtml(status)}</span>`;
 }
+// Semáforo do "Ritmo do mês" (pedido do cliente: o ritmo tem que se basear no
+// Projetado e no Realizado, não só extrapolar o realizado sozinho) — compara
+// o ritmo atual (projeção linear do realizado) contra a meta (Projetado):
+// Acima da meta (verde) / Na meta (amarelo, dentro de 5% abaixo) / Abaixo da
+// meta (vermelho) — ver ritmoStatus em dashboardCalcular_.
+function badgeRitmoStatus(status) {
+  if (!status) return "";
+  const cls = status === "Abaixo da meta" ? "badge bad" : status === "Na meta" ? "badge warn" : "badge ok";
+  const emoji = status === "Abaixo da meta" ? "🔴" : status === "Na meta" ? "🟡" : "🟢";
+  return `<span class="${cls}" style="display:inline-block;margin-top:4px">${emoji} ${escapeHtml(status)}</span>`;
+}
 // Converte texto em formato brasileiro para número. Ex.: "1.490.688" -> 1490688 ; "1.490,50" -> 1490.5 ; "5828.95" -> 5828.95
 function parseMoedaBR(s) {
   s = String(s == null ? "" : s).trim();
@@ -2197,7 +2208,7 @@ async function renderDashboard(unidade, usarCache) {
           <div class="kpi" style="border-left-color:var(--laranja)"><small>🎯 CMO TOTAL (mês)</small><strong>${fmtMoeda(m.total || 0)}</strong><span class="muted" style="font-size:11px;display:block">${escapeHtml(m.ativos || 0)} ativos · ${fmtMoeda(m.porColaborador || 0)}/pessoa</span></div>
           <div class="kpi"><small>📈 Faturamento PROJETADO</small><strong>${fmtMoeda(m.fatProjetado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctProjetado || 0)}% (meta até ${escapeHtml(m.metaPct || 0)}%)</span>${badgeCmoStatus(m.statusProjetado)}</div>
           <div class="kpi" style="border-left-color:var(--info)"><small>✅ Faturamento REALIZADO</small><strong>${fmtMoeda(m.fatRealizado || 0)}</strong><span class="muted" style="font-size:11px;display:block">CMO = ${escapeHtml(m.cmoPctRealizado || 0)}% (meta até ${escapeHtml(m.metaPct || 0)}%)</span>${badgeCmoStatus(m.statusRealizado)}</div>
-          <div class="kpi"><small>⏳ Ritmo do mês</small><strong>${fmtMoeda(m.fatRitmo || 0)}</strong><span class="muted" style="font-size:11px;display:block">Dia ${escapeHtml(m.diaHoje || 0)} de ${escapeHtml(m.diasNoMes || 0)} (${escapeHtml(m.pctMes || 0)}%)</span></div>
+          <div class="kpi"><small>⏳ Ritmo do mês</small><strong>${fmtMoeda(m.fatRitmo || 0)}</strong><span class="muted" style="font-size:11px;display:block">Dia ${escapeHtml(m.diaHoje || 0)} de ${escapeHtml(m.diasNoMes || 0)} (${escapeHtml(m.pctMes || 0)}%) — se seguir nesse passo, fecha o mês com esse valor${m.ritmoStatus ? ` · ${escapeHtml(m.ritmoPctMeta || 0)}% da meta` : ""}</span>${badgeRitmoStatus(m.ritmoStatus)}</div>
         </div>
         <div class="grid g2">
           <div>
@@ -3639,11 +3650,14 @@ function agRender() {
   const diaSemInicio = primeiro.getDay(); // 0=Dom
   const diasNoMes = new Date(ano, mes + 1, 0).getDate();
   const hoje = new Date(); const hojeISO = `${hoje.getFullYear()}-${("0" + (hoje.getMonth() + 1)).slice(-2)}-${("0" + hoje.getDate()).slice(-2)}`;
-  // eventos por dia (ISO), aplicando o filtro por responsável
+  // eventos por dia (ISO), aplicando o filtro por responsável (ou por grupo,
+  // ex.: "Agenda de PCP" = André + Daniel juntos — ver AGENDA_GRUPOS)
   const filtro = STATE.ag.filtro || "";
+  const grupo = agGrupoAtivo();
   const porDia = {};
   (STATE.ag.eventos || []).forEach(ev => {
-    if (filtro && agNorm(ev.Responsavel) !== agNorm(filtro)) return;
+    if (grupo) { if (!grupo.some(nome => agNorm(nome) === agNorm(ev.Responsavel))) return; }
+    else if (filtro && agNorm(ev.Responsavel) !== agNorm(filtro)) return;
     const iso = agDataISO(ev.Data); if (!iso) return;
     (porDia[iso] = porDia[iso] || []).push(ev);
   });
@@ -3664,7 +3678,11 @@ function agRender() {
     });
     evs.forEach(ev => {
       const hora = ev.HoraInicio ? escapeHtml(ev.HoraInicio) + " " : "";
-      chips += `<div class="ag-chip" style="background:${agCorTipo(ev.Tipo)}" title="${escapeHtml((ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${escapeHtml(ev.Titulo || "")}</div>`;
+      // Numa agenda de grupo (ex.: PCP), mostra de quem é o compromisso —
+      // senão, junto no mesmo dia, não dava pra saber se era do André ou do
+      // Daniel só de olhar.
+      const dono = grupo ? `[${escapeHtml(String(ev.Responsavel || "").split(" ")[0])}] ` : "";
+      chips += `<div class="ag-chip" style="background:${agCorTipo(ev.Tipo)}" title="${escapeHtml((ev.Responsavel ? ev.Responsavel + " — " : "") + (ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${dono}${escapeHtml(ev.Titulo || "")}</div>`;
     });
     celulas += `
       <div class="ag-cel ${isHoje ? "ag-hoje" : ""}" onclick="agNovoEvento('${iso}')">
@@ -3697,6 +3715,7 @@ function agRender() {
       <div class="ag-nav" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
         <select id="agFiltro" onchange="agSetFiltro(this.value)" title="Filtrar por responsável" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
           <option value="">👥 Todas as agendas</option>
+          ${Object.keys(AGENDA_GRUPOS).map(g => `<option value="GRUPO:${g}" ${filtro === "GRUPO:" + g ? "selected" : ""}>🧩 Agenda de ${g} (${AGENDA_GRUPOS[g].join(" + ")})</option>`).join("")}
           ${agResponsaveis().map(r => `<option ${agNorm(r) === agNorm(filtro) ? "selected" : ""}>${escapeHtml(r)}</option>`).join("")}
         </select>
         <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
@@ -3729,6 +3748,19 @@ const AGENDA_RESPONSAVEIS = [
   "André Coelho", "Jeffany Alencar", "Victor Pinheiro", "Mary Diane", "Cleylson",
   "Gustavo Freitas", "Victor Farias", "Lucas Nogueira"
 ];
+// Pedido do cliente: "a agenda do André e do Daniel gerar uma agenda de PCP,
+// as duas precisam se conversar" — o setor PCP é formado pelos dois, então a
+// "Agenda de PCP" é uma visão combinada: mostra os compromissos de QUALQUER
+// um dos dois juntos, além de continuar podendo ver cada agenda individual
+// separada (não substitui, soma). Pra adicionar outro setor combinado no
+// futuro, basta acrescentar uma chave aqui.
+const AGENDA_GRUPOS = {
+  "PCP": ["Daniel Jourdain", "André Coelho"]
+};
+function agGrupoAtivo() {
+  const f = STATE.ag.filtro || "";
+  return f.indexOf("GRUPO:") === 0 ? (AGENDA_GRUPOS[f.slice(6)] || null) : null;
+}
 function agResponsaveis() {
   const set = {};
   AGENDA_RESPONSAVEIS.forEach(n => set[n] = true);

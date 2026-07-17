@@ -5316,13 +5316,23 @@ async function excluirSelecionadosModulo(key) {
   const itens = marcados.map(i => {
     const linha = linhas[i];
     const confereCol = cfg.columns[0];
-    return { index: i, confereCol: confereCol, confereVal: linha ? linha[confereCol] : "" };
+    return { index: indiceFisicoModulo(linha, i), confereCol: confereCol, confereVal: linha ? linha[confereCol] : "" };
   });
   try {
     const r = await api("excluirRegistrosModuloLote", { sheetKey: cfg.listKey, itens: itens });
     toast(r.msg || "Registros excluídos.", "ok");
     await carregarTabelaModulo(key);
   } catch (e) { toast(e.message, "err"); }
+}
+// Algumas listas (ex.: Faturamento Diário) devolvem as linhas reordenadas
+// (mais recente primeiro) e por isso marcam o índice físico ORIGINAL da
+// planilha em cada linha (_idxFisico) — sem isso, editar/excluir usaria a
+// posição na lista já ordenada, que não bate com a linha física da aba, e
+// acabaria mexendo no registro errado (ver comentário em
+// listarFaturamentoDiario_ no Code.gs). Módulos sem essa marcação continuam
+// usando a posição normal (i), como sempre.
+function indiceFisicoModulo(linha, i) {
+  return (linha && linha._idxFisico != null) ? linha._idxFisico : i;
 }
 // dd/mm/aaaa (ou ISO) -> aaaa-mm-dd para preencher <input type=date>
 function dataParaInput(v) {
@@ -5348,7 +5358,7 @@ async function excluirRegistroModulo(key, i) {
     for (const c of cand) { if (linha[c] != null && String(linha[c]).trim() !== "") { confereCol = c; confereVal = linha[c]; break; } }
   }
   try {
-    await api("excluirRegistroModulo", { sheetKey: cfg.listKey, index: i, confereCol: confereCol, confereVal: confereVal });
+    await api("excluirRegistroModulo", { sheetKey: cfg.listKey, index: indiceFisicoModulo(linha, i), confereCol: confereCol, confereVal: confereVal });
     toast("Registro excluído.", "ok");
     await carregarTabelaModulo(key);
   } catch (e) { toast(e.message, "err"); }
@@ -5356,7 +5366,7 @@ async function excluirRegistroModulo(key, i) {
 function editarRegistroModulo(key, i) {
   const cfg = MODULES[key];
   const linha = (STATE.cache[key] || [])[i]; if (!linha) return;
-  STATE.editModulo = { key: key, index: i };
+  STATE.editModulo = { key: key, index: indiceFisicoModulo(linha, i) };
   cfg.fields.forEach(f => {
     const elx = document.getElementById("campo_" + f.name);
     if (!elx) return;

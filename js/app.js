@@ -3142,8 +3142,13 @@ async function renderFeedback() {
       <div class="grid g3">
         <div class="form-row"><label>Colaborador *</label><input id="fbColab" type="text" list="dl-colaboradores" onchange="autofillGestor(this.value,'fbGestor')"></div>
         <div class="form-row"><label>Unidade</label><input id="fbUnidade" type="text" list="dl-unidades"></div>
-        <div class="form-row"><label>Nome do gestor</label><input id="fbGestor" type="text"></div>
+        <div class="form-row"><label>Nome do gestor (é quem aparece como Líder no Dossiê)</label><input id="fbGestor" type="text"></div>
         <div class="form-row"><label>Data</label><input id="fbData" type="date"></div>
+        <div class="form-row"><label>Tipo de feedback</label>
+          <select id="fbTipo">
+            ${["Desempenho", "Comportamental", "PDI", "Reconhecimento", "Correção de Rota", "Advertência", "Outro"].map(t => `<option>${t}</option>`).join("")}
+          </select>
+        </div>
         <div class="form-row"><label>Pontuação Geral (0 a 100) *</label><input id="fbPont" type="number" min="0" max="100" step="1" value="0" oninput="fbAtualizaClass()"></div>
         <div class="form-row"><label>Classificação (automática)</label><input id="fbClass" type="text" readonly value="—"></div>
       </div>
@@ -3206,7 +3211,7 @@ async function salvarFeedbackCompleto() {
   if (!colab) { toast("Selecione o colaborador.", "err"); return; }
   const dados = {
     Colaborador: colab, Unidade: el("#fbUnidade").value.trim(), Gestor: el("#fbGestor").value.trim(),
-    Data: el("#fbData").value, Pontuacao: el("#fbPont").value,
+    Data: el("#fbData").value, Tipo: el("#fbTipo").value, Pontuacao: el("#fbPont").value,
     DecisaoGestor: fbColetarChk("decisao"),
     Potencial: fbColetarRadio("potencial"),
     RiscoDesligamento: fbColetarRadio("risco"),

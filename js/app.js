@@ -5074,6 +5074,7 @@ async function renderModulo(key) {
         <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
       </div>
     </div>
+    ${key === "faturamentoDiario" ? cardMetaFaturamentoHtml() : ""}
     ${key === "custosMensais" ? cardLoteCustosMensaisHtml() : ""}
     ${key === "colaboradores" ? `
     <div class="card">
@@ -5246,6 +5247,76 @@ async function salvarCustosLote() {
     toast(r.msg || "Custos lançados.", "ok");
     await carregarTabelaModulo("custosMensais");
     await carregarCustosLote();
+  } catch (e) { toast(e.message, "err"); }
+}
+const MESES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+// Pedido do cliente: "as metas não são iguais todos os dias, dependemos do
+// movimento" — ou seja, a meta (Faturamento Projetado) é um valor FIXO que
+// ela define UMA vez por unidade/mês, e o Faturamento Diário (lançado TODO
+// dia) é comparado contra essa meta (ver faturamentoDiarioResumo_ e o card
+// "Faturamento em Tempo Real" do Dashboard). Antes só dava pra editar essa
+// meta lá no Dashboard; agora aparece direto aqui, na mesma tela onde ela já
+// lança o diário — reusa a mesma ação salvarFaturamentoProjetadoRapido que já
+// existia, só que com uma UI própria nesta tela.
+function cardMetaFaturamentoHtml() {
+  const anoAtual = new Date().getFullYear();
+  return `
+    <div class="card">
+      <h3>🎯 Meta do Mês (Faturamento Projetado)</h3>
+      <p class="muted" style="font-size:13px;margin-bottom:12px">Defina aqui a meta do mês por unidade — digite UMA vez (fica fixa). Ela é comparada automaticamente com o que você for lançando todo dia logo abaixo, em Faturamento Diário (ver o ritmo/projeção no Dashboard → Custo (CMO) → "Faturamento em Tempo Real").</p>
+      <div class="grid g3" style="margin-bottom:12px">
+        <div class="form-row"><label>Unidade</label>
+          <input id="fdMetaUnidade" type="text" list="dl-unidades" placeholder="Escolha a unidade" onchange="carregarMetaFaturamento()">
+        </div>
+        <div class="form-row"><label>Mês</label>
+          <select id="fdMetaMes" onchange="carregarMetaFaturamento()">
+            ${MESES_PT.map((m, i) => `<option value="${i + 1}" ${i + 1 === new Date().getMonth() + 1 ? "selected" : ""}>${m}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row"><label>Ano</label>
+          <input id="fdMetaAno" type="number" value="${anoAtual}" onchange="carregarMetaFaturamento()">
+        </div>
+      </div>
+      <div class="form-row" style="max-width:260px">
+        <label>Faturamento Projetado (meta do mês) (R$)</label>
+        <input id="fdMetaValor" type="text" inputmode="decimal" class="money" placeholder="Ex: 850.000">
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="salvarMetaFaturamento()">💾 Salvar meta</button>
+      </div>
+      <div id="fdMetaStatus" class="muted" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  `;
+}
+async function carregarMetaFaturamento() {
+  const uni = normalize(el("#fdMetaUnidade") ? el("#fdMetaUnidade").value : "");
+  const mes = Number(el("#fdMetaMes") ? el("#fdMetaMes").value : 0);
+  const ano = Number(el("#fdMetaAno") ? el("#fdMetaAno").value : 0);
+  const campo = el("#fdMetaValor");
+  const status = document.getElementById("fdMetaStatus");
+  if (campo) campo.value = "";
+  if (status) status.textContent = "";
+  if (!uni || !mes || !ano) return;
+  try {
+    const r = await api("listarIndicadoresMensais");
+    const linha = (r.indicadores || []).find(i =>
+      normalize(i.Unidade) === uni && Number(i.Mes) === mes && Number(i.Ano) === ano);
+    const meta = linha ? Number(linha.FaturamentoProjetado) : 0;
+    if (meta > 0 && campo) campo.value = fmtMoeda(meta).replace("R$", "").trim();
+    if (status) status.textContent = meta > 0 ? "Meta já definida para esse mês — carregada acima." : "Nenhuma meta definida ainda para essa unidade/mês.";
+  } catch (e) { /* silencioso — não bloqueia o lançamento se a listagem falhar */ }
+}
+async function salvarMetaFaturamento() {
+  const uni = el("#fdMetaUnidade") ? el("#fdMetaUnidade").value.trim() : "";
+  const mes = Number(el("#fdMetaMes") ? el("#fdMetaMes").value : 0);
+  const ano = Number(el("#fdMetaAno") ? el("#fdMetaAno").value : 0);
+  const valor = parseMoedaBR(el("#fdMetaValor") ? el("#fdMetaValor").value : "");
+  if (!uni) { toast("Informe a unidade.", "err"); return; }
+  if (valor <= 0) { toast("Informe o valor da meta.", "err"); return; }
+  try {
+    const r = await api("salvarFaturamentoProjetadoRapido", { Unidade: uni, Mes: mes, Ano: ano, FaturamentoProjetado: valor });
+    toast(r.msg || "Meta salva.", "ok");
+    await carregarMetaFaturamento();
   } catch (e) { toast(e.message, "err"); }
 }
 // Filtra a tabela de colaboradores por unidade e/ou nome

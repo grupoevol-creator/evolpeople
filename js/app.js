@@ -3825,17 +3825,36 @@ async function renderVagas() {
             ${(STATE.cache.vagasUnidades || []).map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join("")}
           </select>
         </div>
-        <div class="form-row"><label>Status</label>
-          <select id="vgStatus" onchange="filtrarVagas()">
-            <option value="">Todos</option>
-            ${statusOpts.map(s => `<option value="${s}">${s}</option>`).join("")}
-          </select>
+        <div class="form-row" style="position:relative">
+          <label>Status</label>
+          <button type="button" class="btn btn-secondary" id="vgStatusBtn" style="width:100%;text-align:left" onclick="toggleFiltroStatusVagas()">Todos</button>
+          <div id="vgStatusPainel" style="display:none;position:absolute;top:100%;left:0;right:0;z-index:20;background:#fff;border:1px solid var(--border);border-radius:8px;padding:10px 14px;box-shadow:var(--shadow);margin-top:4px">
+            ${statusOpts.map(s => `
+              <label style="display:flex;align-items:center;gap:6px;padding:4px 0;white-space:nowrap;cursor:pointer">
+                <input type="checkbox" class="vgStatusChk" value="${s}" onchange="filtrarVagas()"> ${s}
+              </label>`).join("")}
+          </div>
         </div>
       </div>
       <div id="tabelaVagas"></div>
     </div>
   `);
   filtrarVagas();
+}
+// Abre/fecha o painel de checkboxes do filtro de Status (pedido do cliente:
+// poder marcar vários status juntos no filtro, ex.: Seleção + Teste, em vez
+// de escolher um por vez).
+function toggleFiltroStatusVagas() {
+  const painel = document.getElementById("vgStatusPainel");
+  if (!painel) return;
+  painel.style.display = painel.style.display === "none" ? "block" : "none";
+}
+// Atualiza o texto do botão do filtro de Status ("Todos", "TESTE" ou
+// "SELEÇÃO + TESTE") conforme os checkboxes marcados.
+function atualizarBotaoFiltroStatusVagas(selecionados) {
+  const btn = document.getElementById("vgStatusBtn");
+  if (!btn) return;
+  btn.textContent = selecionados.length ? selecionados.join(" + ") : "Todos";
 }
 // STATUS de vaga pode ter mais de um valor junto, separado por vírgula (ex.:
 // "SELEÇÃO,TESTE" — pedido do cliente para marcar vários status ao mesmo
@@ -3856,13 +3875,18 @@ function filtrarVagas() {
   const dados = STATE.cache.vagas || [];
   const busca = normalize(el("#vgBusca") ? el("#vgBusca").value : "");
   const fU = normalize(el("#vgUnidade") ? el("#vgUnidade").value : "");
-  const fS = normalize(el("#vgStatus") ? el("#vgStatus").value : "");
+  // Filtro de Status agora é multi-seleção (pedido do cliente: puxar "Seleção
+  // + Teste" juntos, não um status por vez). Uma vaga entra se tiver QUALQUER
+  // um dos status marcados (a vaga em si também pode ter vários, ver
+  // vagaStatusTem_) — se nada estiver marcado, mostra todas (igual "Todos").
+  const statusMarcados = Array.from(document.querySelectorAll(".vgStatusChk:checked")).map(c => c.value);
+  atualizarBotaoFiltroStatusVagas(statusMarcados);
   const filtradas = dados.filter(v => {
     const uni = normalize(vagaGet(v, ["UNIDADE"]));
-    const st = normalize(vagaGet(v, ["STATUS"]));
+    const statusVaga = vagaGet(v, ["STATUS"]);
     const texto = normalize(vagaGet(v, ["VAGA"]) + " " + vagaGet(v, ["CANDIDATO"]) + " " + vagaGet(v, ["GESTOR"]));
     return (!fU || uni.indexOf(fU) !== -1) &&
-           (!fS || st.indexOf(fS) !== -1) &&
+           (!statusMarcados.length || statusMarcados.some(s => vagaStatusTem_(statusVaga, s))) &&
            (!busca || texto.indexOf(busca) !== -1);
   });
   const cols = [
@@ -5050,6 +5074,7 @@ async function renderModulo(key) {
         <button class="btn btn-secondary" onclick="renderModulo('${key}')">Limpar</button>
       </div>
     </div>
+    ${key === "custosMensais" ? cardLoteCustosMensaisHtml() : ""}
     ${key === "colaboradores" ? `
     <div class="card">
       <h3>📎 Anexar Documentos do Colaborador</h3>
@@ -5128,6 +5153,100 @@ async function renderModulo(key) {
     </div>
   `);
   await carregarTabelaModulo(key);
+}
+// Pedido do cliente: em "Custos do Mês" ela tinha que lançar um Tipo de custo
+// por vez (escolher Unidade+Mês, salvar Endomarketing, voltar, escolher de
+// novo, salvar ASO, voltar, salvar Refeição...). Este card deixa lançar TODOS
+// os tipos de uma vez: escolhe Unidade+Mês/Ano, digita o valor de cada tipo
+// que quiser (deixa em branco o que não tiver) e clica em Salvar uma única
+// vez — o backend (salvarCustosMensaisLote_) grava/atualiza uma linha por
+// tipo preenchido, sem duplicar se ela voltar depois pra corrigir um valor.
+const TIPOS_CUSTO_MES = [
+  "Processos trabalhistas", "Endomarketing", "Rescisão", "Refeição",
+  "Dobras", "Diárias avulsas", "Exame / ASO", "Treinamento", "Outros"
+];
+function slugTipoCusto_(t) {
+  return t.normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-zA-Z0-9]+/g, "_").toLowerCase();
+}
+function cardLoteCustosMensaisHtml() {
+  const anoAtual = new Date().getFullYear();
+  return `
+    <div class="card">
+      <h3>⚡ Lançamento Rápido — todos os custos do mês de uma vez</h3>
+      <p class="muted" style="font-size:13px;margin-bottom:12px">Escolha a unidade e o mês, preencha só os valores que tiver (o que ficar em branco não é alterado) e clique em Salvar tudo — não precisa lançar um tipo de custo por vez.</p>
+      <div class="grid g3" style="margin-bottom:12px">
+        <div class="form-row"><label>Unidade</label>
+          <input id="lcUnidade" type="text" list="dl-unidades" placeholder="Escolha a unidade" onchange="carregarCustosLote()">
+        </div>
+        <div class="form-row"><label>Mês</label>
+          <select id="lcMes" onchange="carregarCustosLote()">
+            ${["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"]
+              .map((m, i) => `<option value="${i + 1}" ${i + 1 === new Date().getMonth() + 1 ? "selected" : ""}>${m}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-row"><label>Ano</label>
+          <input id="lcAno" type="number" value="${anoAtual}">
+        </div>
+      </div>
+      <div class="grid g3">
+        ${TIPOS_CUSTO_MES.map(t => `
+          <div class="form-row"><label>${escapeHtml(t)} (R$)</label>
+            <input id="lc_${slugTipoCusto_(t)}" type="text" inputmode="decimal" class="money" placeholder="0,00">
+          </div>`).join("")}
+      </div>
+      <div class="form-row g2"><label>Observação (opcional, vale para todos os tipos preenchidos)</label>
+        <textarea id="lcDescricao"></textarea>
+      </div>
+      <div class="actions">
+        <button class="btn btn-primary" onclick="salvarCustosLote()">💾 Salvar tudo</button>
+        <button class="btn btn-secondary" onclick="carregarCustosLote()">🔄 Recarregar valores já lançados</button>
+      </div>
+      <div id="lcStatus" class="muted" style="font-size:12px;margin-top:8px"></div>
+    </div>
+  `;
+}
+// Busca o que já foi lançado pra essa Unidade+Mês/Ano e preenche os campos —
+// assim ela vê o que já existe antes de corrigir/completar, em vez de digitar
+// às cegas.
+async function carregarCustosLote() {
+  const uni = normalize(el("#lcUnidade") ? el("#lcUnidade").value : "");
+  const mes = Number(el("#lcMes") ? el("#lcMes").value : 0);
+  const ano = Number(el("#lcAno") ? el("#lcAno").value : 0);
+  TIPOS_CUSTO_MES.forEach(t => { const i = document.getElementById("lc_" + slugTipoCusto_(t)); if (i) i.value = ""; });
+  if (!uni || !mes || !ano) return;
+  const status = document.getElementById("lcStatus");
+  try {
+    const r = await api("listarCustosMensais");
+    const linhas = (r.custosMensais || []).filter(c =>
+      normalize(c.Unidade) === uni && Number(c.Mes) === mes && Number(c.Ano) === ano);
+    linhas.forEach(c => {
+      const tipo = TIPOS_CUSTO_MES.find(t => normalize(t) === normalize(c.Tipo));
+      if (!tipo) return;
+      const i = document.getElementById("lc_" + slugTipoCusto_(tipo));
+      if (i && Number(c.Valor) > 0) i.value = fmtMoeda(Number(c.Valor)).replace("R$", "").trim();
+    });
+    if (status) status.textContent = linhas.length ? `${linhas.length} tipo(s) já lançado(s) para esse mês — carregados abaixo.` : "Nenhum lançamento ainda para essa unidade/mês.";
+  } catch (e) { /* silencioso — não bloqueia o lançamento se a listagem falhar */ }
+}
+async function salvarCustosLote() {
+  const uni = el("#lcUnidade") ? el("#lcUnidade").value.trim() : "";
+  const mes = Number(el("#lcMes") ? el("#lcMes").value : 0);
+  const ano = Number(el("#lcAno") ? el("#lcAno").value : 0);
+  const descricao = el("#lcDescricao") ? el("#lcDescricao").value.trim() : "";
+  if (!uni) { toast("Informe a unidade.", "err"); return; }
+  const valores = {};
+  TIPOS_CUSTO_MES.forEach(t => {
+    const i = document.getElementById("lc_" + slugTipoCusto_(t));
+    const v = i ? parseMoedaBR(i.value) : 0;
+    if (v > 0) valores[t] = v;
+  });
+  if (!Object.keys(valores).length) { toast("Preencha pelo menos um valor.", "err"); return; }
+  try {
+    const r = await api("salvarCustosMensaisLote", { Unidade: uni, Mes: mes, Ano: ano, valores: valores, Descricao: descricao });
+    toast(r.msg || "Custos lançados.", "ok");
+    await carregarTabelaModulo("custosMensais");
+    await carregarCustosLote();
+  } catch (e) { toast(e.message, "err"); }
 }
 // Filtra a tabela de colaboradores por unidade e/ou nome
 function temFiltroModulo(key) {

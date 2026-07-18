@@ -2642,7 +2642,7 @@ async function renderDashboard(unidade, usarCache) {
         <div class="kpi" style="border-left-color:var(--warn)"><small>Acompanhar</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.acompanhar) || 0}</strong></div>
         <div class="kpi" style="border-left-color:var(--bad)"><small>Não Efetivar</small><strong>${(dash.avaliacoesExp && dash.avaliacoesExp.naoEfetivar) || 0}</strong></div>
       </div>
-      ${tabelaComBadge((dash.avaliacoesExp && dash.avaliacoesExp.recentes) || [], ["Colaborador", "Unidade", "Etapa", "Resultado"])}
+      ${tabelaComBadge((dash.avaliacoesExp && dash.avaliacoesExp.recentes) || [], ["Colaborador", "Unidade", "Etapa", "Resultado", "Lider"])}
     </div>
     ` : ""}
     ${ABA("pessoas") ? `
@@ -3313,7 +3313,7 @@ async function carregarExpTabela() {
   try {
     const r = await api("listarAvaliacoesExperiencia");
     document.getElementById("tabelaExp").innerHTML =
-      tabelaComBadge(r.avaliacoes || [], ["Colaborador", "Unidade", "Etapa", "Resultado"]);
+      tabelaComBadge(r.avaliacoes || [], ["Colaborador", "Unidade", "Etapa", "Resultado", "Lider"]);
   } catch (e) { document.getElementById("tabelaExp").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
 /* ===================== DOSSIÊ DO COLABORADOR ===================== */
@@ -3367,17 +3367,30 @@ function dsFiltrar() {
   if (cont) cont.textContent = `Mostrando ${lista.length} de ${todos.length} colaboradores. Clique no nome para abrir o dossiê.`;
   const div = document.getElementById("dsLista");
   if (!div) return;
+  // NOVO (pedido: sinalização — bolinha colorida — do lado do nome do
+  // colaborador, e reputação (rótulo da legenda) do lado do líder, direto na
+  // lista, sem precisar abrir o dossiê individual). Usa as MESMAS constantes
+  // SEMAFORO_CORES/SEMAFORO_LABEL do card de legenda, pra garantir que a cor
+  // aqui seja idêntica à da legenda.
   div.innerHTML = lista.length
     ? `<div class="table-wrap" style="max-height:420px;overflow-y:auto"><table>
-        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Setor</th><th>Unidade</th><th>Líder</th><th style="width:1%"></th></tr></thead>
-        <tbody>${lista.map(c => `<tr style="cursor:pointer" onclick="abrirDossieDe('${escapeHtml(String(c.Nome || "").replace(/'/g, "\\'"))}')">
-          <td style="font-weight:600">${escapeHtml(c.Nome || "—")}</td>
+        <thead><tr><th>Colaborador</th><th>Cargo</th><th>Setor</th><th>Unidade</th><th>Líder</th><th>Reputação</th><th style="width:1%"></th></tr></thead>
+        <tbody>${lista.map(c => {
+          const cor = SEMAFORO_CORES[c.Semaforo] || SEMAFORO_CORES.verde;
+          const rotulo = SEMAFORO_LABEL[c.Semaforo] || SEMAFORO_LABEL.verde;
+          return `<tr style="cursor:pointer" onclick="abrirDossieDe('${escapeHtml(String(c.Nome || "").replace(/'/g, "\\'"))}')">
+          <td style="font-weight:600">
+            <span title="${escapeHtml(rotulo)}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${cor};margin-right:8px"></span>
+            ${escapeHtml(c.Nome || "—")}
+          </td>
           <td>${escapeHtml(c.Cargo || "—")}</td>
           <td>${escapeHtml(c.Setor || "—")}</td>
           <td>${escapeHtml(c.Unidade || "—")}</td>
           <td>${escapeHtml(c.Lider || "—")}</td>
+          <td><span style="font-size:12px;font-weight:600;color:${cor}">${escapeHtml(rotulo)}</span></td>
           <td><button class="btn btn-primary" style="padding:4px 10px;font-size:12px">Abrir</button></td>
-        </tr>`).join("")}</tbody>
+        </tr>`;
+        }).join("")}</tbody>
       </table></div>`
     : `<div class="empty">Nenhum colaborador encontrado com esses filtros.</div>`;
 }
@@ -3436,10 +3449,10 @@ async function carregarDossie(nome) {
   cont.innerHTML = `
     ${renderSemaforo(r.semaforo, r.legendaSemaforo)}
     ${(r.sinalizacoes && r.sinalizacoes.length) ? `
-    <div class="card" style="border-left:5px solid ${r.situacao === "ATENÇÃO CRÍTICA" ? "#dc2626" : (r.situacao === "REQUER ATENÇÃO" ? "#d97706" : "#0369a1")};background:${r.situacao === "ATENÇÃO CRÍTICA" ? "#fef2f2" : (r.situacao === "REQUER ATENÇÃO" ? "#fffbeb" : "#f8fafc")}">
+    <div class="card" style="border-left:5px solid ${r.situacao === "ATENÇÃO CRÍTICA" ? "#dc2626" : (r.situacao === "REQUER ATENÇÃO" ? "#d97706" : "#16a34a")};background:${r.situacao === "ATENÇÃO CRÍTICA" ? "#fef2f2" : (r.situacao === "REQUER ATENÇÃO" ? "#fffbeb" : "#f0fdf4")}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-        <span style="font-weight:800;font-size:14px;color:${r.situacao === "ATENÇÃO CRÍTICA" ? "#991b1b" : "#92400e"}">
-          ${r.situacao === "ATENÇÃO CRÍTICA" ? "🔴" : (r.situacao === "REQUER ATENÇÃO" ? "🟡" : "🔵")} ${escapeHtml(r.situacao)}
+        <span style="font-weight:800;font-size:14px;color:${r.situacao === "ATENÇÃO CRÍTICA" ? "#991b1b" : (r.situacao === "REQUER ATENÇÃO" ? "#92400e" : "#166534")}">
+          ${r.situacao === "ATENÇÃO CRÍTICA" ? "🔴" : (r.situacao === "REQUER ATENÇÃO" ? "🟡" : "🟢")} ${escapeHtml(r.situacao)}
         </span>
         ${r.sinalizacoes.map(s => `<span class="badge ${s.nivel === "critico" ? "bad" : (s.nivel === "alerta" ? "warn" : "info")}" style="font-size:12px">
           ${s.icone} ${escapeHtml(s.tipo)}: <b>${escapeHtml(s.qtd)}</b>
@@ -3499,8 +3512,8 @@ async function carregarDossie(nome) {
     </div>
     <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"], "ocorrencias")}</div>
     <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"], "feedbacks")}</div>
-    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"], "experiencia")}</div>
-    <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"], "treinamentos")}</div>
+    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Lider", "Parecer"], "experiencia")}</div>
+    <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas", "LiderResponsavel"], "treinamentos")}</div>
     <div class="card"><h3>👕 Fardamentos recebidos</h3>${tabelaComBadge(r.fardamentos || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"], "entregas")}</div>
     <div class="card"><h3>🦺 EPIs recebidos</h3>${tabelaComBadge(r.epis || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"], "entregas")}</div>
     ${ehRHClient() ? `<div class="msg info" style="font-size:12px">🔒 Editar/excluir aqui no Dossiê é restrito ao RH.</div>` : ""}
@@ -4533,10 +4546,12 @@ const MODULES = {
     label: "Colaboradores",
     listAction: "listarColaboradores", listKey: "colaboradores",
     saveAction: "salvarColaborador",
-    columns: ["Nome", "CPF", "Unidade", "Cargo", "SalarioTotal", "Status"],
+    columns: ["Nome", "CPF", "Matricula", "Unidade", "Cargo", "SalarioTotal", "Status"],
     fields: [
       { name: "Nome", label: "Nome", type: "text", required: true, col: "g2" },
       { name: "CPF", label: "CPF", type: "text" },
+      { name: "Matricula", label: "Matrícula", type: "text" },
+      { name: "PIS", label: "PIS/PASEP", type: "text" },
       { name: "CTPS", label: "CTPS", type: "text" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "calcularVT()" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
@@ -4593,7 +4608,7 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarTreinamentos", listKey: "treinamentos",
     saveAction: "salvarTreinamento",
-    columns: ["Data", "Unidade", "Tema", "Tipo", "Ministrante", "HorasDadas"],
+    columns: ["Data", "Unidade", "Tema", "Tipo", "Ministrante", "LiderResponsavel", "HorasDadas"],
     fields: [
       { name: "Data", label: "Data", type: "date" },
       { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
@@ -4629,7 +4644,7 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarCustosMensais", listKey: "custosMensais",
     saveAction: "salvarCustoMensal",
-    columns: ["Mes", "Ano", "Unidade", "Tipo", "Valor", "Descricao"],
+    columns: ["Mes", "Ano", "Unidade", "Tipo", "Valor", "Descricao", "RegistradoPor"],
     fields: [
       { name: "Mes", label: "Mês", type: "select", required: true, options: [
         { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
@@ -4704,7 +4719,7 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarVariavel", listKey: "variavel",
     saveAction: "salvarVariavel",
-    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Cargo", "TipoVariavel", "Valor", "Pago"],
+    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Cargo", "TipoVariavel", "Valor", "Pago", "RegistradoPor"],
     fields: [
       { name: "Mes", label: "Mês", type: "select", required: true, options: [
         { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
@@ -4863,7 +4878,7 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarProcessosTrabalhistas", listKey: "processosTrabalhistas",
     saveAction: "salvarProcessoTrabalhista",
-    columns: ["DataAbertura", "Colaborador", "Unidade", "Motivo", "Status", "ValorPedido", "ValorProvisionado", "ValorPago"],
+    columns: ["DataAbertura", "Colaborador", "Unidade", "Motivo", "Status", "ValorPedido", "ValorProvisionado", "ValorPago", "RegistradoPor"],
     fields: [
       // CORREÇÃO: o campo já era, tecnicamente, um <input type="text" list="..."> que
       // aceita QUALQUER nome digitado (não valida contra a lista de colaboradores nem
@@ -4900,7 +4915,7 @@ const MODULES = {
     // gravado certinho na planilha). FaturamentoPorColaborador: novo, calculado
     // automaticamente no backend (enriquecerIndicadores_) = Faturamento ÷ Ativos.
     columns: ["Mes", "Ano", "Unidade", "Ativos", "Admissoes", "Desligamentos", "TurnoverPercentual",
-      "AbsenteismoPercentual", "Faturamento", "FaturamentoPorColaborador"],
+      "AbsenteismoPercentual", "Faturamento", "FaturamentoPorColaborador", "AtualizadoPor"],
     fields: [
       { name: "Mes", label: "Mês", type: "select", required: true, options: [
         { v: 1, l: "Janeiro" }, { v: 2, l: "Fevereiro" }, { v: 3, l: "Março" }, { v: 4, l: "Abril" },
@@ -4947,7 +4962,7 @@ const MODULES = {
     filtros: ["Unidade", "Setor"],
     listAction: "listarAbsenteismo", listKey: "absenteismo",
     saveAction: "salvarAbsenteismo",
-    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Atestados", "TotalFaltas", "PercentualAbsenteismo"],
+    columns: ["Mes", "Ano", "Unidade", "Colaborador", "Atestados", "TotalFaltas", "PercentualAbsenteismo", "RegistradoPor"],
     fields: [
       { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
       { name: "Ano", label: "Ano", type: "number", required: true },
@@ -4968,7 +4983,7 @@ const MODULES = {
     filtros: ["Unidade"],
     listAction: "listarSLA", listKey: "sla",
     saveAction: "salvarSLA",
-    columns: ["Mes", "Ano", "Unidade", "SLA_Dias", "VagasFechadas"],
+    columns: ["Mes", "Ano", "Unidade", "SLA_Dias", "VagasFechadas", "AtualizadoPor"],
     fields: [
       { name: "Mes", label: "Mês (1-12)", type: "number", min: 1, max: 12, required: true },
       { name: "Ano", label: "Ano", type: "number", required: true },

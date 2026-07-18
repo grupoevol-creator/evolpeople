@@ -637,6 +637,15 @@ function ehSocioClient() {
   const p = normalize((STATE.user && STATE.user.perfil) || "");
   return ["SOCIO", "SOCIO OPERADOR", "DIRETOR", "DIRETORIA"].indexOf(p) !== -1;
 }
+// NOVO: editar/excluir informações do Dossiê (Ocorrências, Feedbacks,
+// Avaliações, Treinamentos, Fardamentos/EPIs) só pode quem é RH — espelha
+// perfilRH_ do Code.gs (o backend também checa isso de novo, essa checagem
+// aqui é só pra não nem mostrar os botões pra quem não pode usar). Sócio/
+// Sócio Operador ficaram de fora por pedido explícito.
+function ehRHClient() {
+  const p = normalize((STATE.user && STATE.user.perfil) || "");
+  return ["ADMIN", "RH", "DIRETOR", "DIRETORIA"].indexOf(p) !== -1;
+}
 // CORREÇÃO (rodada CPF/ressalvas): status que o RH pode marcar no candidato
 // agendado em Testes_RH. "EM TESTE" é o valor padrão (candidato ainda em
 // teste). "APROVADO"/"APROVADO COM RESSALVAS" continuam contando como
@@ -3488,12 +3497,13 @@ async function carregarDossie(nome) {
       <div class="form-row"><label>Descrição</label><textarea id="ocDesc"></textarea></div>
       <div class="actions"><button class="btn btn-primary" onclick="salvarOcorrenciaDossie()">Registrar Ocorrência</button></div>
     </div>
-    <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"])}</div>
-    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"])}</div>
-    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"])}</div>
-    <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"])}</div>
-    <div class="card"><h3>👕 Fardamentos recebidos</h3>${tabelaComBadge(r.fardamentos || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"])}</div>
-    <div class="card"><h3>🦺 EPIs recebidos</h3>${tabelaComBadge(r.epis || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"])}</div>
+    <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"], "ocorrencias")}</div>
+    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"], "feedbacks")}</div>
+    <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Parecer"], "experiencia")}</div>
+    <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas"], "treinamentos")}</div>
+    <div class="card"><h3>👕 Fardamentos recebidos</h3>${tabelaComBadge(r.fardamentos || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"], "entregas")}</div>
+    <div class="card"><h3>🦺 EPIs recebidos</h3>${tabelaComBadge(r.epis || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"], "entregas")}</div>
+    ${ehRHClient() ? `<div class="msg info" style="font-size:12px">🔒 Editar/excluir aqui no Dossiê é restrito ao RH.</div>` : ""}
     <div class="card"><h3>📎 Atestados e documentos anexados</h3>${
       (r.documentos && r.documentos.length)
         ? `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Arquivo</th><th>Abrir</th></tr></thead>
@@ -5624,18 +5634,61 @@ function editarRegistroModulo(key, i) {
   window.scrollTo({ top: 0, behavior: "smooth" });
   toast("Editando — altere os campos e clique em Atualizar.", "info");
 }
-function tabelaComBadge(linhas, colunas) {
+// NOVO: "sheetKey" (opcional) liga essa tabela a um módulo real da planilha
+// (ocorrencias/feedbacks/experiencia/treinamentos/entregas) — quando
+// informado E o usuário logado é RH (ehRHClient()), aparece uma coluna
+// "Ações" com editar/excluir por linha. Sem sheetKey, continua só leitura
+// (comportamento de sempre, usado em telas que não são o Dossiê).
+function tabelaComBadge(linhas, colunas, sheetKey) {
   if (!linhas || !linhas.length) return `<div class="empty">Nenhum registro encontrado.</div>`;
+  const podeEditar = !!sheetKey && ehRHClient();
   return `
     <div class="table-wrap">
       <table>
-        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}</tr></thead>
+        <thead><tr>${colunas.map(c => `<th>${escapeHtml(c)}</th>`).join("")}${podeEditar ? '<th style="width:1%"></th>' : ""}</tr></thead>
         <tbody>
-          ${linhas.map(l => `<tr>${colunas.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}</tr>`).join("")}
+          ${linhas.map((l, i) => `<tr>${colunas.map(c => `<td>${formatarCelula(c, l[c])}</td>`).join("")}${podeEditar ? `<td style="white-space:nowrap">
+            <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px" onclick='dossieEditarRegistro(${JSON.stringify(sheetKey)}, ${JSON.stringify(colunas)}, ${i}, ${JSON.stringify(l).replace(/'/g, "&#39;")})'>✏️</button>
+            <button class="btn btn-secondary" style="padding:3px 8px;font-size:11px;color:#b91c1c" onclick='dossieExcluirRegistro(${JSON.stringify(sheetKey)}, ${JSON.stringify(colunas[0])}, ${i}, ${JSON.stringify(l).replace(/'/g, "&#39;")})'>🗑️</button>
+          </td>` : ""}</tr>`).join("")}
         </tbody>
       </table>
     </div>
   `;
+}
+// Exclui um registro embutido no Dossiê (só RH — o backend confere de novo).
+async function dossieExcluirRegistro(sheetKey, confereCol, i, linha) {
+  if (!confirm("Excluir este registro? Essa ação não pode ser desfeita.")) return;
+  try {
+    await api("excluirRegistroDossie", {
+      sheetKey: sheetKey, index: indiceFisicoModulo(linha, i),
+      confereCol: confereCol, confereVal: linha[confereCol]
+    });
+    toast("Registro excluído.", "ok");
+    if (STATE.cache.dossieNome) await carregarDossie(STATE.cache.dossieNome);
+  } catch (e) { toast(e.message, "err"); }
+}
+// Edita um registro embutido no Dossiê num modal simples (só os campos que
+// já aparecem na tabela — é uma edição rápida, não o formulário completo).
+function dossieEditarRegistro(sheetKey, colunas, i, linha) {
+  const campos = colunas.map(c => `
+    <div class="form-row"><label>${escapeHtml(c)}</label>
+      <input id="dsEdit_${escapeHtml(c)}" type="text" value="${escapeHtml(linha[c] == null ? "" : linha[c])}">
+    </div>`).join("");
+  mostrarModal("Editar registro", `
+    ${campos}
+    <div class="actions"><button class="btn btn-primary" onclick='dossieSalvarEdicao(${JSON.stringify(sheetKey)}, ${JSON.stringify(colunas)}, ${i}, ${JSON.stringify(linha).replace(/'/g, "&#39;")})'>Salvar</button></div>
+  `);
+}
+async function dossieSalvarEdicao(sheetKey, colunas, i, linha) {
+  const dados = {};
+  colunas.forEach(c => { const elx = document.getElementById("dsEdit_" + c); if (elx) dados[c] = elx.value; });
+  try {
+    await api("atualizarRegistroDossie", { sheetKey: sheetKey, index: indiceFisicoModulo(linha, i), dados: dados });
+    toast("Registro atualizado.", "ok");
+    fecharModal();
+    if (STATE.cache.dossieNome) await carregarDossie(STATE.cache.dossieNome);
+  } catch (e) { toast(e.message, "err"); }
 }
 function formatarCelula(coluna, valor) {
   if (/^(SalarioBase|Complementar|SalarioTotal|CustoProjetado|ValorRescisao|ValorPedido|ValorProvisionado|ValorPago)$/.test(coluna)) {

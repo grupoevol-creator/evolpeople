@@ -271,6 +271,10 @@ async function carregarInit() {
     // cadastro de Colaboradores): mapa Unidade -> líder padrão, vindo do
     // getInit_ (ver autofillLiderPorUnidade mais abaixo).
     STATE.init.liderPadraoUnidade = r.liderPadraoUnidade || {};
+    // CORREÇÃO (bug reportado 2026-07-22 — salário não puxa automático no
+    // Auxiliar de Serviços Gerais): regras de gratificação por Cargo+Unidade
+    // (ver aplicarRegraSalarialCargoUnidade mais abaixo).
+    STATE.init.regrasSalariais = r.regrasSalariais || [];
     // CORREÇÃO #12 (filtro de Setor/Unidade no Dossiê não filtrava nada de verdade):
     // a causa raiz é que STATE.init.setores NUNCA era preenchido — só unidades/cargos/
     // colaboradores/salarios/lideranca eram carregados aqui. Sem essa lista, o <select>
@@ -4574,7 +4578,7 @@ const MODULES = {
       { name: "Matricula", label: "Matrícula", type: "text" },
       { name: "PIS", label: "PIS/PASEP", type: "text" },
       { name: "CTPS", label: "CTPS", type: "text" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "autofillLiderPorUnidade(this.value); calcularVT();" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "autofillLiderPorUnidade(this.value); aplicarRegraSalarialCargoUnidade(); calcularVT();" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
       { name: "Setor", label: "Setor", type: "text" },
       { name: "Turno", label: "Turno", type: "text" },
@@ -5071,11 +5075,46 @@ function campoHtml(f) {
 }
 function autofillSalarioPorCargo(nomeCargo) {
   const c = STATE.init.cargos.find(x => normalize(x.Cargo) === normalize(nomeCargo));
-  if (!c) return;
-  const base = document.getElementById("campo_SalarioBase");
+  if (c) {
+    const base = document.getElementById("campo_SalarioBase");
+    const comp = document.getElementById("campo_Complementar");
+    if (base) base.value = c.SalarioBase || 0;
+    if (comp) comp.value = c.Complementar || 0;
+  }
+  // Depois do salário-base do Cargo, verifica se existe gratificação
+  // condicional por Cargo+Unidade (ver função abaixo) — precisa vir DEPOIS,
+  // senão a linha "if (comp) comp.value = c.Complementar || 0;" acima
+  // apagaria a gratificação com o Complementar genérico do cargo.
+  aplicarRegraSalarialCargoUnidade();
+  recalcularSalarioTotal();
+}
+// CORREÇÃO (bug reportado 2026-07-22 — "não está puxando o salário
+// automático no Auxiliar de Serviços Gerais"): autofillSalarioPorCargo
+// (acima) só conhecia a aba "Cargos" (salário BASE) — a gratificação
+// condicional por Cargo+Unidade (Regras_Salariais: ex. Auxiliar de Serviços
+// Gerais do Parrileiro Sul/Aldeota = base 1.674,49 + R$200 fixos atrelados à
+// assiduidade; Vigia do Parrileiro Sul = base + 20%) nunca tinha sido
+// aplicada aqui, só entrava no cálculo de custo de vaga em aberto lá no
+// servidor. Mesma conta do backend (ver idxRegraSalarial em dashboard_,
+// Code.gs): Fixo soma o valor puro; Percentual soma base × (valor/100).
+// Chamada tanto pelo onchange do Cargo (via autofillSalarioPorCargo acima)
+// quanto pelo onchange da Unidade, porque a regra depende dos DOIS campos.
+function aplicarRegraSalarialCargoUnidade() {
+  const cargoEl = document.getElementById("campo_Cargo");
+  const uniEl = document.getElementById("campo_Unidade");
   const comp = document.getElementById("campo_Complementar");
-  if (base) base.value = c.SalarioBase || 0;
-  if (comp) comp.value = c.Complementar || 0;
+  if (!cargoEl || !uniEl || !comp) return;
+  const cargo = normalize(cargoEl.value);
+  const uni = normalize(uniEl.value);
+  if (!cargo || !uni) return;
+  const regra = (STATE.init.regrasSalariais || []).find(r =>
+    normalize(r.Cargo) === cargo && normalize(r.Unidade) === uni);
+  if (!regra) return;
+  const base = Number(regra.SalarioBase) || 0;
+  const bonus = /percent/i.test(String(regra.TipoBonificacao || ""))
+    ? base * (Number(regra.ValorBonificacao) || 0) / 100
+    : (Number(regra.ValorBonificacao) || 0);
+  comp.value = bonus;
   recalcularSalarioTotal();
 }
 function recalcularSalarioTotal() {

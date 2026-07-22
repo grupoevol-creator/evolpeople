@@ -5141,10 +5141,18 @@ function aplicarRegraSalarialCargoUnidade() {
   const comp = document.getElementById("campo_Complementar");
   if (!cargoEl || !uniEl || !comp) return;
   const cargo = normalize(cargoEl.value);
-  const uni = normalize(uniEl.value);
+  const uni = unidadeCanonCliente_(uniEl.value);
   if (!cargo || !uni) return;
-  const regra = (STATE.init.regrasSalariais || []).find(r =>
-    normalize(r.Cargo) === cargo && normalize(r.Unidade) === uni);
+  const regras = STATE.init.regrasSalariais || [];
+  // CORREÇÃO (pedido 2026-07-22): algumas regras (ex.: Ajudante de Cozinha)
+  // valem para QUALQUER unidade, exceto Rio Mar — gravadas com o curinga
+  // Unidade="TODAS" (ver salarioPorRegraSimples_ no Code.gs, mesma lógica
+  // espelhada aqui). Prioridade: regra EXATA do Cargo+Unidade primeiro; só
+  // cai no curinga "TODAS" se não achar exata e a unidade não for Rio Mar.
+  let regra = regras.find(r => normalize(r.Cargo) === cargo && unidadeCanonCliente_(r.Unidade) === uni);
+  if (!regra && uni !== "PARRILEIRO RIOMAR") {
+    regra = regras.find(r => normalize(r.Cargo) === cargo && normalize(r.Unidade) === "TODAS");
+  }
   if (!regra) return;
   const base = Number(regra.SalarioBase) || 0;
   const bonus = /percent/i.test(String(regra.TipoBonificacao || ""))

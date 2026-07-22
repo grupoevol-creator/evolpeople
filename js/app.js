@@ -267,6 +267,10 @@ async function carregarInit() {
     }));
     STATE.init.salarios = r.salarios || [];
     STATE.init.lideranca = r.lideranca || [];
+    // CORREÇÃO (bug reportado 2026-07-22 — líder não puxa automático no
+    // cadastro de Colaboradores): mapa Unidade -> líder padrão, vindo do
+    // getInit_ (ver autofillLiderPorUnidade mais abaixo).
+    STATE.init.liderPadraoUnidade = r.liderPadraoUnidade || {};
     // CORREÇÃO #12 (filtro de Setor/Unidade no Dossiê não filtrava nada de verdade):
     // a causa raiz é que STATE.init.setores NUNCA era preenchido — só unidades/cargos/
     // colaboradores/salarios/lideranca eram carregados aqui. Sem essa lista, o <select>
@@ -2805,6 +2809,23 @@ function autofillGestor(nomeColaborador, campoDestinoId) {
   const campo = document.getElementById(campoDestinoId);
   if (campo && lider) campo.value = lider;
 }
+// CORREÇÃO (bug reportado 2026-07-22 — "não puxa o líder de forma
+// automático" no cadastro de Colaboradores): liderDe()/autofillGestor()
+// (acima) só resolvem o líder de um colaborador JÁ CADASTRADO, procurando
+// pelo Nome em STATE.init.colaboradores — no cadastro de alguém NOVO isso
+// nunca encontra nada, porque a pessoa ainda não existe nessa lista. Aqui
+// usamos o único dado que já existe nesse momento do formulário: a Unidade
+// escolhida, preenchendo com o líder padrão daquela unidade (mesmo
+// fallback que o backend usa em liderPadraoDe_/LIDER_PADRAO_UNIDADE,
+// exposto via STATE.init.liderPadraoUnidade — ver getInit_ no Code.gs).
+function autofillLiderPorUnidade(nomeUnidade) {
+  const campo = document.getElementById("campo_Lider");
+  if (!campo) return;
+  const mapa = STATE.init.liderPadraoUnidade || {};
+  const alvo = normalize(nomeUnidade);
+  const chave = Object.keys(mapa).find(k => normalize(k) === alvo);
+  if (chave && mapa[chave]) campo.value = mapa[chave];
+}
 /* ===================== UNIVERSIDADE EVOL ===================== */
 const ACADEMIA_NOVOS_TALENTOS = [
   ["01", "Autoconhecimento e Perfil Profissional", "Entender quem você é para crescer com intenção"],
@@ -4553,7 +4574,7 @@ const MODULES = {
       { name: "Matricula", label: "Matrícula", type: "text" },
       { name: "PIS", label: "PIS/PASEP", type: "text" },
       { name: "CTPS", label: "CTPS", type: "text" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "calcularVT()" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "autofillLiderPorUnidade(this.value); calcularVT();" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
       { name: "Setor", label: "Setor", type: "text" },
       { name: "Turno", label: "Turno", type: "text" },

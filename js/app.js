@@ -275,6 +275,9 @@ async function carregarInit() {
     // Auxiliar de Serviços Gerais): regras de gratificação por Cargo+Unidade
     // (ver aplicarRegraSalarialCargoUnidade mais abaixo).
     STATE.init.regrasSalariais = r.regrasSalariais || [];
+    // AMPLIAÇÃO (pedido 2026-07-22): líder específico por Cargo+Unidade,
+    // quando existir (ver autofillLider mais abaixo).
+    STATE.init.liderPorCargoUnidade = r.liderPorCargoUnidade || {};
     // CORREÇÃO #12 (filtro de Setor/Unidade no Dossiê não filtrava nada de verdade):
     // a causa raiz é que STATE.init.setores NUNCA era preenchido — só unidades/cargos/
     // colaboradores/salarios/lideranca eram carregados aqui. Sem essa lista, o <select>
@@ -2813,22 +2816,47 @@ function autofillGestor(nomeColaborador, campoDestinoId) {
   const campo = document.getElementById(campoDestinoId);
   if (campo && lider) campo.value = lider;
 }
-// CORREÇÃO (bug reportado 2026-07-22 — "não puxa o líder de forma
-// automático" no cadastro de Colaboradores): liderDe()/autofillGestor()
+// Mesma canonicalização do Rio Mar que o servidor faz em canonUnidade_ —
+// "Parrileiro Rio Mar" e "PARRILEIRO RIOMAR" têm que virar a MESMA chave
+// aqui, senão o líder por Cargo+Unidade nunca bate (ver LIDER_POR_CARGO_UNIDADE
+// no Code.gs, que já vem com a unidade canonicalizada dessa forma).
+function unidadeCanonCliente_(u) {
+  const n = normalize(u);
+  if (n.indexOf("RIOMAR") !== -1 || n.indexOf("RIO MAR") !== -1) return "PARRILEIRO RIOMAR";
+  return n;
+}
+// CORREÇÃO/AMPLIAÇÃO (bug reportado 2026-07-22 — "não puxa o líder de forma
+// automático" + pedido de líder específico por Cargo): liderDe()/autofillGestor()
 // (acima) só resolvem o líder de um colaborador JÁ CADASTRADO, procurando
 // pelo Nome em STATE.init.colaboradores — no cadastro de alguém NOVO isso
-// nunca encontra nada, porque a pessoa ainda não existe nessa lista. Aqui
-// usamos o único dado que já existe nesse momento do formulário: a Unidade
-// escolhida, preenchendo com o líder padrão daquela unidade (mesmo
-// fallback que o backend usa em liderPadraoDe_/LIDER_PADRAO_UNIDADE,
-// exposto via STATE.init.liderPadraoUnidade — ver getInit_ no Code.gs).
-function autofillLiderPorUnidade(nomeUnidade) {
+// nunca encontra nada, porque a pessoa ainda não existe nessa lista. Esta
+// função usa os dois dados que já existem nesse momento do formulário —
+// Cargo e Unidade — nesta ordem de prioridade:
+// 1) líder específico daquele Cargo NAQUELA Unidade (ex.: os Auxiliares de
+//    Serviços Gerais de cada casa respondem a uma liderança própria — ver
+//    STATE.init.liderPorCargoUnidade / LIDER_POR_CARGO_UNIDADE no Code.gs);
+// 2) líder padrão da Unidade (mesmo fallback do backend em liderPadraoDe_ /
+//    LIDER_PADRAO_UNIDADE, via STATE.init.liderPadraoUnidade).
+// Chamada tanto no onchange da Unidade quanto (via autofillSalarioPorCargo)
+// no onchange do Cargo, porque a regra mais específica depende dos dois.
+function autofillLider() {
   const campo = document.getElementById("campo_Lider");
-  if (!campo) return;
-  const mapa = STATE.init.liderPadraoUnidade || {};
-  const alvo = normalize(nomeUnidade);
-  const chave = Object.keys(mapa).find(k => normalize(k) === alvo);
-  if (chave && mapa[chave]) campo.value = mapa[chave];
+  const cargoEl = document.getElementById("campo_Cargo");
+  const uniEl = document.getElementById("campo_Unidade");
+  if (!campo || !uniEl) return;
+  const uni = unidadeCanonCliente_(uniEl.value);
+  if (!uni) return;
+  const cargo = cargoEl ? normalize(cargoEl.value) : "";
+
+  if (cargo) {
+    const porCargo = STATE.init.liderPorCargoUnidade || {};
+    const chave = cargo + "|" + uni;
+    if (porCargo[chave]) { campo.value = porCargo[chave]; return; }
+  }
+
+  const mapaUnidade = STATE.init.liderPadraoUnidade || {};
+  const chaveUni = Object.keys(mapaUnidade).find(k => normalize(k) === uni || unidadeCanonCliente_(k) === uni);
+  if (chaveUni && mapaUnidade[chaveUni]) campo.value = mapaUnidade[chaveUni];
 }
 /* ===================== UNIVERSIDADE EVOL ===================== */
 const ACADEMIA_NOVOS_TALENTOS = [
@@ -4578,11 +4606,17 @@ const MODULES = {
       { name: "Matricula", label: "Matrícula", type: "text" },
       { name: "PIS", label: "PIS/PASEP", type: "text" },
       { name: "CTPS", label: "CTPS", type: "text" },
-      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "autofillLiderPorUnidade(this.value); aplicarRegraSalarialCargoUnidade(); calcularVT();" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades", onchange: "autofillLider(); aplicarRegraSalarialCargoUnidade(); calcularVT();" },
       { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos", autofillSalario: true },
       { name: "Setor", label: "Setor", type: "text" },
-      { name: "Turno", label: "Turno", type: "text" },
-      { name: "Folga", label: "Folga", type: "text" },
+      // CORREÇÃO (pedido 2026-07-22): antes eram campos de texto livre — Turno
+      // e Folga agora são seleção, com as mesmas opções/valores já usados na
+      // tela de Escalas (selectTurnoHtml/selectFolgaHtml), pra não ficar cada
+      // um digitando de um jeito diferente ("fechamento", "FECHAMENTO" etc.).
+      { name: "Turno", label: "Turno", type: "select", options: [
+        { v: "ABERTURA", l: "Abertura" }, { v: "INTERMEDIARIO", l: "Intermediário" }, { v: "FECHAMENTO", l: "Fechamento" }
+      ] },
+      { name: "Folga", label: "Folga", type: "select", options: ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"] },
       // Nota: Modalidade de Contratação (CLT/PJ) NÃO é editável aqui de propósito —
       // o backend (modalidadeContratacaoDe_) já deriva isso automaticamente das
       // colunas legadas Tipo_Contrato/TipoContrato/Contrato (ou do heurístico ehPJ_
@@ -5086,6 +5120,8 @@ function autofillSalarioPorCargo(nomeCargo) {
   // senão a linha "if (comp) comp.value = c.Complementar || 0;" acima
   // apagaria a gratificação com o Complementar genérico do cargo.
   aplicarRegraSalarialCargoUnidade();
+  // Cargo também pode ter líder específico naquela Unidade (ver autofillLider).
+  autofillLider();
   recalcularSalarioTotal();
 }
 // CORREÇÃO (bug reportado 2026-07-22 — "não está puxando o salário

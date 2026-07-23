@@ -605,7 +605,15 @@ function hcRenderLista() {
     const cargo = c.Cargo || c.Funcao || "—";
     const funcao = c.Funcao || c.Cargo || "—";
     const lider = c.Lider || "—";
-    const salario = Number(c.Salario) || 0;
+    // CORREÇÃO (pedido 2026-07-22): esta tela (Headcount) só mostrava um
+    // número único de salário. Igual ao Dossiê, agora mostra Fixo +
+    // Complementar = Total, usando os 3 campos que o backend já manda
+    // (SalarioBase/SalarioComplementar/SalarioTotal, via salarioDeColab_ —
+    // mesma fonte do Dossiê). Fallback pro campo antigo (Salario) só se por
+    // algum motivo os novos campos não vierem (ex.: cache antigo do backend).
+    const salBase = c.SalarioBase != null ? Number(c.SalarioBase) || 0 : (Number(c.Salario) || 0);
+    const salCompl = Number(c.SalarioComplementar) || 0;
+    const salTotal = c.SalarioTotal != null ? Number(c.SalarioTotal) || 0 : (Number(c.Salario) || 0);
     detalhe = `<div class="card" style="border-left:5px solid var(--laranja)">
       <h3>👤 ${escapeHtml(nome)}</h3>
       <div class="grid g2">
@@ -617,7 +625,7 @@ function hcRenderLista() {
         <div><small class="muted">Modalidade de contratação</small><div>${escapeHtml(c.ModalidadeContratacao || c.TipoContrato || "CLT")}</div></div>
         <div><small class="muted">Admissão</small><div>${hcData_(c.DataAdmissao)}</div></div>
         <div><small class="muted">Aniversário</small><div>${hcAniversario_(c.DataNascimento)}</div></div>
-        <div><small class="muted">Salário</small><div><b>${fmtMoeda(salario)}</b></div></div>
+        <div style="grid-column:1 / -1"><small class="muted">Salário</small><div><b>Salário Fixo: ${fmtMoeda(salBase)} + Salário Complementar: ${fmtMoeda(salCompl)} = Total: ${fmtMoeda(salTotal)}</b></div></div>
         <div><small class="muted">Período de experiência</small><div>${escapeHtml(hcExperiencia_(c.FimExperiencia))}</div></div>
         <div><small class="muted">Plano de saúde</small><div>${c.PlanoSaude === "Sim" ? `<span class="badge ok">Sim</span>` : `<span class="badge">Não</span>`}</div></div>
       </div>
@@ -3485,17 +3493,26 @@ const SEMAFORO_LABEL = { vermelho: "🔴 Crítico", laranja: "🟠 Atenção", a
 // ("vermelho"/"laranja"/"amarelo"/"verde") e `legendaSemaforo` como um objeto
 // { vermelho: "descrição...", laranja: "...", ... } com o critério de cada cor —
 // usamos essa legenda vinda do servidor em vez de duplicar o texto no front.
-function renderSemaforo(corSemaforo, legenda) {
+// CORREÇÃO/AMPLIAÇÃO (pedido 2026-07-22 — "de forma objetiva explicar por
+// qual motivo tá assim"): antes só mostrava a cor/rótulo (ex.: "🟢 Regular"),
+// sem dizer o porquê — quem olhasse não sabia se era regular "de verdade" ou
+// se algo não estava sendo considerado. Agora recebe também `motivos` (lista
+// de frases vinda do backend, motivosSemaforo_ em Code.gs) e mostra embaixo
+// do rótulo, tipo "Motivo: nenhuma ocorrência..." ou "Motivo: 1 falta
+// registrada".
+function renderSemaforo(corSemaforo, legenda, motivos) {
   if (!corSemaforo) return "";
   const cor = SEMAFORO_CORES[corSemaforo] || "#94a3b8";
   const label = SEMAFORO_LABEL[corSemaforo] || corSemaforo;
   legenda = legenda || {};
+  motivos = motivos || [];
   return `
     <div class="card" style="border-left:5px solid ${cor}">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
         <span style="font-weight:800;font-size:16px;color:${cor}">${label}</span>
         ${legenda[corSemaforo] ? `<span class="muted" style="font-size:12px">${escapeHtml(legenda[corSemaforo])}</span>` : ""}
       </div>
+      ${motivos.length ? `<div class="muted" style="font-size:12px;margin-top:6px"><b>Motivo:</b> ${escapeHtml(motivos.join("; "))}</div>` : ""}
       <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:#64748b">
         ${Object.keys(SEMAFORO_CORES).map(c => `<span><i style="display:inline-block;width:9px;height:9px;border-radius:50%;background:${SEMAFORO_CORES[c]};margin-right:4px"></i>${escapeHtml(SEMAFORO_LABEL[c])} — ${escapeHtml(legenda[c] || "")}</span>`).join("")}
       </div>
@@ -3510,7 +3527,7 @@ async function carregarDossie(nome) {
   const c = r.colaborador || {}, k = r.kpis || {};
   STATE.cache.dossieNome = c.Nome || nome;
   cont.innerHTML = `
-    ${renderSemaforo(r.semaforo, r.legendaSemaforo)}
+    ${renderSemaforo(r.semaforo, r.legendaSemaforo, r.motivosSemaforo)}
     ${(r.sinalizacoes && r.sinalizacoes.length) ? `
     <div class="card" style="border-left:5px solid ${r.situacao === "ATENÇÃO CRÍTICA" ? "#dc2626" : (r.situacao === "REQUER ATENÇÃO" ? "#d97706" : "#16a34a")};background:${r.situacao === "ATENÇÃO CRÍTICA" ? "#fef2f2" : (r.situacao === "REQUER ATENÇÃO" ? "#fffbeb" : "#f0fdf4")}">
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">

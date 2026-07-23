@@ -3759,6 +3759,24 @@ const AG_ICONES = {
 };
 function agCorTipo(tipo) { return AG_CORES[agNorm(tipo)] || AG_CORES["OUTRO"]; }
 function agIconeTipo(tipo) { return AG_ICONES[agNorm(tipo)] || AG_ICONES["OUTRO"]; }
+
+// NOVO (pedido 2026-07-23 — "coloque para cada unidade ter uma cor, tipo o
+// modelo do pcp que te enviei"): cada unidade ganha uma cor própria (em vez
+// de colorir só por Tipo) — mesma ideia da Agenda Semanal do PCP. Tarefa sem
+// unidade fica com uma cor neutra, igual ao "Tarefa (sem unidade)" de lá.
+const AG_PALETA_UNIDADE = ["#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#65a30d"];
+const AG_COR_SEM_UNIDADE = "#64748b";
+function agCorUnidade(nomeUnidade) {
+  const nome = String(nomeUnidade || "").trim();
+  if (!nome) return AG_COR_SEM_UNIDADE;
+  if (!STATE.ag.corPorUnidade) {
+    const mapa = {};
+    const lista = (STATE.init.unidades || []).slice().sort((a, b) => String(a).localeCompare(String(b), "pt"));
+    lista.forEach((u, i) => { mapa[agNorm(u)] = AG_PALETA_UNIDADE[i % AG_PALETA_UNIDADE.length]; });
+    STATE.ag.corPorUnidade = mapa;
+  }
+  return STATE.ag.corPorUnidade[agNorm(nome)] || AG_COR_SEM_UNIDADE;
+}
 // Data de um evento -> "YYYY-MM-DD" (aceita ISO ou dd/MM/yyyy)
 function agDataISO(v) {
   v = String(v || "").trim();
@@ -3818,6 +3836,14 @@ function agToggleVisaoHtml() {
       <button class="${v === "semana" ? "is-ativo" : ""}" onclick="agSetVisao('semana')">Semana</button>
       <button class="${v === "mes" ? "is-ativo" : ""}" onclick="agSetVisao('mes')">Mês</button>
     </div>`;
+}
+// NOVO (pedido 2026-07-23 — "coloque para cada unidade ter uma cor, tipo o
+// modelo do pcp"): legenda agora é por UNIDADE (mesma cor usada nos
+// cartões/chips), com "Tarefa (sem unidade)" no fim — igual à referência.
+function agLegendaUnidadesHtml() {
+  const lista = (STATE.init.unidades || []).slice().sort((a, b) => String(a).localeCompare(String(b), "pt"));
+  return lista.map(u => `<span><i class="ag-dot" style="background:${agCorUnidade(u)}"></i>${escapeHtml(u)}</span>`).join("")
+    + `<span><i class="ag-dot" style="background:${AG_COR_SEM_UNIDADE}"></i>Tarefa (sem unidade)</span>`;
 }
 // REVISADO (pedido 2026-07-23 — "esse modelo é mais bonito do que você
 // colocou, agora precisa é deixar igual só que tecnologico"): a primeira
@@ -3934,7 +3960,10 @@ function agRenderSemana() {
     evs.forEach(ev => {
       const hora = ev.HoraInicio ? `${escapeHtml(ev.HoraInicio)}${ev.HoraFim ? " – " + escapeHtml(ev.HoraFim) : ""}` : "Dia todo";
       const concluido = agEhConcluido(ev);
-      const cor = agCorTipo(ev.Tipo);
+      // Cor pela UNIDADE agora (modelo do PCP) — Tipo continua só como ícone,
+      // pra não perder aquela informação.
+      const cor = agCorUnidade(ev.Unidade);
+      const pin = ev.Unidade || ev.Local;
       // Numa agenda de grupo (ex.: PCP), mostra de quem é o compromisso —
       // senão, junto no mesmo dia, não dava pra saber se era do André ou do
       // Daniel só de olhar.
@@ -3942,7 +3971,7 @@ function agRenderSemana() {
         <div class="ag-card ${concluido ? "ag-card-feito" : ""}" style="border-left-color:${cor};background:${agHexParaRgba(cor, .07)};animation-delay:${(ordemCartao++) * 45}ms">
           <div class="ag-card-hora">${hora}</div>
           <div class="ag-card-titulo">${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>
-          ${ev.Local ? `<div class="ag-card-linha">📍 ${escapeHtml(ev.Local)}</div>` : ""}
+          ${pin ? `<div class="ag-card-linha">📍 ${escapeHtml(pin)}</div>` : ""}
           ${ev.Responsavel ? `<div class="ag-card-linha ag-card-resp">${escapeHtml(ev.Responsavel)}</div>` : ""}
           ${ev.Descricao ? `<div class="ag-card-desc">${escapeHtml(ev.Descricao)}</div>` : ""}
           <div class="ag-card-acoes">
@@ -3982,7 +4011,7 @@ function agRenderSemana() {
     </div>
     <div class="ag-grid">${colunas}</div>
     <div class="ag-legenda">
-      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
+      ${agLegendaUnidadesHtml()}
     </div>
   `;
 }
@@ -4022,7 +4051,7 @@ function agRenderMes() {
       const hora = ev.HoraInicio ? escapeHtml(ev.HoraInicio) + " " : "";
       const dono = grupo ? `[${escapeHtml(String(ev.Responsavel || "").split(" ")[0])}] ` : "";
       const concluido = agEhConcluido(ev);
-      chips += `<div class="ag-mes-chip" style="background:${agCorTipo(ev.Tipo)};${concluido ? "text-decoration:line-through;opacity:.6" : ""}" title="${escapeHtml((ev.Responsavel ? ev.Responsavel + " — " : "") + (ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${dono}${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>`;
+      chips += `<div class="ag-mes-chip" style="background:${agCorUnidade(ev.Unidade)};${concluido ? "text-decoration:line-through;opacity:.6" : ""}" title="${escapeHtml((ev.Responsavel ? ev.Responsavel + " — " : "") + (ev.Titulo || "") + (ev.Unidade || ev.Local ? " @ " + (ev.Unidade || ev.Local) : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${dono}${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>`;
     });
     celulas += `
       <div class="ag-mes-cel ${isHoje ? "ag-mes-hoje" : ""}" onclick="agNovoEvento('${iso}')">
@@ -4052,7 +4081,7 @@ function agRenderMes() {
       ${celulas}
     </div>
     <div class="ag-legenda">
-      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
+      ${agLegendaUnidadesHtml()}
     </div>
   `;
 }
@@ -4135,7 +4164,15 @@ function agFormEvento(ev) {
       <div class="form-row"><label>Início</label><input id="evIni" type="time" value="${escapeHtml(ev.HoraInicio || "")}"></div>
       <div class="form-row"><label>Fim</label><input id="evFim" type="time" value="${escapeHtml(ev.HoraFim || "")}"></div>
     </div>
-    <div class="form-row"><label>Local</label><input id="evLocal" type="text" value="${escapeHtml(ev.Local || "")}"></div>
+    <div class="grid g2">
+      <div class="form-row"><label>Unidade</label>
+        <select id="evUnidade">
+          <option value="">— Sem unidade (tarefa geral) —</option>
+          ${(STATE.init.unidades || []).map(u => `<option ${agNorm(u) === agNorm(ev.Unidade) ? "selected" : ""}>${escapeHtml(u)}</option>`).join("")}
+        </select>
+      </div>
+      <div class="form-row"><label>Local</label><input id="evLocal" type="text" value="${escapeHtml(ev.Local || "")}"></div>
+    </div>
     <div class="form-row"><label>Responsável (líder / sócio)</label>
       <input id="evResp" type="text" list="dl-ag-resp" placeholder="De quem é este compromisso" value="${escapeHtml(ev.Responsavel || "")}">
       <datalist id="dl-ag-resp">${agResponsaveis().map(r => `<option value="${escapeHtml(r)}"></option>`).join("")}</datalist>
@@ -4160,7 +4197,8 @@ async function agSalvarEvento() {
     id: el("#evId").value, titulo: el("#evTitulo").value.trim(), data: el("#evData").value,
     tipo: el("#evTipo").value, horaInicio: el("#evIni").value, horaFim: el("#evFim").value,
     local: el("#evLocal").value.trim(), descricao: el("#evDesc").value,
-    responsavel: (el("#evResp") ? el("#evResp").value.trim() : "")
+    responsavel: (el("#evResp") ? el("#evResp").value.trim() : ""),
+    unidade: (el("#evUnidade") ? el("#evUnidade").value : "")
   };
   if (!dados.titulo || !dados.data) { toast("Informe título e data.", "err"); return; }
   try {

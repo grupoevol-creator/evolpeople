@@ -3706,11 +3706,27 @@ async function carregarAvisos() {
   } catch (e) { document.getElementById("tabelaAvisos").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
 /* ===================== AGENDA ===================== */
+// NOVO (pedido 2026-07-23 — "coloque esse modelo de agenda no evolpeople, é
+// mais bonito que o que está atualmente"): virou uma agenda SEMANAL em
+// cartões (domingo a sábado), no mesmo estilo visual da tela do PCP que a
+// Jeffany mandou de referência — antes era um calendário mensal tradicional.
+// Mantido: filtro por responsável/grupo (Agenda de PCP etc.) e as cores por
+// Tipo — essa agenda é organizada por PESSOA, não por unidade, então "Tipo"
+// (Reunião/Aniversário/...) é o equivalente aqui à cor por unidade do PCP.
 async function renderAgenda() {
   const hoje = new Date();
-  if (!STATE.ag) STATE.ag = { ano: hoje.getFullYear(), mes: hoje.getMonth(), eventos: [] };
+  // "visao" = "semana" (padrão, modelo novo em cartões) ou "mes" (calendário
+  // tradicional — pedido 2026-07-23: "não tem a opção de colocar semanal e
+  // mensal não?"). As duas visões guardam sua própria posição de navegação
+  // (semanaInicio / mesAtual+anoAtual) pra não se atrapalharem ao alternar.
+  if (!STATE.ag) STATE.ag = {
+    visao: "semana",
+    semanaInicio: agDomingoDaSemana(hoje),
+    mesAtual: hoje.getMonth(), anoAtual: hoje.getFullYear(),
+    eventos: []
+  };
   setMain(`
-    <div class="page-title"><div><h2>📅 Agenda</h2><p>Calendário da equipe — filtre por responsável (líder/sócio) para ver a agenda de quem quiser.</p></div></div>
+    <div class="page-title"><div><h2>📅 Agenda</h2><p>Agenda da equipe — filtre por responsável (líder/sócio) e alterne entre visão semanal e mensal.</p></div></div>
     <div class="card" id="agWrap"><div class="loading">Carregando agenda...</div></div>
   `);
   await agCarregar();
@@ -3733,7 +3749,16 @@ const AG_CORES = {
   "PLANTAO": "#dc2626", "OUTRO": "#64748b"
 };
 const AG_TIPOS = ["Reunião", "Plantão", "Aniversário", "Integração", "Treinamento", "Entrevista", "Férias", "Outro"];
+// NOVO (pedido 2026-07-23 — "tem como deixar a agenda mais bonita ainda...
+// bem tecnológica? meu sonho!"): um ícone por tipo, além da cor — reforça o
+// visual "painel de controle" sem precisar de nenhuma imagem/ícone externo.
+const AG_ICONES = {
+  "REUNIAO": "🗓️", "ANIVERSARIO": "🎂", "INTEGRACAO": "🤝",
+  "TREINAMENTO": "🎓", "ENTREVISTA": "🎤", "FERIAS": "🏖️",
+  "PLANTAO": "🔔", "OUTRO": "✳️"
+};
 function agCorTipo(tipo) { return AG_CORES[agNorm(tipo)] || AG_CORES["OUTRO"]; }
+function agIconeTipo(tipo) { return AG_ICONES[agNorm(tipo)] || AG_ICONES["OUTRO"]; }
 // Data de um evento -> "YYYY-MM-DD" (aceita ISO ou dd/MM/yyyy)
 function agDataISO(v) {
   v = String(v || "").trim();
@@ -3743,27 +3768,151 @@ function agDataISO(v) {
   if (m) return `${m[3]}-${("0" + m[2]).slice(-2)}-${("0" + m[1]).slice(-2)}`;
   return "";
 }
-// Aniversários do mês exibido (derivados dos colaboradores)
-function agAniversarios(ano, mes) {
+function agEhConcluido(ev) { return String(ev.Concluido || "").trim().toUpperCase() === "TRUE"; }
+// Domingo da semana de uma data qualquer (00:00, sem hora) — base da agenda semanal.
+function agDomingoDaSemana(data) {
+  const d = new Date(data); d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() - d.getDay());
+  return d;
+}
+function agParaISO(d) { return `${d.getFullYear()}-${("0" + (d.getMonth() + 1)).slice(-2)}-${("0" + d.getDate()).slice(-2)}`; }
+function agRotuloSemana(inicio) {
+  const meses3 = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+  const fim = new Date(inicio); fim.setDate(fim.getDate() + 6);
+  const r1 = `${inicio.getDate()} de ${meses3[inicio.getMonth()]}.`;
+  const r2 = `${fim.getDate()} de ${meses3[fim.getMonth()]}. de ${fim.getFullYear()}`;
+  return `${r1} — ${r2}`;
+}
+// Aniversário de um colaborador NUM DIA ESPECÍFICO (dd/mm) — usado célula a
+// célula na semana visível, em vez de "todos do mês" (que fazia sentido no
+// calendário mensal antigo, mas não numa semana só).
+function agAniversariosDoDia(dia, mes) {
   const out = [];
   (STATE.init.colaboradores || []).forEach(c => {
     const raw = c.Nascimento || c.Aniversario || c["Dt_Nascimento"] || c.DataNascimento || "";
     const s = String(raw).trim(); if (!s) return;
-    let dd, mm;
-    let m = s.match(/^(\d{1,2})[\/\-](\d{1,2})/);
-    if (m) { dd = +m[1]; mm = +m[2]; } else { return; }
-    if (mm - 1 !== mes) return;
-    out.push({ dia: dd, tipo: "Aniversário", titulo: "🎂 " + (c.Nome || ""), aniversario: true });
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})/);
+    if (!m) return;
+    if (+m[1] === dia && (+m[2] - 1) === mes) out.push({ titulo: "🎂 " + (c.Nome || "") });
   });
   return out;
 }
 function agRender() {
-  const { ano, mes } = STATE.ag;
-  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
-  const primeiro = new Date(ano, mes, 1);
-  const diaSemInicio = primeiro.getDay(); // 0=Dom
-  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
-  const hoje = new Date(); const hojeISO = `${hoje.getFullYear()}-${("0" + (hoje.getMonth() + 1)).slice(-2)}-${("0" + hoje.getDate()).slice(-2)}`;
+  if (STATE.ag.visao === "mes") agRenderMes(); else agRenderSemana();
+}
+// Filtro por responsável/grupo + toggle Semana/Mês — reaproveitado nas duas
+// visões pra não duplicar o mesmo HTML duas vezes.
+function agFiltroSelectHtml() {
+  const filtro = STATE.ag.filtro || "";
+  return `
+    <select id="agFiltro" onchange="agSetFiltro(this.value)" title="Filtrar por responsável" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
+      <option value="">👥 Todas as agendas</option>
+      ${Object.keys(AGENDA_GRUPOS).map(g => `<option value="GRUPO:${g}" ${filtro === "GRUPO:" + g ? "selected" : ""}>🧩 Agenda de ${g} (${AGENDA_GRUPOS[g].join(" + ")})</option>`).join("")}
+      ${agResponsaveis().map(r => `<option ${agNorm(r) === agNorm(filtro) ? "selected" : ""}>${escapeHtml(r)}</option>`).join("")}
+    </select>`;
+}
+function agToggleVisaoHtml() {
+  const v = STATE.ag.visao;
+  return `
+    <div class="ag-toggle-visao">
+      <button class="${v === "semana" ? "is-ativo" : ""}" onclick="agSetVisao('semana')">Semana</button>
+      <button class="${v === "mes" ? "is-ativo" : ""}" onclick="agSetVisao('mes')">Mês</button>
+    </div>`;
+}
+// NOVO (pedido 2026-07-23 — "tem como deixar a agenda mais bonita ainda do
+// que isso? e bem tecnologica? meu sonho!"): virou um "painel de controle" —
+// fundo escuro em gradiente com textura de pontos, borda com brilho animado
+// no topo, coluna de hoje pulsando, cartões com leve elevação no hover, e um
+// indicador "ao vivo" no cabeçalho. Tudo em CSS puro (sem imagem/lib externa)
+// pra não depender de nada fora do próprio Apps Script.
+function agEstilosHtml() {
+  return `
+    <style>
+      @keyframes agFadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes agGlowPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,211,238,.55),0 0 16px rgba(34,211,238,.35)}50%{box-shadow:0 0 0 2px rgba(34,211,238,.95),0 0 26px rgba(34,211,238,.65)}}
+      @keyframes agDotPulse{0%,100%{opacity:1;box-shadow:0 0 8px #34d399}50%{opacity:.5;box-shadow:0 0 2px #34d399}}
+      @keyframes agShimmer{0%{background-position:-220% 0}100%{background-position:220% 0}}
+
+      .ag-tech{position:relative;background:
+          radial-gradient(circle at 18% -12%, rgba(34,211,238,.14), transparent 45%),
+          linear-gradient(160deg, var(--azul-3,#0f1e36), var(--azul,#13233f) 55%, var(--azul-2,#1f3761));
+        border-radius:20px;padding:20px;overflow:hidden;
+        box-shadow:0 22px 60px rgba(8,16,32,.4), inset 0 1px 0 rgba(255,255,255,.06);
+      }
+      .ag-tech::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
+        background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px);
+        background-size:20px 20px;
+      }
+      .ag-tech::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;
+        background:linear-gradient(90deg, transparent, #22d3ee, var(--laranja,#e47b35), transparent);
+        background-size:200% 100%;animation:agShimmer 5s linear infinite;
+      }
+      .ag-top{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
+      .ag-top h3{margin:0;font-size:19px;font-weight:800;letter-spacing:-.01em;
+        background:linear-gradient(90deg,#ffffff,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent}
+      .ag-status{display:flex;align-items:center;gap:6px;font-size:10.5px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-top:4px}
+      .ag-status i{width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block;animation:agDotPulse 2s ease-in-out infinite}
+      .ag-nav{position:relative;z-index:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .ag-nav select{padding:8px 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;font-size:12.5px;font-family:inherit;background:rgba(255,255,255,.08);color:#fff;backdrop-filter:blur(6px)}
+      .ag-nav select option{color:#0f172a}
+      .ag-nav .btn-secondary{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(6px)}
+      .ag-nav .btn-secondary:hover{background:rgba(255,255,255,.2)}
+      .ag-nav .btn-primary{background:linear-gradient(135deg,var(--laranja,#e47b35),var(--laranja-2,#c96525));border:none;box-shadow:0 6px 18px rgba(228,123,53,.45)}
+      .ag-toggle-visao{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06);backdrop-filter:blur(6px)}
+      .ag-toggle-visao button{border:none;background:transparent;padding:7px 16px;font-size:12px;font-weight:700;color:rgba(255,255,255,.7);cursor:pointer;transition:.2s}
+      .ag-toggle-visao button.is-ativo{background:linear-gradient(135deg,#22d3ee,#0891b2);color:#062028;box-shadow:0 0 14px rgba(34,211,238,.55)}
+
+      .ag-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(7,minmax(152px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
+      .ag-col{display:flex;flex-direction:column;gap:9px;min-width:152px}
+      .ag-col-head{position:relative;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#fff;text-align:center;border-radius:12px;padding:9px 4px;backdrop-filter:blur(6px)}
+      .ag-col-hoje{border-color:rgba(34,211,238,.7);animation:agGlowPulse 2.6s ease-in-out infinite}
+      .ag-col-dia{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;opacity:.7}
+      .ag-col-data{font-family:'Courier New',monospace;font-size:15px;font-weight:700;margin-top:2px;letter-spacing:.02em}
+
+      .ag-card{position:relative;background:rgba(255,255,255,.97);border:1px solid rgba(255,255,255,.5);border-left:4px solid #64748b;border-radius:11px;padding:10px;
+        box-shadow:0 6px 16px rgba(0,0,0,.2);animation:agFadeUp .35s ease both;transition:transform .18s ease, box-shadow .18s ease}
+      .ag-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(0,0,0,.3)}
+      .ag-card-feito{opacity:.55}
+      .ag-card-feito .ag-card-titulo{text-decoration:line-through}
+      .ag-card-hora{font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.02em}
+      .ag-card-titulo{font-size:13px;font-weight:700;color:#13233f;margin-top:3px}
+      .ag-card-linha{font-size:11px;color:#64748b;margin-top:3px}
+      .ag-card-resp{font-weight:700;color:#334155}
+      .ag-card-desc{font-size:11px;color:#64748b;margin-top:3px;line-height:1.4}
+      .ag-card-acoes{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
+      .ag-card-acoes button{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;transition:.15s}
+      .ag-card-acoes button:hover{background:#0f172a;color:#fff;border-color:#0f172a}
+      .ag-add{border:1.5px dashed rgba(255,255,255,.35);border-radius:11px;padding:8px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.05);cursor:pointer;width:100%;transition:.15s}
+      .ag-add:hover{background:rgba(255,255,255,.15);border-color:#22d3ee;color:#a5f3fc}
+
+      .ag-mes-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
+      .ag-mes-head{background:rgba(255,255,255,.08);color:#fff;text-align:center;padding:9px 4px;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase}
+      .ag-mes-cel{background:rgba(15,23,42,.55);min-height:98px;padding:5px;cursor:pointer;transition:background .15s}
+      .ag-mes-cel:hover{background:rgba(34,211,238,.12)}
+      .ag-mes-vazia{background:rgba(15,23,42,.28);cursor:default}
+      .ag-mes-hoje{background:rgba(34,211,238,.16);box-shadow:inset 0 0 0 2px #22d3ee}
+      .ag-mes-num{font-family:'Courier New',monospace;font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:3px}
+      .ag-mes-chips{display:flex;flex-direction:column;gap:2px}
+      .ag-mes-chip{color:#fff;font-size:11px;line-height:1.25;padding:2px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+
+      .ag-legenda{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+      .ag-legenda span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(255,255,255,.8);font-weight:600;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:4px 10px;border-radius:999px}
+      .ag-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+      .ag-modal-bg{position:fixed;inset:0;background:rgba(6,12,24,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
+      .ag-modal{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;max-height:90vh;overflow:auto;box-shadow:0 30px 70px rgba(0,0,0,.4)}
+
+      @media (max-width:720px){ .ag-tech{padding:14px} }
+    </style>`;
+}
+function agStatusHtml() {
+  const agora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `<div class="ag-status"><i></i>Painel ao vivo — atualizado às ${agora}</div>`;
+}
+// ---- Visão SEMANAL (pedido 2026-07-23 — modelo de cartões do PCP) ----
+function agRenderSemana() {
+  const inicio = STATE.ag.semanaInicio;
+  const hoje = new Date(); const hojeISO = agParaISO(hoje);
+  const diasSemana = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
   // eventos por dia (ISO), aplicando o filtro por responsável (ou por grupo,
   // ex.: "Agenda de PCP" = André + Daniel juntos — ver AGENDA_GRUPOS)
   const filtro = STATE.ag.filtro || "";
@@ -3775,85 +3924,173 @@ function agRender() {
     const iso = agDataISO(ev.Data); if (!iso) return;
     (porDia[iso] = porDia[iso] || []).push(ev);
   });
-  // aniversários
-  const aniv = agAniversarios(ano, mes);
-  const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
-  let celulas = "";
-  // espaços antes do dia 1
-  for (let i = 0; i < diaSemInicio; i++) celulas += `<div class="ag-cel ag-vazia"></div>`;
-  for (let dia = 1; dia <= diasNoMes; dia++) {
-    const iso = `${ano}-${("0" + (mes + 1)).slice(-2)}-${("0" + dia).slice(-2)}`;
-    const evs = (porDia[iso] || []).slice().sort((a, b) => String(a.HoraInicio || "").localeCompare(String(b.HoraInicio || "")));
-    const anivDia = aniv.filter(a => a.dia === dia);
+
+  let colunas = "";
+  for (let i = 0; i < 7; i++) {
+    const diaData = new Date(inicio); diaData.setDate(diaData.getDate() + i);
+    const iso = agParaISO(diaData);
     const isHoje = iso === hojeISO;
-    let chips = "";
-    anivDia.forEach(a => {
-      chips += `<div class="ag-chip" style="background:${agCorTipo("Aniversario")}" title="${escapeHtml(a.titulo)}">${escapeHtml(a.titulo)}</div>`;
+    const evs = (porDia[iso] || []).slice().sort((a, b) => String(a.HoraInicio || "").localeCompare(String(b.HoraInicio || "")));
+    const aniv = agAniversariosDoDia(diaData.getDate(), diaData.getMonth());
+
+    let cartoes = "";
+    let ordemCartao = 0;
+    aniv.forEach(a => {
+      cartoes += `<div class="ag-card" style="border-left-color:${agCorTipo("Aniversario")};animation-delay:${(ordemCartao++) * 50}ms">
+        <div class="ag-card-titulo">${escapeHtml(a.titulo)}</div>
+      </div>`;
     });
     evs.forEach(ev => {
-      const hora = ev.HoraInicio ? escapeHtml(ev.HoraInicio) + " " : "";
+      const hora = ev.HoraInicio ? `${escapeHtml(ev.HoraInicio)}${ev.HoraFim ? " – " + escapeHtml(ev.HoraFim) : ""}` : "Dia todo";
+      const concluido = agEhConcluido(ev);
       // Numa agenda de grupo (ex.: PCP), mostra de quem é o compromisso —
       // senão, junto no mesmo dia, não dava pra saber se era do André ou do
       // Daniel só de olhar.
-      const dono = grupo ? `[${escapeHtml(String(ev.Responsavel || "").split(" ")[0])}] ` : "";
-      chips += `<div class="ag-chip" style="background:${agCorTipo(ev.Tipo)}" title="${escapeHtml((ev.Responsavel ? ev.Responsavel + " — " : "") + (ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${dono}${escapeHtml(ev.Titulo || "")}</div>`;
+      cartoes += `
+        <div class="ag-card ${concluido ? "ag-card-feito" : ""}" style="border-left-color:${agCorTipo(ev.Tipo)};animation-delay:${(ordemCartao++) * 50}ms">
+          <div class="ag-card-hora">${hora}</div>
+          <div class="ag-card-titulo">${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>
+          ${ev.Local ? `<div class="ag-card-linha">📍 ${escapeHtml(ev.Local)}</div>` : ""}
+          ${ev.Responsavel ? `<div class="ag-card-linha ag-card-resp">${escapeHtml(ev.Responsavel)}</div>` : ""}
+          ${ev.Descricao ? `<div class="ag-card-desc">${escapeHtml(ev.Descricao)}</div>` : ""}
+          <div class="ag-card-acoes">
+            <button onclick="agAbrirEvento('${escapeHtml(ev.Id)}')">editar</button>
+            <button onclick="agMarcarConcluido('${escapeHtml(ev.Id)}', ${!concluido})">${concluido ? "reabrir" : "feito"}</button>
+            <button onclick="agExcluirEvento('${escapeHtml(ev.Id)}')">excluir</button>
+          </div>
+        </div>`;
     });
-    celulas += `
-      <div class="ag-cel ${isHoje ? "ag-hoje" : ""}" onclick="agNovoEvento('${iso}')">
-        <div class="ag-num">${dia}</div>
-        <div class="ag-chips">${chips}</div>
+
+    colunas += `
+      <div class="ag-col">
+        <div class="ag-col-head ${isHoje ? "ag-col-hoje" : ""}">
+          <div class="ag-col-dia">${diasSemana[i]}</div>
+          <div class="ag-col-data">${String(diaData.getDate()).padStart(2, "0")}/${String(diaData.getMonth() + 1).padStart(2, "0")}</div>
+        </div>
+        ${cartoes}
+        <button class="ag-add" onclick="agNovoEvento('${iso}')">+ adicionar</button>
       </div>`;
   }
+
   document.getElementById("agWrap").innerHTML = `
-    <style>
-      .ag-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap;gap:8px}
-      .ag-top h3{margin:0;color:var(--azul,#1a2b4a)}
-      .ag-nav button{margin-left:6px}
-      .ag-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#e2e8f0;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden}
-      .ag-head{background:#1a2b4a;color:#fff;text-align:center;padding:8px 4px;font-weight:700;font-size:12px}
-      .ag-cel{background:#fff;min-height:96px;padding:4px;cursor:pointer;transition:background .1s}
-      .ag-cel:hover{background:#f1f5f9}
-      .ag-vazia{background:#f8fafc;cursor:default}
-      .ag-hoje{background:#fff7ed;box-shadow:inset 0 0 0 2px #f59e0b}
-      .ag-num{font-size:12px;font-weight:700;color:#334155;margin-bottom:2px}
-      .ag-chips{display:flex;flex-direction:column;gap:2px}
-      .ag-chip{color:#fff;font-size:11px;line-height:1.25;padding:2px 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-      .ag-legenda{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:#475569}
-      .ag-legenda span{display:inline-flex;align-items:center;gap:5px}
-      .ag-dot{width:10px;height:10px;border-radius:3px;display:inline-block}
-      .ag-modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
-      .ag-modal{background:#fff;border-radius:12px;max-width:460px;width:100%;padding:18px;max-height:90vh;overflow:auto}
-    </style>
-    <div class="ag-top">
-      <h3>${meses[mes]} de ${ano}</h3>
-      <div class="ag-nav" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-        <select id="agFiltro" onchange="agSetFiltro(this.value)" title="Filtrar por responsável" style="padding:7px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px">
-          <option value="">👥 Todas as agendas</option>
-          ${Object.keys(AGENDA_GRUPOS).map(g => `<option value="GRUPO:${g}" ${filtro === "GRUPO:" + g ? "selected" : ""}>🧩 Agenda de ${g} (${AGENDA_GRUPOS[g].join(" + ")})</option>`).join("")}
-          ${agResponsaveis().map(r => `<option ${agNorm(r) === agNorm(filtro) ? "selected" : ""}>${escapeHtml(r)}</option>`).join("")}
-        </select>
-        <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
-        <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
-        <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
-        <button class="btn btn-primary" onclick="agNovoEvento('')">+ Novo evento</button>
+    ${agEstilosHtml()}
+    <div class="ag-tech">
+      <div class="ag-top">
+        <div>
+          <h3>${agRotuloSemana(inicio)}</h3>
+          ${agStatusHtml()}
+        </div>
+        <div class="ag-nav">
+          ${agToggleVisaoHtml()}
+          ${agFiltroSelectHtml()}
+          <button class="btn btn-secondary" onclick="agSemana(-7)">◀</button>
+          <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
+          <button class="btn btn-secondary" onclick="agSemana(7)">▶</button>
+          <button class="btn btn-primary" onclick="agNovoEvento('')">+ Nova atividade</button>
+        </div>
       </div>
-    </div>
-    <div class="ag-grid">
-      ${semana.map(s => `<div class="ag-head">${s}</div>`).join("")}
-      ${celulas}
-    </div>
-    <div class="ag-legenda">
-      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${t}</span>`).join("")}
+      <div class="ag-grid">${colunas}</div>
+      <div class="ag-legenda">
+        ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
+      </div>
     </div>
   `;
 }
-function agMes(delta) {
-  STATE.ag.mes += delta;
-  if (STATE.ag.mes < 0) { STATE.ag.mes = 11; STATE.ag.ano--; }
-  if (STATE.ag.mes > 11) { STATE.ag.mes = 0; STATE.ag.ano++; }
+// ---- Visão MENSAL (pedido 2026-07-23 — "não tem a opção de colocar semanal
+// e mensal não?"): calendário tradicional, igual ao que já existia antes da
+// mudança pro modelo de cartões — só ganhou o toggle e reaproveita o mesmo
+// filtro/legenda/estilos da visão semanal. ----
+function agRenderMes() {
+  const ano = STATE.ag.anoAtual, mes = STATE.ag.mesAtual;
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  const primeiro = new Date(ano, mes, 1);
+  const diaSemInicio = primeiro.getDay(); // 0=Dom
+  const diasNoMes = new Date(ano, mes + 1, 0).getDate();
+  const hoje = new Date(); const hojeISO = agParaISO(hoje);
+  const filtro = STATE.ag.filtro || "";
+  const grupo = agGrupoAtivo();
+  const porDia = {};
+  (STATE.ag.eventos || []).forEach(ev => {
+    if (grupo) { if (!grupo.some(nome => agNorm(nome) === agNorm(ev.Responsavel))) return; }
+    else if (filtro && agNorm(ev.Responsavel) !== agNorm(filtro)) return;
+    const iso = agDataISO(ev.Data); if (!iso) return;
+    (porDia[iso] = porDia[iso] || []).push(ev);
+  });
+  const semana = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+  let celulas = "";
+  for (let i = 0; i < diaSemInicio; i++) celulas += `<div class="ag-mes-cel ag-mes-vazia"></div>`;
+  for (let dia = 1; dia <= diasNoMes; dia++) {
+    const iso = `${ano}-${("0" + (mes + 1)).slice(-2)}-${("0" + dia).slice(-2)}`;
+    const evs = (porDia[iso] || []).slice().sort((a, b) => String(a.HoraInicio || "").localeCompare(String(b.HoraInicio || "")));
+    const anivDia = agAniversariosDoDia(dia, mes);
+    const isHoje = iso === hojeISO;
+    let chips = "";
+    anivDia.forEach(a => {
+      chips += `<div class="ag-mes-chip" style="background:${agCorTipo("Aniversario")}" title="${escapeHtml(a.titulo)}">${escapeHtml(a.titulo)}</div>`;
+    });
+    evs.forEach(ev => {
+      const hora = ev.HoraInicio ? escapeHtml(ev.HoraInicio) + " " : "";
+      const dono = grupo ? `[${escapeHtml(String(ev.Responsavel || "").split(" ")[0])}] ` : "";
+      const concluido = agEhConcluido(ev);
+      chips += `<div class="ag-mes-chip" style="background:${agCorTipo(ev.Tipo)};${concluido ? "text-decoration:line-through;opacity:.6" : ""}" title="${escapeHtml((ev.Responsavel ? ev.Responsavel + " — " : "") + (ev.Titulo || "") + (ev.Local ? " @ " + ev.Local : ""))}" onclick="event.stopPropagation(); agAbrirEvento('${escapeHtml(ev.Id)}')">${hora}${dono}${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>`;
+    });
+    celulas += `
+      <div class="ag-mes-cel ${isHoje ? "ag-mes-hoje" : ""}" onclick="agNovoEvento('${iso}')">
+        <div class="ag-mes-num">${dia}</div>
+        <div class="ag-mes-chips">${chips}</div>
+      </div>`;
+  }
+
+  document.getElementById("agWrap").innerHTML = `
+    ${agEstilosHtml()}
+    <div class="ag-tech">
+      <div class="ag-top">
+        <div>
+          <h3>${meses[mes]} de ${ano}</h3>
+          ${agStatusHtml()}
+        </div>
+        <div class="ag-nav">
+          ${agToggleVisaoHtml()}
+          ${agFiltroSelectHtml()}
+          <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
+          <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
+          <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
+          <button class="btn btn-primary" onclick="agNovoEvento('')">+ Novo evento</button>
+        </div>
+      </div>
+      <div class="ag-mes-grid">
+        ${semana.map(s => `<div class="ag-mes-head">${s}</div>`).join("")}
+        ${celulas}
+      </div>
+      <div class="ag-legenda">
+        ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
+      </div>
+    </div>
+  `;
+}
+function agSemana(deltaDias) {
+  STATE.ag.semanaInicio.setDate(STATE.ag.semanaInicio.getDate() + deltaDias);
   agRender();
 }
-function agHoje() { const h = new Date(); STATE.ag.ano = h.getFullYear(); STATE.ag.mes = h.getMonth(); agRender(); }
+function agMes(delta) {
+  STATE.ag.mesAtual += delta;
+  if (STATE.ag.mesAtual < 0) { STATE.ag.mesAtual = 11; STATE.ag.anoAtual--; }
+  if (STATE.ag.mesAtual > 11) { STATE.ag.mesAtual = 0; STATE.ag.anoAtual++; }
+  agRender();
+}
+function agHoje() {
+  const h = new Date();
+  STATE.ag.semanaInicio = agDomingoDaSemana(h);
+  STATE.ag.mesAtual = h.getMonth(); STATE.ag.anoAtual = h.getFullYear();
+  agRender();
+}
+function agSetVisao(v) { STATE.ag.visao = v; agRender(); }
+async function agMarcarConcluido(id, concluido) {
+  try {
+    await api("marcarEventoAgendaConcluido", { id, concluido });
+    await agCarregar();
+  } catch (e) { toast(e.message, "err"); }
+}
 // Lista para o filtro da agenda: TODOS os colaboradores + os líderes/sócios do organograma + donos de eventos.
 // Lista fixa de responsáveis para o filtro da agenda (definida pela RH).
 const AGENDA_RESPONSAVEIS = [
@@ -3869,7 +4106,12 @@ const AGENDA_RESPONSAVEIS = [
 // separada (não substitui, soma). Pra adicionar outro setor combinado no
 // futuro, basta acrescentar uma chave aqui.
 const AGENDA_GRUPOS = {
-  "PCP": ["Daniel Jourdain", "André Coelho"]
+  "PCP": ["Daniel Jourdain", "André Coelho"],
+  // NOVO (pedido 2026-07-23 — "e se eu quiser unificar a agenda do rh
+  // também igual do pcp? jeffany alencar, victor pinheiro e mary diane
+  // são todos do rh"): mesma lógica da Agenda de PCP — soma os
+  // compromissos dos três, sem substituir a visão individual de cada um.
+  "RH": ["Jeffany Alencar", "Victor Pinheiro", "Mary Diane"]
 };
 function agGrupoAtivo() {
   const f = STATE.ag.filtro || "";

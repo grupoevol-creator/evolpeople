@@ -220,7 +220,17 @@ async function fazerLogin(ev) {
     msgEl.style.display = "block";
   }
 }
-function sair() {
+// CORREÇÃO DE SEGURANÇA (revisão 2026-07-22): antes, "Sair" só apagava o
+// token guardado no navegador — o token continuava válido no servidor pelas
+// próximas 12h (validade da sessão), então quem tivesse esse token (ex.: se
+// vazasse por algum motivo) ainda conseguiria usá-lo mesmo depois do dono
+// "sair". Agora Sair avisa o servidor (ação "logout") pra apagar a sessão de
+// verdade ANTES de limpar o lado do navegador — assim o token para de
+// funcionar imediatamente, não só daqui a 12h. Se a chamada ao servidor
+// falhar por qualquer motivo (sem internet, etc.), ainda assim limpamos o
+// navegador — não queremos travar o usuário na tela por causa disso.
+async function sair() {
+  try { await api("logout", {}); } catch (e) {}
   limparSessao();
   STATE.user = null;
   document.getElementById("appScreen").style.display = "none";
@@ -3543,6 +3553,9 @@ async function carregarDossie(nome) {
               <td class="muted">Folga</td><td>${escapeHtml(c.Folga || "—")}</td></tr>
           <tr><td class="muted">Telefone</td><td>${escapeHtml(c.Telefone || "—")}</td>
               <td class="muted">Nascimento</td><td>${escapeHtml(c.DataNascimento || "—")}</td></tr>
+          <tr><td class="muted">Salário</td><td colspan="3" style="font-weight:600">
+            Salário Fixo: ${fmtMoeda(c.SalarioBase || 0)} + Salário Complementar: ${fmtMoeda(c.SalarioComplementar || 0)} = Total: ${fmtMoeda(c.SalarioTotal || 0)}
+          </td></tr>
         </tbody>
       </table></div>
     </div>

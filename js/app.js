@@ -2036,9 +2036,9 @@ function cardSolicitacoes(sr) {
         <td>${escapeHtml(s.Colaborador)}</td>
         <td>${escapeHtml(s.Unidade)}</td>
         <td>${escapeHtml(s.SolicitadoPor)}</td>
-        <td>${norm(s.Urgencia) === "URGENTE" ? `<span class="badge bad">🚨 Urgente</span>` : `<span class="muted">Normal</span>`}</td>
-        <td><span class="badge ${norm(s.Status) === "ATENDIDA" ? "ok" : (norm(s.Status) === "RECUSADA" ? "bad" : "warn")}">${escapeHtml(s.Status)}</span></td>
-        ${podeAtender ? `<td>${(norm(s.Status) === "ATENDIDA" || norm(s.Status) === "RECUSADA") ? "" : `
+        <td>${normalize(s.Urgencia) === "URGENTE" ? `<span class="badge bad">🚨 Urgente</span>` : `<span class="muted">Normal</span>`}</td>
+        <td><span class="badge ${normalize(s.Status) === "ATENDIDA" ? "ok" : (normalize(s.Status) === "RECUSADA" ? "bad" : "warn")}">${escapeHtml(s.Status)}</span></td>
+        ${podeAtender ? `<td>${(normalize(s.Status) === "ATENDIDA" || normalize(s.Status) === "RECUSADA") ? "" : `
           <button class="btn btn-sm btn-primary" onclick="atualizarSolicitacao('${escapeHtml(s.Id)}','Atendida')">Atender</button>
           <button class="btn btn-sm btn-secondary" onclick="atualizarSolicitacao('${escapeHtml(s.Id)}','Recusada')">Recusar</button>`}</td>` : ""}
       </tr>`).join("")}</tbody>

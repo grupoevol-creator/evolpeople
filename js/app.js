@@ -3819,94 +3819,84 @@ function agToggleVisaoHtml() {
       <button class="${v === "mes" ? "is-ativo" : ""}" onclick="agSetVisao('mes')">Mês</button>
     </div>`;
 }
-// NOVO (pedido 2026-07-23 — "tem como deixar a agenda mais bonita ainda do
-// que isso? e bem tecnologica? meu sonho!"): virou um "painel de controle" —
-// fundo escuro em gradiente com textura de pontos, borda com brilho animado
-// no topo, coluna de hoje pulsando, cartões com leve elevação no hover, e um
-// indicador "ao vivo" no cabeçalho. Tudo em CSS puro (sem imagem/lib externa)
-// pra não depender de nada fora do próprio Apps Script.
+// REVISADO (pedido 2026-07-23 — "esse modelo é mais bonito do que você
+// colocou, agora precisa é deixar igual só que tecnologico"): a primeira
+// versão foi longe demais pro lado "escuro/neon". O pedido real era bater
+// exatamente no visual CLARO da referência (fundo branco, cabeçalho navy,
+// cartões clarinhos por cor, botão laranja) e só ADICIONAR uma camada de
+// polimento "tecnológico" por cima — animações suaves, ícone por tipo,
+// indicador "ao vivo" discreto — sem trocar a paleta. Cores vêm das mesmas
+// variáveis já usadas no resto do app (--azul/--laranja em style.css).
+function agHexParaRgba(hex, alpha) {
+  hex = String(hex || "#64748b").replace("#", "");
+  if (hex.length === 3) hex = hex.split("").map(c => c + c).join("");
+  const r = parseInt(hex.substring(0, 2), 16), g = parseInt(hex.substring(2, 4), 16), b = parseInt(hex.substring(4, 6), 16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
 function agEstilosHtml() {
   return `
     <style>
-      @keyframes agFadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
-      @keyframes agGlowPulse{0%,100%{box-shadow:0 0 0 2px rgba(34,211,238,.55),0 0 16px rgba(34,211,238,.35)}50%{box-shadow:0 0 0 2px rgba(34,211,238,.95),0 0 26px rgba(34,211,238,.65)}}
-      @keyframes agDotPulse{0%,100%{opacity:1;box-shadow:0 0 8px #34d399}50%{opacity:.5;box-shadow:0 0 2px #34d399}}
-      @keyframes agShimmer{0%{background-position:-220% 0}100%{background-position:220% 0}}
+      @keyframes agFadeUp{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+      @keyframes agAnelPulse{0%,100%{box-shadow:0 0 0 2px var(--laranja,#e47b35)}50%{box-shadow:0 0 0 2px var(--laranja,#e47b35),0 0 0 5px rgba(228,123,53,.18)}}
+      @keyframes agDotPulse{0%,100%{opacity:1}50%{opacity:.35}}
 
-      .ag-tech{position:relative;background:
-          radial-gradient(circle at 18% -12%, rgba(34,211,238,.14), transparent 45%),
-          linear-gradient(160deg, var(--azul-3,#0f1e36), var(--azul,#13233f) 55%, var(--azul-2,#1f3761));
-        border-radius:20px;padding:20px;overflow:hidden;
-        box-shadow:0 22px 60px rgba(8,16,32,.4), inset 0 1px 0 rgba(255,255,255,.06);
-      }
-      .ag-tech::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.5;
-        background-image:radial-gradient(rgba(255,255,255,.07) 1px, transparent 1px);
-        background-size:20px 20px;
-      }
-      .ag-tech::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;pointer-events:none;
-        background:linear-gradient(90deg, transparent, #22d3ee, var(--laranja,#e47b35), transparent);
-        background-size:200% 100%;animation:agShimmer 5s linear infinite;
-      }
-      .ag-top{position:relative;z-index:1;display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px}
-      .ag-top h3{margin:0;font-size:19px;font-weight:800;letter-spacing:-.01em;
-        background:linear-gradient(90deg,#ffffff,#a5f3fc);-webkit-background-clip:text;background-clip:text;color:transparent}
-      .ag-status{display:flex;align-items:center;gap:6px;font-size:10.5px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.05em;text-transform:uppercase;margin-top:4px}
-      .ag-status i{width:7px;height:7px;border-radius:50%;background:#34d399;display:inline-block;animation:agDotPulse 2s ease-in-out infinite}
-      .ag-nav{position:relative;z-index:1;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-      .ag-nav select{padding:8px 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;font-size:12.5px;font-family:inherit;background:rgba(255,255,255,.08);color:#fff;backdrop-filter:blur(6px)}
-      .ag-nav select option{color:#0f172a}
-      .ag-nav .btn-secondary{background:rgba(255,255,255,.10);color:#fff;border:1px solid rgba(255,255,255,.18);backdrop-filter:blur(6px)}
-      .ag-nav .btn-secondary:hover{background:rgba(255,255,255,.2)}
-      .ag-nav .btn-primary{background:linear-gradient(135deg,var(--laranja,#e47b35),var(--laranja-2,#c96525));border:none;box-shadow:0 6px 18px rgba(228,123,53,.45)}
-      .ag-toggle-visao{display:flex;border:1px solid rgba(255,255,255,.18);border-radius:999px;overflow:hidden;background:rgba(255,255,255,.06);backdrop-filter:blur(6px)}
-      .ag-toggle-visao button{border:none;background:transparent;padding:7px 16px;font-size:12px;font-weight:700;color:rgba(255,255,255,.7);cursor:pointer;transition:.2s}
-      .ag-toggle-visao button.is-ativo{background:linear-gradient(135deg,#22d3ee,#0891b2);color:#062028;box-shadow:0 0 14px rgba(34,211,238,.55)}
+      .ag-top{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:10px}
+      .ag-top h3{margin:0;font-size:19px;font-weight:800;color:var(--azul,#13233f);letter-spacing:-.01em}
+      .ag-status{display:flex;align-items:center;gap:6px;font-size:11px;color:#94a3b8;font-weight:600;letter-spacing:.03em;margin-top:3px}
+      .ag-status i{width:6px;height:6px;border-radius:50%;background:#22c55e;display:inline-block;animation:agDotPulse 2s ease-in-out infinite}
+      .ag-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+      .ag-nav select{padding:7px 12px;border:1px solid #dbe2ea;border-radius:999px;font-size:12.5px;font-family:inherit;background:#fff;color:#334155}
+      .ag-nav .btn-secondary{background:#fff;color:var(--azul,#13233f);border:1px solid #dbe2ea;font-weight:600;transition:.15s}
+      .ag-nav .btn-secondary:hover{background:#f1f5f9}
+      .ag-nav .btn-primary{background:linear-gradient(135deg,var(--laranja,#e47b35),var(--laranja-2,#c96525));border:none;box-shadow:0 6px 16px rgba(228,123,53,.35);font-weight:700;transition:transform .15s ease}
+      .ag-nav .btn-primary:hover{transform:translateY(-1px)}
+      .ag-toggle-visao{display:flex;border:1px solid #dbe2ea;border-radius:999px;overflow:hidden;background:#fff}
+      .ag-toggle-visao button{border:none;background:transparent;padding:7px 15px;font-size:12px;font-weight:700;color:#64748b;cursor:pointer;transition:.15s}
+      .ag-toggle-visao button.is-ativo{background:var(--azul,#13233f);color:#fff}
 
-      .ag-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(7,minmax(152px,1fr));gap:12px;overflow-x:auto;padding-bottom:6px}
-      .ag-col{display:flex;flex-direction:column;gap:9px;min-width:152px}
-      .ag-col-head{position:relative;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);color:#fff;text-align:center;border-radius:12px;padding:9px 4px;backdrop-filter:blur(6px)}
-      .ag-col-hoje{border-color:rgba(34,211,238,.7);animation:agGlowPulse 2.6s ease-in-out infinite}
-      .ag-col-dia{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:800;opacity:.7}
-      .ag-col-data{font-family:'Courier New',monospace;font-size:15px;font-weight:700;margin-top:2px;letter-spacing:.02em}
+      .ag-grid{display:grid;grid-template-columns:repeat(7,minmax(152px,1fr));gap:10px;overflow-x:auto;padding-bottom:6px}
+      .ag-col{display:flex;flex-direction:column;gap:8px;min-width:152px}
+      .ag-col-head{background:var(--azul,#13233f);color:#fff;text-align:center;border-radius:10px;padding:8px 4px;transition:box-shadow .2s}
+      .ag-col-hoje{animation:agAnelPulse 2.4s ease-in-out infinite}
+      .ag-col-dia{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;font-weight:700;opacity:.85}
+      .ag-col-data{font-size:15px;font-weight:700;margin-top:2px}
 
-      .ag-card{position:relative;background:rgba(255,255,255,.97);border:1px solid rgba(255,255,255,.5);border-left:4px solid #64748b;border-radius:11px;padding:10px;
-        box-shadow:0 6px 16px rgba(0,0,0,.2);animation:agFadeUp .35s ease both;transition:transform .18s ease, box-shadow .18s ease}
-      .ag-card:hover{transform:translateY(-3px);box-shadow:0 14px 28px rgba(0,0,0,.3)}
+      .ag-card{background:#fff;border:1px solid #e7ebf0;border-left:4px solid #64748b;border-radius:10px;padding:9px;
+        box-shadow:0 2px 8px rgba(15,23,42,.06);animation:agFadeUp .3s ease both;transition:transform .16s ease, box-shadow .16s ease}
+      .ag-card:hover{transform:translateY(-2px);box-shadow:0 10px 22px rgba(15,23,42,.14)}
       .ag-card-feito{opacity:.55}
       .ag-card-feito .ag-card-titulo{text-decoration:line-through}
-      .ag-card-hora{font-family:'Courier New',monospace;font-size:11px;font-weight:700;color:#64748b;letter-spacing:.02em}
-      .ag-card-titulo{font-size:13px;font-weight:700;color:#13233f;margin-top:3px}
+      .ag-card-hora{font-size:11px;font-weight:700;color:#64748b}
+      .ag-card-titulo{font-size:13px;font-weight:700;color:#13233f;margin-top:2px}
       .ag-card-linha{font-size:11px;color:#64748b;margin-top:3px}
       .ag-card-resp{font-weight:700;color:#334155}
       .ag-card-desc{font-size:11px;color:#64748b;margin-top:3px;line-height:1.4}
-      .ag-card-acoes{display:flex;gap:5px;margin-top:7px;flex-wrap:wrap}
-      .ag-card-acoes button{font-size:10px;font-weight:700;padding:3px 8px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;transition:.15s}
-      .ag-card-acoes button:hover{background:#0f172a;color:#fff;border-color:#0f172a}
-      .ag-add{border:1.5px dashed rgba(255,255,255,.35);border-radius:11px;padding:8px;font-size:12px;font-weight:700;color:#fff;background:rgba(255,255,255,.05);cursor:pointer;width:100%;transition:.15s}
-      .ag-add:hover{background:rgba(255,255,255,.15);border-color:#22d3ee;color:#a5f3fc}
+      .ag-card-acoes{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}
+      .ag-card-acoes button{font-size:10px;font-weight:600;padding:3px 8px;border-radius:999px;border:1px solid #e2e8f0;background:#f8fafc;color:#334155;cursor:pointer;transition:.15s}
+      .ag-card-acoes button:hover{background:var(--azul,#13233f);color:#fff;border-color:var(--azul,#13233f)}
+      .ag-add{border:1.5px dashed #cbd5e1;border-radius:10px;padding:7px;font-size:12px;font-weight:700;color:var(--laranja,#e47b35);background:none;cursor:pointer;width:100%;transition:.15s}
+      .ag-add:hover{background:#fff3ea;border-color:var(--laranja,#e47b35)}
 
-      .ag-mes-grid{position:relative;z-index:1;display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:14px;overflow:hidden}
-      .ag-mes-head{background:rgba(255,255,255,.08);color:#fff;text-align:center;padding:9px 4px;font-weight:800;font-size:11.5px;letter-spacing:.05em;text-transform:uppercase}
-      .ag-mes-cel{background:rgba(15,23,42,.55);min-height:98px;padding:5px;cursor:pointer;transition:background .15s}
-      .ag-mes-cel:hover{background:rgba(34,211,238,.12)}
-      .ag-mes-vazia{background:rgba(15,23,42,.28);cursor:default}
-      .ag-mes-hoje{background:rgba(34,211,238,.16);box-shadow:inset 0 0 0 2px #22d3ee}
-      .ag-mes-num{font-family:'Courier New',monospace;font-size:12px;font-weight:700;color:#e2e8f0;margin-bottom:3px}
+      .ag-mes-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:#e2e8f0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden}
+      .ag-mes-head{background:var(--azul,#13233f);color:#fff;text-align:center;padding:8px 4px;font-weight:700;font-size:12px}
+      .ag-mes-cel{background:#fff;min-height:96px;padding:4px;cursor:pointer;transition:background .12s}
+      .ag-mes-cel:hover{background:#f8fafc}
+      .ag-mes-vazia{background:#f8fafc;cursor:default}
+      .ag-mes-hoje{background:#fff7ed;box-shadow:inset 0 0 0 2px var(--laranja,#e47b35)}
+      .ag-mes-num{font-size:12px;font-weight:700;color:#334155;margin-bottom:2px}
       .ag-mes-chips{display:flex;flex-direction:column;gap:2px}
-      .ag-mes-chip{color:#fff;font-size:11px;line-height:1.25;padding:2px 6px;border-radius:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;box-shadow:0 2px 6px rgba(0,0,0,.3)}
+      .ag-mes-chip{color:#fff;font-size:11px;line-height:1.25;padding:2px 5px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
 
-      .ag-legenda{position:relative;z-index:1;display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
-      .ag-legenda span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(255,255,255,.8);font-weight:600;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);padding:4px 10px;border-radius:999px}
+      .ag-legenda{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+      .ag-legenda span{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#475569;font-weight:600;background:#f8fafc;border:1px solid #eef1f5;padding:4px 10px;border-radius:999px}
       .ag-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
-      .ag-modal-bg{position:fixed;inset:0;background:rgba(6,12,24,.6);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
-      .ag-modal{background:#fff;border-radius:16px;max-width:460px;width:100%;padding:20px;max-height:90vh;overflow:auto;box-shadow:0 30px 70px rgba(0,0,0,.4)}
-
-      @media (max-width:720px){ .ag-tech{padding:14px} }
+      .ag-modal-bg{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:9999;padding:16px}
+      .ag-modal{background:#fff;border-radius:14px;max-width:460px;width:100%;padding:18px;max-height:90vh;overflow:auto;box-shadow:0 24px 60px rgba(0,0,0,.25)}
     </style>`;
 }
 function agStatusHtml() {
   const agora = new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-  return `<div class="ag-status"><i></i>Painel ao vivo — atualizado às ${agora}</div>`;
+  return `<div class="ag-status"><i></i>Sincronizado às ${agora}</div>`;
 }
 // ---- Visão SEMANAL (pedido 2026-07-23 — modelo de cartões do PCP) ----
 function agRenderSemana() {
@@ -3936,18 +3926,20 @@ function agRenderSemana() {
     let cartoes = "";
     let ordemCartao = 0;
     aniv.forEach(a => {
-      cartoes += `<div class="ag-card" style="border-left-color:${agCorTipo("Aniversario")};animation-delay:${(ordemCartao++) * 50}ms">
+      const corA = agCorTipo("Aniversario");
+      cartoes += `<div class="ag-card" style="border-left-color:${corA};background:${agHexParaRgba(corA, .07)};animation-delay:${(ordemCartao++) * 45}ms">
         <div class="ag-card-titulo">${escapeHtml(a.titulo)}</div>
       </div>`;
     });
     evs.forEach(ev => {
       const hora = ev.HoraInicio ? `${escapeHtml(ev.HoraInicio)}${ev.HoraFim ? " – " + escapeHtml(ev.HoraFim) : ""}` : "Dia todo";
       const concluido = agEhConcluido(ev);
+      const cor = agCorTipo(ev.Tipo);
       // Numa agenda de grupo (ex.: PCP), mostra de quem é o compromisso —
       // senão, junto no mesmo dia, não dava pra saber se era do André ou do
       // Daniel só de olhar.
       cartoes += `
-        <div class="ag-card ${concluido ? "ag-card-feito" : ""}" style="border-left-color:${agCorTipo(ev.Tipo)};animation-delay:${(ordemCartao++) * 50}ms">
+        <div class="ag-card ${concluido ? "ag-card-feito" : ""}" style="border-left-color:${cor};background:${agHexParaRgba(cor, .07)};animation-delay:${(ordemCartao++) * 45}ms">
           <div class="ag-card-hora">${hora}</div>
           <div class="ag-card-titulo">${agIconeTipo(ev.Tipo)} ${escapeHtml(ev.Titulo || "")}</div>
           ${ev.Local ? `<div class="ag-card-linha">📍 ${escapeHtml(ev.Local)}</div>` : ""}
@@ -3974,25 +3966,23 @@ function agRenderSemana() {
 
   document.getElementById("agWrap").innerHTML = `
     ${agEstilosHtml()}
-    <div class="ag-tech">
-      <div class="ag-top">
-        <div>
-          <h3>${agRotuloSemana(inicio)}</h3>
-          ${agStatusHtml()}
-        </div>
-        <div class="ag-nav">
-          ${agToggleVisaoHtml()}
-          ${agFiltroSelectHtml()}
-          <button class="btn btn-secondary" onclick="agSemana(-7)">◀</button>
-          <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
-          <button class="btn btn-secondary" onclick="agSemana(7)">▶</button>
-          <button class="btn btn-primary" onclick="agNovoEvento('')">+ Nova atividade</button>
-        </div>
+    <div class="ag-top">
+      <div>
+        <h3>${agRotuloSemana(inicio)}</h3>
+        ${agStatusHtml()}
       </div>
-      <div class="ag-grid">${colunas}</div>
-      <div class="ag-legenda">
-        ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
+      <div class="ag-nav">
+        ${agToggleVisaoHtml()}
+        ${agFiltroSelectHtml()}
+        <button class="btn btn-secondary" onclick="agSemana(-7)">◀</button>
+        <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
+        <button class="btn btn-secondary" onclick="agSemana(7)">▶</button>
+        <button class="btn btn-primary" onclick="agNovoEvento('')">+ Nova atividade</button>
       </div>
+    </div>
+    <div class="ag-grid">${colunas}</div>
+    <div class="ag-legenda">
+      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
     </div>
   `;
 }
@@ -4043,28 +4033,26 @@ function agRenderMes() {
 
   document.getElementById("agWrap").innerHTML = `
     ${agEstilosHtml()}
-    <div class="ag-tech">
-      <div class="ag-top">
-        <div>
-          <h3>${meses[mes]} de ${ano}</h3>
-          ${agStatusHtml()}
-        </div>
-        <div class="ag-nav">
-          ${agToggleVisaoHtml()}
-          ${agFiltroSelectHtml()}
-          <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
-          <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
-          <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
-          <button class="btn btn-primary" onclick="agNovoEvento('')">+ Novo evento</button>
-        </div>
+    <div class="ag-top">
+      <div>
+        <h3>${meses[mes]} de ${ano}</h3>
+        ${agStatusHtml()}
       </div>
-      <div class="ag-mes-grid">
-        ${semana.map(s => `<div class="ag-mes-head">${s}</div>`).join("")}
-        ${celulas}
+      <div class="ag-nav">
+        ${agToggleVisaoHtml()}
+        ${agFiltroSelectHtml()}
+        <button class="btn btn-secondary" onclick="agMes(-1)">◀</button>
+        <button class="btn btn-secondary" onclick="agHoje()">Hoje</button>
+        <button class="btn btn-secondary" onclick="agMes(1)">▶</button>
+        <button class="btn btn-primary" onclick="agNovoEvento('')">+ Novo evento</button>
       </div>
-      <div class="ag-legenda">
-        ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
-      </div>
+    </div>
+    <div class="ag-mes-grid">
+      ${semana.map(s => `<div class="ag-mes-head">${s}</div>`).join("")}
+      ${celulas}
+    </div>
+    <div class="ag-legenda">
+      ${AG_TIPOS.map(t => `<span><i class="ag-dot" style="background:${agCorTipo(t)}"></i>${agIconeTipo(t)} ${t}</span>`).join("")}
     </div>
   `;
 }

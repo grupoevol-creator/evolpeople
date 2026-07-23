@@ -3316,7 +3316,7 @@ async function carregarFbTabela() {
   try {
     const r = await api("listarFeedbacks");
     document.getElementById("tabelaFb").innerHTML =
-      tabelaComBadge(r.feedbacks || [], ["Data", "Colaborador", "Unidade", "Pontuacao", "Classificacao", "StatusFinal"]);
+      tabelaComBadge(r.feedbacks || [], ["Data", "Colaborador", "Unidade", "Pontuacao", "Classificacao", "StatusFinal", "RegistradoPor"]);
   } catch (e) { document.getElementById("tabelaFb").innerHTML = `<div class="msg err">${escapeHtml(e.message)}</div>`; }
 }
 /* ===================== AVALIAÇÃO DE EXPERIÊNCIA (Nossos Valores) ===================== */
@@ -3597,7 +3597,7 @@ async function carregarDossie(nome) {
       <div class="actions"><button class="btn btn-primary" onclick="salvarOcorrenciaDossie()">Registrar Ocorrência</button></div>
     </div>
     <div class="card"><h3>Ocorrências</h3>${tabelaComBadge(r.ocorrencias, ["Data", "Tipo", "Descricao", "RegistradoPor"], "ocorrencias")}</div>
-    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider"], "feedbacks")}</div>
+    <div class="card"><h3>Feedbacks</h3>${tabelaComBadge(r.feedbacks, ["Data", "Tipo", "Pontuacao", "Classificacao", "Lider", "RegistradoPor"], "feedbacks")}</div>
     <div class="card"><h3>Avaliações de Experiência</h3>${tabelaComBadge(r.avaliacoes, ["DataAvaliacao", "Etapa", "Resultado", "Lider", "Parecer"], "experiencia")}</div>
     <div class="card"><h3>Treinamentos</h3>${tabelaComBadge(r.treinamentos, ["Data", "Tema", "Tipo", "HorasAssistidas", "LiderResponsavel"], "treinamentos")}</div>
     <div class="card"><h3>👕 Fardamentos recebidos</h3>${tabelaComBadge(r.fardamentos || [], ["Data", "Item", "Tamanho", "Quantidade", "EntreguePor"], "entregas")}</div>

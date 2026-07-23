@@ -407,6 +407,10 @@ const GRUPOS_NAV = [
     { key: "fardamento", label: "Estoque" },
     { key: "entregas", label: "Entrega ao Colaborador" }
   ]},
+  { titulo: "Solicitações", icone: "📩", itens: [
+    { key: "solicitacoes", label: "Solicitações ao RH" },
+    { key: "ferias", label: "Férias" }
+  ]},
   { titulo: "Assistente", icone: "🤖", itens: [
     { key: "assistente", label: "EVA (Assistente)" }
   ]}
@@ -1997,6 +2001,76 @@ function cardTurnoverSemestral(ts) {
       }).join("")}</tbody>
     </table></div>` : ""}`;
 }
+// NOVO (pedido 2026-07-23 — "solicitações feitas e quem solicitou" no
+// Dashboard): resumo + lista das últimas solicitações (dash.solicitacoesResumo,
+// ver dashboardCalcular_/listarSolicitacoes_ em Code.gs). RH/Diretor/Diretoria
+// (ehRHClient()) ganham botões de Atender/Recusar direto aqui, sem precisar
+// abrir a tela de Solicitações — o backend confere de novo (perfilRH_) então
+// não tem risco de outro perfil conseguir mudar o status só escondendo o botão.
+function cardSolicitacoes(sr) {
+  const r = (sr && sr.resumo) || { pendentes: 0, urgentes: 0, atendidasMes: 0, total: 0 };
+  const lista = (sr && sr.lista) || [];
+  const podeAtender = ehRHClient();
+  return `
+    <div class="grid g3">
+      <div class="kpi" style="border-left-color:${r.urgentes ? "#dc2626" : "#0369a1"}">
+        <small>📩 Pendentes</small>
+        <strong style="font-size:26px">${escapeHtml(r.pendentes)}</strong>
+        ${r.urgentes ? `<div class="muted" style="font-size:12px;color:#dc2626;font-weight:600;margin-top:4px">🚨 ${escapeHtml(r.urgentes)} urgente(s)</div>` : ""}
+      </div>
+      <div class="kpi" style="border-left-color:#16a34a">
+        <small>✅ Atendidas no mês</small>
+        <strong style="font-size:26px">${escapeHtml(r.atendidasMes)}</strong>
+      </div>
+      <div class="kpi" style="border-left-color:#94a3b8">
+        <small>Total registrado</small>
+        <strong style="font-size:26px">${escapeHtml(r.total)}</strong>
+      </div>
+    </div>
+    ${lista.length ? `
+    <div class="table-wrap" style="margin-top:14px"><table>
+      <thead><tr><th>Data</th><th>Tipo</th><th>Colaborador</th><th>Unidade</th><th>Solicitado por</th><th>Urgência</th><th>Status</th>${podeAtender ? "<th>Ação</th>" : ""}</tr></thead>
+      <tbody>${lista.map(s => `<tr>
+        <td>${escapeHtml(s.Data)}</td>
+        <td>${escapeHtml(s.Tipo)}</td>
+        <td>${escapeHtml(s.Colaborador)}</td>
+        <td>${escapeHtml(s.Unidade)}</td>
+        <td>${escapeHtml(s.SolicitadoPor)}</td>
+        <td>${norm(s.Urgencia) === "URGENTE" ? `<span class="badge bad">🚨 Urgente</span>` : `<span class="muted">Normal</span>`}</td>
+        <td><span class="badge ${norm(s.Status) === "ATENDIDA" ? "ok" : (norm(s.Status) === "RECUSADA" ? "bad" : "warn")}">${escapeHtml(s.Status)}</span></td>
+        ${podeAtender ? `<td>${(norm(s.Status) === "ATENDIDA" || norm(s.Status) === "RECUSADA") ? "" : `
+          <button class="btn btn-sm btn-primary" onclick="atualizarSolicitacao('${escapeHtml(s.Id)}','Atendida')">Atender</button>
+          <button class="btn btn-sm btn-secondary" onclick="atualizarSolicitacao('${escapeHtml(s.Id)}','Recusada')">Recusar</button>`}</td>` : ""}
+      </tr>`).join("")}</tbody>
+    </table></div>` : `<div class="empty" style="margin-top:10px">Nenhuma solicitação registrada ainda.</div>`}`;
+}
+async function atualizarSolicitacao(id, status) {
+  if (!confirm(`Marcar esta solicitação como "${status}"?`)) return;
+  try {
+    toggleLoading(true);
+    const r = await api("atualizarStatusSolicitacao", { id: id, Status: status });
+    toast(r.msg || "Solicitação atualizada.", "ok");
+    await atualizarDashboard();
+  } catch (e) { toast(e.message, "err"); }
+  finally { toggleLoading(false); }
+}
+// NOVO (pedido 2026-07-23 — "as pessoas que estarão de férias naquele mês"):
+// lista simples de quem tem férias cruzando o mês atual (dash.feriasDoMes,
+// ver feriasNoPeriodo_ em Code.gs) — pensado pra olhar antes de encerrar um
+// teste/experiência de alguém da mesma unidade.
+function cardFeriasDoMes(lista) {
+  if (!lista || !lista.length) return `<div class="empty">Ninguém de férias este mês (ou nada cadastrado em <b>Férias</b> ainda).</div>`;
+  return `<div class="table-wrap"><table>
+    <thead><tr><th>Colaborador</th><th>Unidade</th><th>Cargo</th><th>Início</th><th>Fim</th></tr></thead>
+    <tbody>${lista.map(f => `<tr>
+      <td style="font-weight:600">${escapeHtml(f.Colaborador)}</td>
+      <td>${escapeHtml(f.Unidade)}</td>
+      <td>${escapeHtml(f.Cargo)}</td>
+      <td>${escapeHtml(f.DataInicio)}</td>
+      <td>${escapeHtml(f.DataFim)}</td>
+    </tr>`).join("")}</tbody>
+  </table></div>`;
+}
 function tabelaTurnover(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
   return `<div class="table-wrap"><table>
@@ -2214,6 +2288,18 @@ async function renderDashboard(unidade, usarCache) {
     <div class="card">
       <h3>🔄 Turnover Semestral <span class="muted" style="font-weight:400;font-size:12px">(comparado com o mesmo período do ano passado)</span></h3>
       ${cardTurnoverSemestral(dash.turnoverSemestral)}
+    </div>
+    ` : ""}
+    ${ABA("visao") ? `
+    <div class="card">
+      <h3>📩 Solicitações <span class="muted" style="font-weight:400;font-size:12px">(pedidos feitos por gestores/líderes ao RH)</span></h3>
+      ${cardSolicitacoes(dash.solicitacoesResumo)}
+    </div>
+    ` : ""}
+    ${ABA("visao") ? `
+    <div class="card">
+      <h3>🏖️ Férias do Mês</h3>
+      ${cardFeriasDoMes(dash.feriasDoMes)}
     </div>
     ` : ""}
     ${ABA("recrutamento") ? `
@@ -3668,6 +3754,13 @@ async function carregarDossie(nome) {
           </td></tr>
         </tbody>
       </table></div>
+      ${c.TemGratificacaoAssiduidade ? (c.PerdeuGratificacaoAssiduidade ? `
+      <div style="margin-top:10px;padding:10px 14px;border-radius:10px;background:#fef2f2;border-left:4px solid #dc2626;font-size:13px;color:#7f1d1d">
+        ⚠️ <b>Perdeu ${fmtMoeda(c.ValorGratificacaoAssiduidade || 0)} de gratificação por assiduidade</b> este mês — falta injustificada lançada no Absenteísmo. Valor já descontado do Complementar/Total acima.
+      </div>` : `
+      <div style="margin-top:10px;padding:8px 14px;border-radius:10px;background:#f0fdf4;border-left:4px solid #16a34a;font-size:13px;color:#14532d">
+        ✅ Gratificação por assiduidade (${fmtMoeda(c.ValorGratificacaoAssiduidade || 0)}) mantida este mês — sem falta injustificada lançada.
+      </div>`) : ""}
     </div>
     <div class="grid g4">
       <div class="kpi" style="border-left-color:var(--warn)"><small>Atrasos registrados</small><strong>${k.atrasos || 0}</strong></div>
@@ -5351,6 +5444,50 @@ const MODULES = {
       { name: "ValorProvisionado", label: "Valor provisionado (R$)", type: "moneyBR" },
       { name: "ValorPago", label: "Valor já pago (R$)", type: "moneyBR" },
       { name: "Advogado", label: "Advogado responsável", type: "text" },
+      { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
+    ]
+  },
+  // NOVO (pedido 2026-07-23): canal único para gestores/líderes pedirem coisas
+  // pontuais ao RH (início avulso, +1 dia de teste, reintegração, fardamento
+  // incompleto, encerrar teste antes do prazo, etc.) — cada envio dispara push
+  // pro RH/Diretoria/Sócios (ver salvarSolicitacao_ no Code.gs) E aparece aqui
+  // e no card "📩 Solicitações" do Dashboard, com quem pediu e o status atual.
+  solicitacoes: {
+    label: "Solicitações",
+    note: "Peça algo pontual ao RH sobre um colaborador. Assim que enviar, o RH/Diretoria já recebem notificação push — e o pedido aparece no Dashboard até ser atendido.",
+    filtros: ["Unidade"],
+    listAction: "listarSolicitacoes", listKey: "solicitacoes",
+    saveAction: "salvarSolicitacao",
+    columns: ["Data", "Tipo", "Colaborador", "Unidade", "SolicitadoPor", "Urgencia", "Status"],
+    fields: [
+      { name: "Data", label: "Data do pedido", type: "date", default: new Date().toISOString().slice(0, 10) },
+      { name: "Tipo", label: "Tipo de solicitação", type: "select", required: true, col: "g2", options: [
+        "Início avulso", "Extensão de teste (+1 dia)", "Reintegração",
+        "Fardamento incompleto", "Encerramento antecipado — período de experiência", "Outro"
+      ] },
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "Urgencia", label: "Urgência", type: "select", default: "Normal", options: ["Normal", "Urgente"] },
+      { name: "Detalhe", label: "Detalhe do pedido", type: "textarea", col: "g2" }
+    ]
+  },
+  // NOVO (pedido 2026-07-23): registro simples de férias, alimenta o card
+  // "🏖️ Férias do Mês" do Dashboard (feriasNoPeriodo_ no Code.gs) — pensado
+  // pro RH conseguir ver, antes de encerrar um teste/experiência de alguém,
+  // quem mais da unidade já vai estar de férias naquele mês.
+  ferias: {
+    label: "Férias",
+    filtros: ["Unidade"],
+    listAction: "listarFerias", listKey: "ferias",
+    saveAction: "salvarFerias",
+    columns: ["Colaborador", "Unidade", "Cargo", "DataInicio", "DataFim", "RegistradoPor"],
+    fields: [
+      { name: "Colaborador", label: "Colaborador", type: "datalist", list: "dl-colaboradores", required: true, col: "g2" },
+      { name: "Unidade", label: "Unidade", type: "datalist", list: "dl-unidades" },
+      { name: "Cargo", label: "Cargo", type: "datalist", list: "dl-cargos" },
+      { name: "DataInicio", label: "Início das férias", type: "date", required: true },
+      { name: "DataFim", label: "Fim das férias", type: "date", required: true },
       { name: "Observacoes", label: "Observações", type: "textarea", col: "g2" }
     ]
   },

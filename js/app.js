@@ -1898,6 +1898,39 @@ function tabelaIndicadoresMensais(linhas) {
       <td><span class="badge ${l.Absenteismo >= 5 ? "bad" : (l.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(l.Absenteismo)}%</span></td>
     </tr>`).join("")}</tbody></table></div>`;
 }
+// NOVO (pedido 2026-07-23 — "dá pra calcular o turnover do semestre e
+// comparar com o ano passado?"): card comparando o semestre atual (parcial,
+// se ainda não tiver acabado) com o MESMO PERÍODO do ano passado. Vem de
+// dash.turnoverSemestral (ver calcularTurnoverSemestral_ em Code.gs), que só
+// existe se a aba "HistoricoTurnover" já tiver sido importada — se não
+// tiver, mostra um aviso explicando o que falta em vez de sumir sem dizer nada.
+function cardTurnoverSemestral(ts) {
+  if (!ts) {
+    return `<div class="empty">Sem dados ainda. Importe a planilha de histórico (admissões/desligamentos) numa aba chamada <b>HistoricoTurnover</b> na mesma planilha do EvolPeople para este card aparecer.</div>`;
+  }
+  const a = ts.semestreAtual, p = ts.semestreAnoPassado;
+  const melhorou = ts.variacaoPP <= 0;
+  const corVariacao = melhorou ? "#16a34a" : "#dc2626";
+  const setaVariacao = melhorou ? "▼" : "▲";
+  return `
+    <div class="grid g2">
+      <div class="kpi" style="border-left-color:var(--azul)">
+        <small>${escapeHtml(a.rotulo)}</small>
+        <strong style="font-size:26px">${escapeHtml(a.turnoverPct)}%</strong>
+        <div class="muted" style="font-size:12px;margin-top:4px">${escapeHtml(a.admissoes)} admissão(ões) · ${escapeHtml(a.desligamentos)} desligamento(s)</div>
+      </div>
+      <div class="kpi" style="border-left-color:#94a3b8">
+        <small>${escapeHtml(p.rotulo)}</small>
+        <strong style="font-size:26px;color:#64748b">${escapeHtml(p.turnoverPct)}%</strong>
+        <div class="muted" style="font-size:12px;margin-top:4px">${escapeHtml(p.admissoes)} admissão(ões) · ${escapeHtml(p.desligamentos)} desligamento(s)</div>
+      </div>
+    </div>
+    <div style="margin-top:12px;padding:10px 14px;border-radius:10px;background:${melhorou ? "#f0fdf4" : "#fef2f2"};display:flex;align-items:center;gap:8px">
+      <span style="font-size:18px;color:${corVariacao}">${setaVariacao}</span>
+      <span style="font-weight:700;color:${corVariacao}">${Math.abs(ts.variacaoPP)} p.p. ${melhorou ? "melhor" : "pior"}</span>
+      <span class="muted" style="font-size:12px">que o mesmo período do ano passado</span>
+    </div>`;
+}
 function tabelaTurnover(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
   return `<div class="table-wrap"><table>
@@ -2103,6 +2136,12 @@ async function renderDashboard(unidade, usarCache) {
     <div class="card">
       <h3>👥 Headcount, Folha e Faturamento por Unidade</h3>
       ${tabelaPorUnidade(dash.porUnidade)}
+    </div>
+    ` : ""}
+    ${ABA("visao") ? `
+    <div class="card">
+      <h3>🔄 Turnover Semestral <span class="muted" style="font-weight:400;font-size:12px">(comparado com o mesmo período do ano passado)</span></h3>
+      ${cardTurnoverSemestral(dash.turnoverSemestral)}
     </div>
     ` : ""}
     ${ABA("recrutamento") ? `

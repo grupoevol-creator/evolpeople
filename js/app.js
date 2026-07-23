@@ -3458,7 +3458,10 @@ function dsFiltrar() {
           <td>${escapeHtml(c.Setor || "—")}</td>
           <td>${escapeHtml(c.Unidade || "—")}</td>
           <td>${escapeHtml(c.Lider || "—")}</td>
-          <td><span style="font-size:12px;font-weight:600;color:${cor}">${escapeHtml(rotulo)}</span></td>
+          <td>
+            <span style="font-size:12px;font-weight:600;color:${cor}">${escapeHtml(rotulo)}</span>
+            ${c.MotivoSemaforo ? `<div class="muted" style="font-size:11px;margin-top:2px">${escapeHtml(c.MotivoSemaforo)}</div>` : ""}
+          </td>
           <td><button class="btn btn-primary" style="padding:4px 10px;font-size:12px">Abrir</button></td>
         </tr>`;
         }).join("")}</tbody>

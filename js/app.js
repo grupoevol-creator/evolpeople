@@ -1904,14 +1904,59 @@ function tabelaIndicadoresMensais(linhas) {
 // dash.turnoverSemestral (ver calcularTurnoverSemestral_ em Code.gs), que só
 // existe se a aba "HistoricoTurnover" já tiver sido importada — se não
 // tiver, mostra um aviso explicando o que falta em vez de sumir sem dizer nada.
+// NOVO (pedido 2026-07-23 — "meta de turnover é 6%, absenteísmo é 3% e sla de
+// vagas é 10 dias... quero tudo isso em tempo real como o do CMO, quanto
+// ainda podemos demitir e contratar"): 3 medidores em tempo real, no mesmo
+// espírito do "quanto falta pra fechar as vagas" do CMO — vem de
+// dash.metasTempoReal (ver dashboardCalcular_ em Code.gs), recalculado do
+// zero a cada carga, sem nenhum lançamento manual.
+function medidorMeta_(rotulo, icone, valorAtual, sufixo, meta, status, extra) {
+  const cor = status === "Saudável" ? "#16a34a" : (status === "Atenção" ? "#d97706" : "#dc2626");
+  const bg = status === "Saudável" ? "#f0fdf4" : (status === "Atenção" ? "#fffbeb" : "#fef2f2");
+  const pct = meta > 0 ? Math.min(100, Math.round((valorAtual / meta) * 100)) : 0;
+  return `
+    <div class="kpi" style="border-left-color:${cor};background:${bg}">
+      <small>${icone} ${escapeHtml(rotulo)}</small>
+      <div style="display:flex;align-items:baseline;gap:8px;margin-top:2px">
+        <strong style="font-size:26px;color:${cor}">${escapeHtml(valorAtual)}${sufixo}</strong>
+        <span class="muted" style="font-size:12px">meta ${escapeHtml(meta)}${sufixo}</span>
+      </div>
+      <div style="height:6px;border-radius:4px;background:#e2e8f0;margin-top:8px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${cor};border-radius:4px;transition:width .3s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">
+        <span class="badge" style="background:${cor};color:#fff">${escapeHtml(status)}</span>
+        ${extra ? `<span class="muted" style="font-size:11px;text-align:right">${extra}</span>` : ""}
+      </div>
+    </div>`;
+}
+function cardMetasTempoReal(metas) {
+  if (!metas) return `<div class="empty">Sem dados ainda.</div>`;
+  const t = metas.turnover || {}, ab = metas.absenteismo || {}, s = metas.slaVagas || {};
+  return `
+    <div class="grid g3">
+      ${medidorMeta_("Turnover do Mês", "🔄", t.Turnover || 0, "%", t.MetaPct || 0, t.Status || "Saudável",
+        `cabem ainda <b>${escapeHtml(t.MovimentacoesRestantes || 0)}</b> movimentação(ões)${t.Mes ? " em " + escapeHtml(t.Mes) : ""}`)}
+      ${medidorMeta_("Absenteísmo", "🩺", ab.Absenteismo || 0, "%", ab.MetaPct || 0, ab.Status || "Saudável", "média das unidades")}
+      ${medidorMeta_("SLA de Vagas", "⏱️", s.SLADias || 0, " dias", s.MetaDias || 0, s.Status || "Saudável", "tempo médio de fechamento")}
+    </div>`;
+}
 function cardTurnoverSemestral(ts) {
   if (!ts) {
-    return `<div class="empty">Sem dados ainda. Importe a planilha de histórico (admissões/desligamentos) numa aba chamada <b>HistoricoTurnover</b> na mesma planilha do EvolPeople para este card aparecer.</div>`;
+    return `<div class="empty">Sem dados ainda. Cadastre admissões/desligamentos na aba Colaboradores (e, se quiser histórico anterior, importe numa aba <b>HistoricoTurnover</b>) para este card aparecer.</div>`;
   }
   const a = ts.semestreAtual, p = ts.semestreAnoPassado;
   const melhorou = ts.variacaoPP <= 0;
   const corVariacao = melhorou ? "#16a34a" : "#dc2626";
   const setaVariacao = melhorou ? "▼" : "▲";
+  const ag = ts.analiseGestao || {};
+  const corAg = ag.corClasse === "ok" ? "#16a34a" : (ag.corClasse === "warn" ? "#d97706" : "#dc2626");
+  const bgAg = ag.corClasse === "ok" ? "#f0fdf4" : (ag.corClasse === "warn" ? "#fffbeb" : "#fef2f2");
+  const media = ts.mediaPorUnidade || [];
+  const setores = ts.setoresPreocupantes || [];
+  const setorPorUnidade = {};
+  setores.forEach(s => { setorPorUnidade[s.Unidade] = s; });
+
   return `
     <div class="grid g2">
       <div class="kpi" style="border-left-color:var(--azul)">
@@ -1929,7 +1974,28 @@ function cardTurnoverSemestral(ts) {
       <span style="font-size:18px;color:${corVariacao}">${setaVariacao}</span>
       <span style="font-weight:700;color:${corVariacao}">${Math.abs(ts.variacaoPP)} p.p. ${melhorou ? "melhor" : "pior"}</span>
       <span class="muted" style="font-size:12px">que o mesmo período do ano passado</span>
-    </div>`;
+    </div>
+    ${ag.texto ? `
+    <div style="margin-top:14px;padding:14px 16px;border-radius:12px;background:${bgAg};border-left:4px solid ${corAg}">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:16px">🧠</span>
+        <strong style="font-size:13px;color:${corAg};text-transform:uppercase;letter-spacing:.04em">Leitura da Gestão · ${escapeHtml(ag.classificacao || "")}</strong>
+      </div>
+      <div style="font-size:13.5px;line-height:1.6;color:#334155">${escapeHtml(ag.texto)}</div>
+    </div>` : ""}
+    ${media.length ? `
+    <h4 style="margin:16px 0 6px">📡 Turnover médio por unidade <span class="muted" style="font-weight:400;font-size:12px">(últimos 6 meses, tempo real)</span></h4>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Unidade</th><th>Turnover médio</th><th>Setor mais preocupante (semestre)</th></tr></thead>
+      <tbody>${media.slice().sort((x, y) => y.TurnoverMedioPct - x.TurnoverMedioPct).map(m => {
+        const s = setorPorUnidade[m.Unidade];
+        return `<tr>
+          <td style="font-weight:600">${escapeHtml(m.Unidade)}</td>
+          <td><span class="badge ${m.TurnoverMedioPct >= 15 ? "bad" : (m.TurnoverMedioPct >= 8 ? "warn" : "ok")}">${escapeHtml(m.TurnoverMedioPct)}%</span></td>
+          <td>${s ? `${escapeHtml(s.Setor)} <span class="muted" style="font-size:11px">(${escapeHtml(s.Desligamentos)} saída(s))</span>` : `<span class="muted">—</span>`}</td>
+        </tr>`;
+      }).join("")}</tbody>
+    </table></div>` : ""}`;
 }
 function tabelaTurnover(linhas) {
   if (!linhas || !linhas.length) return `<div class="empty">Sem dados de turnover.</div>`;
@@ -2136,6 +2202,12 @@ async function renderDashboard(unidade, usarCache) {
     <div class="card">
       <h3>👥 Headcount, Folha e Faturamento por Unidade</h3>
       ${tabelaPorUnidade(dash.porUnidade)}
+    </div>
+    ` : ""}
+    ${ABA("visao") ? `
+    <div class="card">
+      <h3>📡 Metas em Tempo Real <span class="muted" style="font-weight:400;font-size:12px">(recalculado a cada carga, igual ao CMO)</span></h3>
+      ${cardMetasTempoReal(dash.metasTempoReal)}
     </div>
     ` : ""}
     ${ABA("visao") ? `

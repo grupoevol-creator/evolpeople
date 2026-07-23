@@ -2623,9 +2623,15 @@ async function renderDashboard(unidade, usarCache) {
       </div>
     </div>
     ` : ""}
+${ABA("analise") ? `
+    <div style="margin:24px 0 8px">
+      <span class="ep-eyebrow" style="text-transform:uppercase;letter-spacing:.06em;font-size:12px;color:#64748b;font-weight:700">🔄 Turnover &amp; Absenteísmo</span>
+      <p class="muted" style="font-size:12px;margin-top:4px">Números do mês e das metas em tempo real ficam na aba <b>Visão Geral</b>. Aqui embaixo: o detalhe por setor e o histórico mês a mês.</p>
+    </div>
+    ` : ""}
     ${ABA("analise") ? `
     <div class="card">
-      <h3>🏬 Turnover e Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(setor dentro de cada unidade)</span></h3>
+      <h3>🏬 Turnover e Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(setor dentro de cada unidade — mês atual)</span></h3>
       ${(dash.porUnidadeSetor && dash.porUnidadeSetor.length)
         ? `<div class="table-wrap"><table>
             <thead><tr><th>Unidade</th><th>Setor</th><th>Ativos</th><th>Admissões</th><th>Desligamentos</th><th>Turnover</th><th>Absenteísmo</th></tr></thead>
@@ -2677,10 +2683,10 @@ async function renderDashboard(unidade, usarCache) {
     ` : ""}
     ${ABA("analise") ? `
     <div class="card">
-      <h3>📊 Turnover e Absenteísmo por Mês <span class="muted" style="font-weight:400;font-size:12px">(do que você lança em Indicadores — turnover calculado)</span></h3>
+      <h3>📊 Histórico Mensal <span class="muted" style="font-weight:400;font-size:12px">(evolução mês a mês — turnover já vem automático; absenteísmo puxa do que for lançado)</span></h3>
       <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:10px">
-        <div class="kpi" style="flex:1;min-width:180px"><small>Turnover médio (geral)</small><strong>${(dash.mediaTurnover != null ? dash.mediaTurnover : 0)}%</strong></div>
-        <div class="kpi" style="flex:1;min-width:180px;border-left-color:var(--info)"><small>Absenteísmo médio (geral)</small><strong>${(dash.mediaAbsenteismo != null ? dash.mediaAbsenteismo : 0)}%</strong></div>
+        <div class="kpi" style="flex:1;min-width:180px"><small>Turnover médio (histórico)</small><strong>${(dash.mediaTurnover != null ? dash.mediaTurnover : 0)}%</strong></div>
+        <div class="kpi" style="flex:1;min-width:180px;border-left-color:var(--info)"><small>Absenteísmo médio (histórico)</small><strong>${(dash.mediaAbsenteismo != null ? dash.mediaAbsenteismo : 0)}%</strong></div>
       </div>
       ${tabelaIndicadoresMensais(dash.indicadoresMensais || [])}
     </div>
@@ -2738,33 +2744,6 @@ async function renderDashboard(unidade, usarCache) {
         <div class="kpi" style="border-left-color:var(--warn)"><small>Pago acumulado</small><strong>${fmtMoeda((dash.processosTrabalhistas && dash.processosTrabalhistas.pagoAcumulado) || 0)}</strong></div>
       </div>
       <p class="muted" style="font-size:12px;margin-top:10px">Detalhe processo a processo (colaborador, motivo, status, valores) em <b>Indicadores → Processos Trabalhistas</b>.</p>
-    </div>
-    ` : ""}
-    ${ABA("analise") ? `
-    <div class="grid g2">
-      <div class="card">
-        <h3>🔄 Turnover por Setor <span class="muted" style="font-weight:400;font-size:12px">(mês atual)</span></h3>
-        ${(dash.turnoverPorSetor && dash.turnoverPorSetor.length)
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>Setor</th><th>Ativos</th><th>Adm.</th><th>Deslig.</th><th>Turnover</th></tr></thead>
-              <tbody>${dash.turnoverPorSetor.map(s => `<tr>
-                <td>${escapeHtml(s.Setor)}</td><td>${escapeHtml(s.Ativos)}</td>
-                <td>${escapeHtml(s.Admissoes)}</td><td>${escapeHtml(s.Desligamentos)}</td>
-                <td><span class="badge ${s.Turnover >= 5 ? "warn" : "ok"}">${escapeHtml(s.Turnover)}%</span></td>
-              </tr>`).join("")}</tbody></table></div>`
-          : `<div class="empty">Sem dados de setor.</div>`}
-      </div>
-      <div class="card">
-        <h3>🩺 Absenteísmo por Setor <span class="muted" style="font-weight:400;font-size:12px">(mês mais recente lançado)</span></h3>
-        ${(dash.absenteismoPorSetor && dash.absenteismoPorSetor.length)
-          ? `<div class="table-wrap"><table>
-              <thead><tr><th>Setor</th><th>Absenteísmo</th></tr></thead>
-              <tbody>${dash.absenteismoPorSetor.map(s => `<tr>
-                <td>${escapeHtml(s.Setor)}</td>
-                <td><span class="badge ${s.Absenteismo >= 5 ? "bad" : (s.Absenteismo >= 3 ? "warn" : "ok")}">${escapeHtml(s.Absenteismo)}%</span></td>
-              </tr>`).join("")}</tbody></table></div>`
-          : `<div class="empty">Nenhum absenteísmo lançado ainda.</div>`}
-      </div>
     </div>
     ` : ""}
     ${ABA("pessoas") ? `
@@ -6239,6 +6218,38 @@ function formatarCelula(coluna, valor) {
   }
   return escapeHtml(valor);
 }
+// NOVO (pedido 2026-07-23 — duplicidade no cadastro de Colaboradores): pede
+// pra pessoa decidir o que fazer quando o Code.gs sinaliza duplicado:true.
+//   - "recontratacao" (CPF já existe, marcado como desligado): pergunta se é
+//     recontratação (reaproveita o mesmo cadastro) ou se ela quer mesmo
+//     assim um registro novo separado.
+//   - "possivel_duplicado" (nome parecido, CPF diferente): pergunta se é a
+//     mesma pessoa (aí atualiza o cadastro existente, usando o CPF dele) ou
+//     se é outra pessoa mesmo (salva novo).
+// Devolve os dados prontos pra reenviar, ou null se a pessoa cancelou tudo
+// (nesse caso NADA é salvo — evita duplicar/sobrescrever por engano).
+async function resolverDuplicidadeColaborador(r, dadosOriginais) {
+  const ex = r.existente || {};
+  if (r.tipo === "recontratacao") {
+    if (confirm(`${r.msg}\n\nOK = Sim, é recontratação (mantém o histórico, reativa este cadastro).\nCancelar = Não é recontratação.`)) {
+      return { ...dadosOriginais, duplicadoResolucao: "recontratar" };
+    }
+    if (confirm(`Quer salvar mesmo assim como um CADASTRO NOVO, separado do de "${ex.Nome || "?"}"?`)) {
+      return { ...dadosOriginais, duplicadoResolucao: "novo_registro" };
+    }
+    return null;
+  }
+  if (r.tipo === "possivel_duplicado") {
+    if (confirm(`${r.msg}\n\nOK = É a mesma pessoa — atualizar o cadastro existente.\nCancelar = É outra pessoa.`)) {
+      return { ...dadosOriginais, CPF: ex.CPF || dadosOriginais.CPF, duplicadoResolucao: "atualizar_existente" };
+    }
+    if (confirm(`Salvar mesmo assim como um cadastro NOVO, separado do de "${ex.Nome || "?"}"?`)) {
+      return { ...dadosOriginais, duplicadoResolucao: "novo_registro" };
+    }
+    return null;
+  }
+  return null;
+}
 async function salvarModulo(key) {
   const cfg = MODULES[key];
   if (!validarCampos(cfg.fields)) return;
@@ -6256,6 +6267,17 @@ async function salvarModulo(key) {
       toast(r.msg || "Registro atualizado.", "ok");
     } else {
       r = await api(cfg.saveAction, dados);
+      // NOVO (pedido 2026-07-23 — "os assistentes estão cadastrando
+      // colaboradores... se der duplicado quero que você avise... escolher
+      // qual registro quero manter, ou se quero salvar um novo registro"):
+      // Code.gs devolve duplicado:true em vez de salvar direto quando acha
+      // um CPF já desligado (recontratação) ou um nome muito parecido com
+      // CPF diferente (possível erro de digitação). Ver resolverDuplicidadeColaborador.
+      if (r && r.duplicado) {
+        const dadosResolvidos = await resolverDuplicidadeColaborador(r, dados);
+        if (!dadosResolvidos) { toast("Cadastro não salvo — confirme antes de tentar de novo.", "info"); return; }
+        r = await api(cfg.saveAction, dadosResolvidos);
+      }
       toast(r.msg || "Salvo com sucesso.", "ok");
       if (r.resultado) toast("Resultado da avaliação: " + r.resultado, "info");
     }
